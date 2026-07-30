@@ -116,13 +116,28 @@ export interface PtyResizeRequest {
 
 /* ------------------------------------------------------- overlay agent */
 
-/** Local model backends the overlay can use. Neither needs an API key. */
-export type AgentProvider = 'maximal' | 'ollama';
+/**
+ * Local model backends. None needs an API key.
+ *
+ * `embedded` runs in this process through `node-llama-cpp`, so it is the only
+ * one that is always available. The other two are preferred when present: a
+ * proxy backed by a real subscription beats a small local model.
+ */
+export type AgentProvider = 'maximal' | 'ollama' | 'embedded';
 
 export type ProviderStatus =
   | { state: 'probing' }
   | { state: 'ready'; provider: AgentProvider; model: string }
+  /** No proxy is running and the embedded model has not been fetched yet. */
+  | { state: 'needs-model'; model: string; approxMb: number }
   | { state: 'unavailable'; reason: string };
+
+/** Progress of the one-time embedded model download. */
+export type ModelProgress =
+  | { state: 'absent' }
+  | { state: 'downloading'; received: number; total: number }
+  | { state: 'ready' }
+  | { state: 'error'; reason: string };
 
 export interface AskRequest {
   prompt: string;
@@ -202,6 +217,11 @@ export interface IpcContract {
   'overlay:abort': { request: void; response: void };
   /** Answer a pending `agent:approval`. Unknown ids are ignored. */
   'overlay:approve': { request: ApproveRequest; response: void };
+  /**
+   * Fetch the embedded model if it is missing. Returns the state at the time
+   * of the call; progress arrives as `model:progress` events.
+   */
+  'model:ensure': { request: void; response: ModelProgress };
 }
 
 export type IpcChannel = keyof IpcContract;
@@ -234,6 +254,7 @@ export const IPC_CHANNELS = [
   'overlay:ask',
   'overlay:abort',
   'overlay:approve',
+  'model:ensure',
 ] as const;
 
 /* ----------------------------------------------------------------- events */
@@ -264,6 +285,8 @@ export interface IpcEvents {
   'agent:approval': AgentApprovalRequest;
   /** The run finished, cleanly or not. */
   'agent:end': AgentEnd;
+  /** The embedded model download changed state. */
+  'model:progress': ModelProgress;
 }
 
 export type IpcEvent = keyof IpcEvents;
@@ -281,6 +304,7 @@ export const IPC_EVENTS = [
   'agent:tool',
   'agent:approval',
   'agent:end',
+  'model:progress',
 ] as const;
 
 /* ------------------------------------------------- exhaustiveness proofs */

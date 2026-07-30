@@ -18,7 +18,7 @@ Screenshot of the shell: `test-results/shell.png`, after `npm run test:e2e`.
 | Renderer | React 19 on Vite 7. |
 | Layout | Radix and `react-resizable-panels`. |
 | Terminal | `ghostty-web` over `node-pty`. |
-| Agent | pi coding agent over maximal or Ollama. |
+| Agent | pi coding agent, or an embedded model. |
 | macOS | Signed dmg from a private builder. |
 | Windows | Per-user MSI from WiX 5. |
 | Tests | Vitest and Playwright. |
@@ -42,9 +42,10 @@ A three-panel layout in the shape Figma uses:
 - **Document tabs in the title bar**, not in a row of their own.
 - **Real terminals in tabs.** The `+` button opens a shell, rendered by
   Ghostty's own emulator compiled to WebAssembly.
-- A **floating overlay** running the pi coding agent, summoned by accelerator.
-  It streams, uses tools, and finds maximal or Ollama on its own. No API key.
-  It asks before it touches anything.
+- A **floating overlay** running a coding agent, summoned by accelerator. It
+  streams, uses tools, and asks before it touches anything. There is no API
+  key, and nothing to install: it prefers a local proxy when one is running,
+  and otherwise runs a small model inside the application.
 - A **grid and list canvas** with selection.
 - A **collapsible right inspector** that shows properties when something is
   selected, and settings when nothing is.
@@ -85,6 +86,10 @@ Stated here rather than discovered later.
 - **The summon accelerator is not a double tap of Ctrl.** Electron cannot bind
   a bare modifier without a native monitor.
 - **No Linux release.** The makers are configured but no job builds them.
+- **The concierge model downloads on first use.** About 610 MB, once, into the
+  user data directory. The installer stays small and the model can be upgraded
+  without a new build, but a first run with no network and no proxy cannot
+  answer.
 - **macOS is arm64 only.** The build runner is Apple Silicon.
 - **Windows is unsigned.** SmartScreen warns on first run.
 - **Placeholder icons.** `scripts/gen-icons.mjs` draws them. Replace the output

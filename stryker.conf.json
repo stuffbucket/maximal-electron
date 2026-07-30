@@ -9,7 +9,8 @@
   "mutate": [
     "src/shared/urls.ts",
     "src/renderer/lib/data.ts",
-    "src/main/native/approval.ts"
+    "src/main/native/approval.ts",
+    "src/main/native/grammar.ts"
   ],
   "reporters": ["progress", "clear-text", "html"],
   "tempDirName": ".stryker-tmp",

@@ -3,7 +3,11 @@ import { createRoot } from 'react-dom/client';
 
 import './styles/overlay.css';
 
-import type { AgentApprovalRequest, ProviderStatus } from '../shared/ipc.js';
+import type {
+  AgentApprovalRequest,
+  ModelProgress,
+  ProviderStatus,
+} from '../shared/ipc.js';
 
 import { bridge } from './lib/bridge.js';
 import { useBridgeEvent } from './lib/bridge.js';
@@ -26,9 +30,16 @@ function providerLabel(status: ProviderStatus): string {
       return 'Looking for a local model…';
     case 'ready':
       return `${status.provider} · ${status.model}`;
+    case 'needs-model':
+      return `${status.model} is not downloaded yet`;
     case 'unavailable':
       return status.reason;
   }
+}
+
+/** Bytes as a short human figure. Progress text should not jitter in width. */
+function megabytes(bytes: number): string {
+  return `${String(Math.round(bytes / 1_000_000))} MB`;
 }
 
 function Overlay() {
@@ -37,6 +48,7 @@ function Overlay() {
   const [answer, setAnswer] = useState('');
   const [tool, setTool] = useState<string>();
   const [approval, setApproval] = useState<AgentApprovalRequest>();
+  const [download, setDownload] = useState<ModelProgress>();
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
@@ -77,6 +89,24 @@ function Overlay() {
   });
 
   useBridgeEvent('agent:approval', setApproval);
+
+  /**
+   * The one-time model download.
+   *
+   * Re-probe once it finishes, so the card moves from "not downloaded" to a
+   * ready backend without the user having to dismiss and summon again.
+   */
+  useBridgeEvent('model:progress', (progress) => {
+    setDownload(progress);
+    if (progress.state === 'ready') {
+      void bridge.invoke('overlay:provider').then(setStatus);
+    }
+  });
+
+  const startDownload = useCallback(() => {
+    setDownload({ state: 'downloading', received: 0, total: 0 });
+    void bridge.invoke('model:ensure').then(setDownload);
+  }, []);
 
   useBridgeEvent('agent:end', (result) => {
     setBusy(false);
@@ -203,6 +233,54 @@ function Overlay() {
           >
             {answer}
             {error && <span className="card__error">{error}</span>}
+          </div>
+        )}
+
+        {status.state === 'needs-model' && (
+          <div className="setup" data-testid="overlay-setup">
+            <div className="setup__head">
+              Download {status.model} to answer without a proxy?
+            </div>
+            <p className="setup__body">
+              About {status.approxMb} MB, once. It runs on this machine, so
+              nothing leaves it and there is no key to paste.
+            </p>
+
+            {download?.state === 'downloading' ? (
+              <div className="setup__progress" data-testid="overlay-download">
+                <div
+                  className="setup__bar"
+                  style={{
+                    // Width is data, not decoration, so it stays inline.
+                    width: download.total
+                      ? `${String(Math.round((download.received / download.total) * 100))}%`
+                      : '0%',
+                  }}
+                />
+                <span className="setup__figure">
+                  {download.total
+                    ? `${megabytes(download.received)} of ${megabytes(download.total)}`
+                    : 'Starting…'}
+                </span>
+              </div>
+            ) : (
+              <div className="setup__actions">
+                <button
+                  type="button"
+                  className="approval__button approval__button--primary"
+                  onClick={startDownload}
+                  data-testid="overlay-download-start"
+                >
+                  {download?.state === 'error' ? 'Try again' : 'Download'}
+                </button>
+              </div>
+            )}
+
+            {download?.state === 'error' && (
+              <span className="card__error" data-testid="overlay-download-error">
+                {download.reason}
+              </span>
+            )}
           </div>
         )}
 

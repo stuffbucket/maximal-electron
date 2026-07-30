@@ -177,6 +177,63 @@ body,
   color: var(--accent-contrast);
 }
 
+/*
+ * First-run model download.
+ *
+ * Shown only when no proxy is running and the embedded weights are missing.
+ * It states the size before asking, because a third of a gigabyte is not a
+ * thing to start without saying so.
+ */
+.setup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-input);
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-subtle);
+}
+
+.setup__head {
+  font-size: var(--text-base);
+}
+
+.setup__body {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.setup__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.setup__progress {
+  position: relative;
+  height: 22px;
+  border-radius: var(--radius-chip);
+  background: var(--bg-active);
+  overflow: hidden;
+}
+
+.setup__bar {
+  height: 100%;
+  background: var(--accent-soft);
+  border-right: 2px solid var(--accent);
+  transition: width var(--duration-fast) var(--ease-out);
+}
+
+.setup__figure {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
 .card__footer {
   display: flex;
   align-items: center;

@@ -7,6 +7,7 @@ import { BrowserWindow, app, globalShortcut } from 'electron';
 import { registerIpcHandlers, sendEvent } from './ipc.js';
 import { focusWindow, installApplicationMenu } from './native/menu.js';
 import { clearBadge } from './native/notifications.js';
+import { disposeEmbeddedModel } from './native/llama.js';
 import {
   getPreferences,
   isE2E,
@@ -14,8 +15,7 @@ import {
   onPreferencesChanged,
   quietBounds,
 } from './native/preferences.js';
-import { configurePty, killAllPtys } from './native/pty.js';
-import { destroyTray, setTrayEnabled } from './native/tray.js';
+import { configurePty, killAllPtys } from './native/pty.js';import { destroyTray, setTrayEnabled } from './native/tray.js';
 import { checkForUpdates } from './native/updates.js';
 import { createMainWindow } from './windows/main-window.js';
 import { destroyOverlay, toggleOverlay } from './windows/overlay.js';
@@ -231,5 +231,8 @@ if (!app.requestSingleInstanceLock()) {
     clearBadge();
     destroyTray();
     closeSplashWindow();
+    // The embedded weights hold a few hundred megabytes. Nothing depends on
+    // this completing, so it is not awaited.
+    void disposeEmbeddedModel();
   });
 }

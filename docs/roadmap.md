@@ -79,11 +79,47 @@ Discovery copies wiggle, and the property worth keeping is that there is
 **nothing to configure to start**:
 
 1. Try maximal on `localhost:4141`. It speaks the Anthropic API.
-2. Fall back to Ollama on `localhost:11434`, through its OpenAI-compatible path.
-3. If neither is up, say so plainly. Never demand a key.
+2. Fall back to Ollama on `localhost:11434`, using a model it actually has.
+3. Otherwise run the embedded model, in this process.
 
-So this application holds no API key, and maximal is the default backend
-without being a hard dependency.
+So this application holds no API key, and it needs nothing installed.
+
+### The embedded model
+
+**Status: working.** `node-llama-cpp` runs Qwen3 0.6B Q8_0 in the main process
+over Metal.
+
+It is the floor rather than the default. A proxy backed by a real subscription
+beats it on every axis. What it buys is that the application works offline, and
+on a machine with nothing set up.
+
+The weights are fetched once, into the user data directory, and are not in the
+installer. They are 610 MB and they change on a different schedule to the
+application. Shipping them would put that on every release, and would pin the
+model to the app version.
+
+Two things are worth knowing.
+
+**The engines differ.** The proxy path uses pi's agent loop. The embedded path
+lets llama.cpp own the loop, because it constrains sampling to the tool
+grammar. That is most of why a model this small can call tools. Both share the
+approval gate and the sink.
+
+**The schemas differ too.** pi describes a closed set of strings the TypeBox
+way, and llama.cpp wants an `enum`. Handed the wrong dialect it throws, and the
+tool never becomes callable. That looks exactly like a model too small to
+follow an instruction. `src/main/native/grammar.ts` translates.
+
+### Why this model
+
+It was picked for restraint rather than for size. In a published comparison of
+21 open-weight models it tied for the best agent score. The measure that
+matters for a concierge is not calling a tool when none is needed. Llama 3.2 at
+a similar size calls one on every prompt, which trains people to dismiss the
+approval card unread.
+
+Verified here: three concierge cases, all correct, each under 1.4 seconds,
+including the case where the right answer is to call nothing.
 
 ### Two details worth knowing
 

@@ -18,6 +18,7 @@ import {
   resolveApproval,
   runAgent,
 } from './native/agent.js';
+import { ensureModel } from './native/llama.js';
 import { getPreferences, setPreferences } from './native/preferences.js';
 import {
   defaultShell,
@@ -125,6 +126,9 @@ const handlers: IpcHandlers = {
 
     return { started: true };
   },
+
+  'model:ensure': (_request, window) =>
+    ensureModel((progress) => sendEvent(window, 'model:progress', progress)),
 };
 
 /** Register every contract channel. Call once, before the first window loads. */

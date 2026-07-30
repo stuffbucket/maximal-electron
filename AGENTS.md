@@ -91,6 +91,50 @@ It runs the pi coding agent: `@earendil-works/pi-ai` for the provider, and
 - A run streams. `overlay:ask` returns once the run starts, and text arrives as
   `agent:delta` events. Do not make it block.
 
+### The provider chain
+
+`discoverProvider` ranks backends by quality, not convenience:
+
+1. **maximal** on `localhost:4141`, when it is up. A proxy backed by a real
+   subscription beats any local model.
+2. **Ollama** on `localhost:11434`, when it has a model pulled. The model comes
+   from `/api/tags`, so only something installed is named.
+3. **embedded**, always. `node-llama-cpp` runs Qwen3 0.6B in this process.
+
+Rules:
+
+- **Embedded is the floor, not the default.** It exists so the application
+  works offline and with nothing installed.
+- **Never name a model that might not exist.** The old code pinned
+  `llama3.2`, which was both absent on most machines and the worst tested
+  model for restraint.
+- The weights are **not** in the installer. They are fetched once into
+  `userData` on first use. `src/main/native/llama.ts` owns that.
+- `STUFFBUCKET_PROVIDER=embedded` pins a provider and
+  `STUFFBUCKET_MODEL_PATH` points at existing weights. Without them the
+  embedded path is unreachable on any machine running a proxy, which is every
+  machine that develops this.
+
+### Two engines, one gate
+
+The embedded provider does not use pi's `Agent`. `node-llama-cpp` owns its own
+loop and constrains sampling to the tool grammar, which is most of why a 0.6B
+model can call tools at all. `src/main/native/embedded.ts` is that path.
+
+What both paths share is not optional:
+
+- **The same approval gate**, through the same `approve` callback and the same
+  risk classification. Two ways to reach a shell, one way to permit it.
+- **The same sink.** The overlay does not know which engine ran.
+
+`src/main/native/grammar.ts` translates between the two schema dialects. pi
+uses TypeBox, which writes a closed set of strings as
+`anyOf: [{const: 'a'}]`; llama.cpp wants `enum: ['a']` and throws `Unknown
+immutable type undefined` otherwise. That failure is quiet: the tool never
+becomes callable and it looks like a model too small to follow instructions.
+A schema it cannot express means the tool is **dropped and logged**, never
+passed through unconstrained.
+
 ### The approval gate
 
 `beforeToolCall` in `src/main/native/agent.ts` is the only thing between a

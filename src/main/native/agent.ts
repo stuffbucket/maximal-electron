@@ -23,8 +23,10 @@ import type {
 } from '../../shared/ipc.js';
 
 import { describeToolCall, needsApproval, riskOf, type ToolRisk } from './approval.js';
+import { runEmbedded } from './embedded.js';
+import { EMBEDDED_MODEL_LABEL, EMBEDDED_MODEL_MB, isModelPresent } from './llama.js';
 import { getPreferences } from './preferences.js';
-import { buildToolsetTools } from './toolsets.js';
+import { buildToolsetTools, type RiskyTool } from './toolsets.js';
 
 /**
  * The overlay agent, powered by the pi coding agent.
@@ -52,7 +54,23 @@ const OLLAMA_BASE = 'http://localhost:11434';
 
 /** Wiggle pins this model for maximal. Keep them in step. */
 const MAXIMAL_MODEL = 'claude-haiku-4-5';
-const OLLAMA_MODEL = 'llama3.2';
+
+/**
+ * Ollama models to prefer, best first.
+ *
+ * Only a model that is already pulled is used, so this is a preference order
+ * rather than a requirement. It is ordered by tool-calling behaviour rather
+ * than by size: `llama3.2` is deliberately absent, because it calls a tool on
+ * every prompt including ones that need none, which is the one failure a
+ * concierge cannot have.
+ */
+const OLLAMA_PREFERRED = [
+  'qwen3:4b',
+  'qwen3:1.7b',
+  'qwen2.5:7b',
+  'lfm2.5:1.2b',
+  'qwen3:0.6b',
+];
 
 /** A probe must not hang the overlay, so every request is bounded. */
 const PROBE_TIMEOUT_MS = 1500;
@@ -78,30 +96,90 @@ const SYSTEM_PROMPT = [
 /* ---------------------------------------------------------------- discovery */
 
 async function reachable(url: string): Promise<boolean> {
+  return (await fetchJson(url)) !== undefined;
+}
+
+/** GET with a bound timeout. Returns undefined for anything that is not 200. */
+async function fetchJson(url: string): Promise<unknown> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
   try {
-    return (await fetch(url, { signal: controller.signal })).ok;
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) return undefined;
+    return await response.json();
   } catch {
-    // Connection refused, DNS failure, or the timeout above. All mean "not up".
-    return false;
+    // Connection refused, DNS failure, bad JSON, or the timeout above. All
+    // mean "not usable".
+    return undefined;
   } finally {
     clearTimeout(timer);
   }
 }
 
-/** Order is deliberate: a running maximal wins over a generic Ollama install. */
+/**
+ * Which Ollama model to use, out of what is actually pulled.
+ *
+ * The previous version named one model and hoped. `/api/tags` lists what is
+ * installed, so the preferred order is applied against reality, and a machine
+ * with none of them still gets whatever it does have.
+ */
+function chooseOllamaModel(tags: unknown): string | undefined {
+  const models = (tags as { models?: { name?: unknown }[] } | undefined)?.models;
+  if (!Array.isArray(models)) return undefined;
+
+  const installed = models
+    .map((entry) => entry.name)
+    .filter((name): name is string => typeof name === 'string');
+  if (installed.length === 0) return undefined;
+
+  for (const wanted of OLLAMA_PREFERRED) {
+    const match = installed.find(
+      (name) => name === wanted || name.startsWith(`${wanted}-`),
+    );
+    if (match) return match;
+  }
+  return installed[0];
+}
+
+/**
+ * Pick a backend, best first.
+ *
+ * The order is a quality order, not a convenience one. A proxy backed by a
+ * real subscription beats a small local model on every axis that matters, so
+ * the embedded model is the floor rather than the default: it is what makes
+ * the application work offline and with nothing installed.
+ */
 export async function discoverProvider(): Promise<ProviderStatus> {
+  // Pin a provider, for testing and for support. Without it the embedded path
+  // is unreachable on any machine that has a proxy running, which is every
+  // machine that develops this.
+  const pinned = process.env['STUFFBUCKET_PROVIDER'];
+  if (pinned === 'embedded') {
+    return isModelPresent()
+      ? { state: 'ready', provider: 'embedded', model: EMBEDDED_MODEL_LABEL }
+      : { state: 'needs-model', model: EMBEDDED_MODEL_LABEL, approxMb: EMBEDDED_MODEL_MB };
+  }
+
   if (await reachable(`${MAXIMAL_BASE}/v1/models`)) {
     return { state: 'ready', provider: 'maximal', model: MAXIMAL_MODEL };
   }
-  if (await reachable(`${OLLAMA_BASE}/api/tags`)) {
-    return { state: 'ready', provider: 'ollama', model: OLLAMA_MODEL };
+
+  const tags = await fetchJson(`${OLLAMA_BASE}/api/tags`);
+  if (tags !== undefined) {
+    const model = chooseOllamaModel(tags);
+    if (model) return { state: 'ready', provider: 'ollama', model };
+    // Ollama is running but empty. Fall through: the embedded model is a
+    // better answer than telling someone to go and pull one.
   }
+
+  if (isModelPresent()) {
+    return { state: 'ready', provider: 'embedded', model: EMBEDDED_MODEL_LABEL };
+  }
+
   return {
-    state: 'unavailable',
-    reason:
-      'No local model backend found. Start maximal on port 4141, or Ollama on port 11434.',
+    state: 'needs-model',
+    model: EMBEDDED_MODEL_LABEL,
+    approxMb: EMBEDDED_MODEL_MB,
   };
 }
 
@@ -162,6 +240,8 @@ type BoundTool = AgentTool<TSchema, unknown>;
 interface ToolSet {
   tools: BoundTool[];
   risk: Map<string, ToolRisk>;
+  /** The same tools paired with their risk, which the embedded engine needs. */
+  entries: RiskyTool[];
 }
 
 function buildTools(options: {
@@ -172,6 +252,7 @@ function buildTools(options: {
 }): ToolSet {
   const risk = new Map<string, ToolRisk>();
   const tools: BoundTool[] = [];
+  const entries: RiskyTool[] = [];
 
   if (options.coding) {
     const context = { env: new NodeExecutionEnv({ cwd: options.cwd }) };
@@ -191,12 +272,15 @@ function buildTools(options: {
         context: { env: NodeExecutionEnv },
       ) => Promise<AgentToolResult<unknown>>;
 
-      tools.push({
+      const bound = {
         ...tool,
         execute: (toolCallId, params, signal, onUpdate) =>
           execute(toolCallId, params, signal, onUpdate, context),
-      } as BoundTool);
+      } as BoundTool;
+
+      tools.push(bound);
       risk.set(tool.name, riskOf(tool.name));
+      entries.push({ tool: bound, risk: riskOf(tool.name) });
     }
   }
 
@@ -205,9 +289,24 @@ function buildTools(options: {
   for (const entry of buildToolsetTools(options.toolsetIds)) {
     tools.push(entry.tool);
     risk.set(entry.tool.name, entry.risk);
+    entries.push(entry);
   }
 
-  return { tools, risk };
+  return { tools, risk, entries };
+}
+
+/** Turn a not-ready provider status into something a person can act on. */
+function describeNotReady(status: ProviderStatus): string {
+  switch (status.state) {
+    case 'probing':
+      return 'Still looking for a model backend.';
+    case 'needs-model':
+      return `The ${status.model} model has not been downloaded yet.`;
+    case 'unavailable':
+      return status.reason;
+    default:
+      return 'No model backend is available.';
+  }
 }
 
 /* ------------------------------------------------------------------ running */
@@ -240,7 +339,8 @@ interface PendingApproval {
 }
 
 interface ActiveRun {
-  agent: Agent;
+  /** Absent on the embedded path, which has no pi agent to stop. */
+  agent?: Agent;
   controller: AbortController;
   /** Tools the user allowed for the rest of this run. Never persisted. */
   allowed: Set<string>;
@@ -262,7 +362,7 @@ export function abortAgent(): void {
   // `abort` alone does not settle that promise.
   for (const entry of [...run.pending.values()]) entry.settle(false);
 
-  run.agent.abort();
+  run.agent?.abort();
   run.controller.abort();
   active = undefined;
 }
@@ -330,10 +430,7 @@ export async function runAgent(prompt: string, sink: AgentSink): Promise<void> {
 
   const status = await discoverProvider();
   if (status.state !== 'ready') {
-    sink.onEnd({
-      ok: false,
-      error: status.state === 'probing' ? 'Still probing.' : status.reason,
-    });
+    sink.onEnd({ ok: false, error: describeNotReady(status) });
     return;
   }
 
@@ -351,6 +448,42 @@ export async function runAgent(prompt: string, sink: AgentSink): Promise<void> {
     coding: prefs.agentTools,
   });
 
+  /** The gate, shared by both engines. Denies on every edge. */
+  const gate = async (
+    tool: string,
+    risk: ToolRisk,
+    summary: string,
+  ): Promise<boolean> => {
+    if (!needsApproval(prefs.agentApproval, risk)) return true;
+    if (allowed.has(tool)) return true;
+    return requestApproval(pending, tool, summary, sink);
+  };
+
+  if (status.provider === 'embedded') {
+    active = { controller, allowed, pending };
+    try {
+      await runEmbedded({
+        prompt,
+        systemPrompt: SYSTEM_PROMPT,
+        tools: built.entries,
+        onDelta: sink.onDelta,
+        onTool: sink.onTool,
+        approve: gate,
+        signal: controller.signal,
+      });
+      sink.onEnd({ ok: true });
+    } catch (error) {
+      sink.onEnd({
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      for (const entry of [...pending.values()]) entry.settle(false);
+      active = undefined;
+    }
+    return;
+  }
+
   const agent = new Agent({
     streamFn: (model, context, options) =>
       stream(model, context, { ...options, apiKey: PLACEHOLDER_KEY }),
@@ -363,11 +496,7 @@ export async function runAgent(prompt: string, sink: AgentSink): Promise<void> {
     beforeToolCall: async ({ toolCall, args }) => {
       const tool = toolCall.name;
       const risk = riskOf(tool, built.risk.get(tool));
-      if (!needsApproval(prefs.agentApproval, risk)) return undefined;
-      if (allowed.has(tool)) return undefined;
-
-      const summary = describeToolCall(tool, args);
-      const ok = await requestApproval(pending, tool, summary, sink);
+      const ok = await gate(tool, risk, describeToolCall(tool, args));
       return ok ? undefined : { block: true, reason: DENIED };
     },
 

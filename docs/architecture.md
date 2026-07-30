@@ -129,8 +129,11 @@ Components reference semantic names only. No component contains a hex value.
 | Preferences | `native/preferences.ts` | One JSON file under `userData`. |
 | Updates | `native/updates.ts` | Returns `unsupported`. See `docs/release.md`. |
 | Overlay | `windows/overlay.ts` | Non-activating panel on the cursor's display. |
-| Agent | `native/agent.ts` | pi coding agent. Finds maximal or Ollama. No API key. |
+| Agent | `native/agent.ts` | Ranks backends, then runs one. No API key. |
+| Embedded model | `native/llama.ts` | Downloads and loads the local weights. |
+| Embedded run | `native/embedded.ts` | The llama.cpp engine, behind the same gate. |
 | Tool approval | `native/approval.ts` | Decides what the agent must ask about. Pure, and mutation tested. |
+| Schema bridge | `native/grammar.ts` | Translates tool schemas for llama.cpp. Pure, and mutation tested. |
 
 The menu and the tray both route through `sendEvent`, so the React shell stays
 the single owner of view state.
