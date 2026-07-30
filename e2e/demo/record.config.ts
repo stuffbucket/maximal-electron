@@ -15,6 +15,9 @@ import { defineConfig } from '@playwright/test';
 export default defineConfig({
   testDir: '.',
   testMatch: '**/*.demo.ts',
+  // Proves `ffmpeg` and `ffprobe` are installed before a timeline launches
+  // anything, and pins the paths it verified.
+  globalSetup: './global-setup.ts',
   fullyParallel: false,
   // Electron holds a single-instance lock. One recording at a time.
   workers: 1,

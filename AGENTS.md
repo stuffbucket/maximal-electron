@@ -16,6 +16,7 @@ background. If a rule looks arbitrary, the reason is in the linked document.
 | Unit tests | `npm test` |
 | Mutation tests | `npm run mutate` |
 | End-to-end tests | `npm run package && npm run test:e2e` |
+| Record a demo video | `npm run package && npm run record` |
 | Package | `npm run package` |
 | Verify a package | `npm run verify:package` |
 | Documentation lint | `npm run lint:docs` |
@@ -221,6 +222,28 @@ scenario. So a test run parks its windows off the side of the display.
   blank result.
 - `capture` fails when an image lands under `MIN_SCREENSHOT_BYTES`. That guard
   exists because the blank captures above looked exactly like success.
+
+## Screen recordings
+
+`npm run record` drives the application through a scripted timeline and encodes
+the frames into an mp4. See `docs/recording.md`. Full rules live there. Four
+that bite an agent working here:
+
+- `e2e/demo/*.demo.ts` are timelines, not tests. `record.config.ts` matches
+  `*.demo.ts` and the suite matches `*.spec.ts`, so neither runner sees the
+  other. Do not merge the two configurations.
+- **`recorder.ts`, `screencast.ts`, `encode.ts`, and `caption.ts` stay generic.**
+  They know about pages, frames, and seconds. Application knowledge belongs in
+  `launch.ts` and the timelines. A fork keeps the first four unchanged.
+- **Never lower the pacing constants** to make a timeline fit. `MIN_HOLD_SECONDS`
+  and `SETTLE_SECONDS` are the difference between a video and a slideshow of
+  things that already happened. `rules.demo.ts` proves them.
+- A scene that ends in a visible change wastes its hold. Make the change early
+  in `drive`, and let the hold sit on the result.
+- **`src/main/native/ffmpeg.ts` is the only copy of the encoder search.** It
+  imports no `electron`, so main and the recorder share it, and it is in the
+  `stryker.conf.json` mutate list. The application never downloads or installs
+  `ffmpeg`. It detects, and it names the command that fixes a miss.
 
 ## Tests run in a random order
 

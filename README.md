@@ -22,6 +22,7 @@ Screenshot of the shell: `test-results/shell.png`, after `npm run test:e2e`.
 | macOS | Signed dmg from a private builder. |
 | Windows | Per-user MSI from WiX 5. |
 | Tests | Vitest and Playwright. |
+| Demos | A scripted screen recorder that drives the real app. |
 | Harness | `AGENTS.md` and `.claude/skills/`. |
 
 ## Quick start
@@ -55,6 +56,24 @@ Panel sizes persist across restarts.
 Native integration covers a splash window and the application menu. It also
 covers an optional menu bar or tray icon, notifications, and an update check.
 A dock badge tracks real application state.
+
+## Demos
+
+The application can drive itself and record the result. `demo/` holds the mp4s
+and stills that produces.
+
+```bash
+npm run package
+npm run record
+```
+
+Nothing in the output is a mock. The window is the window `npm start` opens,
+the terminal runs a real shell, and the overlay talks to a real model through
+the real approval gate. So a change that breaks the interface breaks the
+recording, and a demo cannot quietly go stale.
+
+The pacing rules are enforced in code rather than left to whoever writes a
+timeline. See [docs/recording.md](./docs/recording.md).
 
 ## Release
 

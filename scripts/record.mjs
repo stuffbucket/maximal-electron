@@ -4,13 +4,20 @@
  *
  * The recorder itself lives in `e2e/demo/`, in TypeScript, next to the harness
  * it shares with the end-to-end suite. This script is the front door: it checks
- * the two things that otherwise fail deep inside a five minute run, then hands
- * over to the Playwright runner.
+ * that a build exists, then hands over to the Playwright runner.
  *
- * Playwright runs it rather than plain Node because it already transpiles the
- * TypeScript and resolves the `.js` import specifiers this repository uses. It
- * is a runner here, not a test framework. `e2e/demo/record.config.ts` matches
- * `*.demo.ts` only, so `npm run test:e2e` never picks a recording up.
+ * `ffmpeg` is **not** checked here. That search lives in
+ * `src/main/native/ffmpeg.ts` and runs from `e2e/demo/global-setup.ts`, so the
+ * recorder and the application share one answer about where the encoder is and
+ * what to say when it is absent. Duplicating it here meant two searches that
+ * could disagree, and this copy was the weaker one: it asked whether a file
+ * existed rather than whether it ran.
+ *
+ * Playwright runs the timelines rather than plain Node because it already
+ * transpiles the TypeScript and resolves the `.js` import specifiers this
+ * repository uses. It is a runner here, not a test framework.
+ * `e2e/demo/record.config.ts` matches `*.demo.ts` only, so `npm run test:e2e`
+ * never picks a recording up.
  *
  * Usage:
  *
@@ -31,33 +38,7 @@ const CONFIG = path.join(ROOT, 'e2e/demo/record.config.ts');
 
 /* ---------------------------------------------------------------- checks */
 
-function tool(name, override) {
-  if (override && override.length > 0) return override;
-  const brew = `/opt/homebrew/bin/${name}`;
-  return existsSync(brew) ? brew : name;
-}
-
-function usable(command) {
-  if (path.isAbsolute(command)) return existsSync(command);
-  // A bare name has to be on PATH. Ask the shell rather than reimplementing it.
-  const probe = spawn(process.platform === 'win32' ? 'where' : 'which', [command]);
-  return new Promise((resolve) => {
-    probe.on('error', () => resolve(false));
-    probe.on('close', (code) => resolve(code === 0));
-  });
-}
-
 const failures = [];
-
-const ffmpeg = tool('ffmpeg', process.env.FFMPEG);
-const ffprobe = tool('ffprobe', process.env.FFPROBE);
-
-if (!(await usable(ffmpeg))) {
-  failures.push(`ffmpeg not found at "${ffmpeg}". Install it, or set FFMPEG.`);
-}
-if (!(await usable(ffprobe))) {
-  failures.push(`ffprobe not found at "${ffprobe}". Install it, or set FFPROBE.`);
-}
 
 // The recorder drives the unpackaged build, for the reason in AGENTS.md: the
 // `EnableNodeCliInspectArguments: false` fuse stops Playwright attaching to a
@@ -75,8 +56,6 @@ if (failures.length > 0) {
 
 /* ----------------------------------------------------------------- run */
 
-console.log(`recording with ${ffmpeg}`);
-
 const child = spawn(
   process.execPath,
   [
@@ -89,7 +68,7 @@ const child = spawn(
   {
     cwd: ROOT,
     stdio: 'inherit',
-    env: { ...process.env, FFMPEG: ffmpeg, FFPROBE: ffprobe },
+    env: process.env,
   },
 );
 

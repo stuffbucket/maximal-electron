@@ -12,7 +12,7 @@ import type { Page } from '@playwright/test';
  * would leak into the next screenshot the suite takes from the same window.
  */
 
-const CAPTION_ID = 'stuffbucket-demo-caption';
+const CAPTION_ID = 'demo-recorder-caption';
 
 /** Where the lower third sits. The overlay puts its card along the bottom. */
 export type CaptionPlacement = 'bottom' | 'top';

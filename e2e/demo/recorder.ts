@@ -257,7 +257,7 @@ export async function record(options: RecordOptions): Promise<RecordResult> {
   await resizeShell(app, shell, width, height);
   await mkdir(path.dirname(output), { recursive: true });
 
-  const frameDir = await mkdtemp(path.join(tmpdir(), 'stuffbucket-record-'));
+  const frameDir = await mkdtemp(path.join(tmpdir(), 'demo-recorder-'));
   const recorder = createRecorder(frameDir);
   const context: SceneContext = { app, shell };
   const touched = new Set<Page>([shell]);

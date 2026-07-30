@@ -1,5 +1,4 @@
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
 
 /**
  * The ffmpeg half of the recording pipeline.
@@ -46,18 +45,30 @@ export interface ProbeResult {
   bytes: number;
 }
 
-function resolveTool(name: string, override: string | undefined): string {
-  if (override && override.length > 0) return override;
-  const candidate = `/opt/homebrew/bin/${name}`;
-  return existsSync(candidate) ? candidate : name;
+/**
+ * Where the encoder is.
+ *
+ * The search lives in `src/main/native/ffmpeg.ts`, and the recorder's global
+ * setup runs it once before any test and pins the answers into `FFMPEG` and
+ * `FFPROBE`. So this reads the result rather than searching a second time, and
+ * the recorder and the application can never disagree about which binary they
+ * mean.
+ *
+ * The bare name is the fallback for a direct call that skipped the setup. It
+ * resolves through PATH, or fails with a clear `ENOENT` naming the tool.
+ */
+function resolveTool(name: 'ffmpeg' | 'ffprobe'): string {
+  const pinned = process.env[name === 'ffmpeg' ? 'FFMPEG' : 'FFPROBE'];
+  if (pinned !== undefined && pinned.trim().length > 0) return pinned.trim();
+  return name;
 }
 
 export function ffmpegPath(): string {
-  return resolveTool('ffmpeg', process.env['FFMPEG']);
+  return resolveTool('ffmpeg');
 }
 
 export function ffprobePath(): string {
-  return resolveTool('ffprobe', process.env['FFPROBE']);
+  return resolveTool('ffprobe');
 }
 
 /** Run a command and collect its output, rejecting on a non-zero exit. */
