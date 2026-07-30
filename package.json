@@ -34,6 +34,7 @@
     "@radix-ui/react-tooltip": "^1.2.16",
     "ghostty-web": "^0.4.0",
     "lucide-react": "^1.27.0",
+    "node-llama-cpp": "^3.19.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-resizable-panels": "^4.12.2"

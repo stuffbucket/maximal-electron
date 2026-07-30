@@ -89,20 +89,30 @@ check(
   'node-pty is packed',
 );
 
+check(
+  listing.some((entry) => entry.includes('node_modules/node-llama-cpp/')),
+  'node-llama-cpp is packed',
+);
+
 // The prebuilt binary is unpacked beside the asar, because a .node file cannot
 // be loaded from inside one.
 const unpacked = path.join(path.dirname(asar), 'app.asar.unpacked');
-let nativeBinaries = [];
-if (existsSync(unpacked)) {
-  nativeBinaries = execFileSync(
-    'find',
-    [unpacked, '-name', '*.node'],
-    { encoding: 'utf8' },
-  )
-    .split('\n')
-    .filter(Boolean);
-}
-check(nativeBinaries.length > 0, 'a native .node binary is unpacked');
+const findUnpacked = (pattern) =>
+  existsSync(unpacked)
+    ? execFileSync('find', [unpacked, '-name', pattern], { encoding: 'utf8' })
+        .split('\n')
+        .filter(Boolean)
+    : [];
+
+check(findUnpacked('*.node').length > 0, 'a native .node binary is unpacked');
+
+// llama.cpp ships its backends as shared libraries beside the addon, and
+// `dlopen` cannot reach into an asar. An `unpack` glob of only `*.node` leaves
+// these inside the archive: the package builds, the app starts, and the model
+// fails to load with an error that reads like a bad model file rather than a
+// packaging fault.
+const llamaLibs = [...findUnpacked('libllama*'), ...findUnpacked('libggml*')];
+check(llamaLibs.length > 0, 'llama.cpp shared libraries are unpacked');
 
 /* ---------------------------------------------------------------- fuses */
 

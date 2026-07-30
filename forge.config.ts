@@ -8,9 +8,20 @@ import { FuseV1Options, FuseVersion } from '@electron/fuses';
 
 const config: ForgeConfig = {
   packagerConfig: {
-    // Native modules cannot be loaded from inside an asar, so the pty binary
-    // is unpacked beside it. `OnlyLoadAppFromAsar` still applies to app code.
-    asar: { unpack: '**/*.node' },
+    /**
+     * Native code cannot be loaded from inside an asar, so it is unpacked
+     * beside it. `OnlyLoadAppFromAsar` still applies to app code.
+     *
+     * `*.node` alone is not enough. `node-llama-cpp` ships its llama.cpp
+     * backends as `.dylib` and `.so` files next to the addon, and those are
+     * `dlopen`ed at run time. Left inside the archive they fail to load, and
+     * the failure looks like a model that will not start rather than a
+     * packaging fault. Both native scopes are unpacked whole, because their
+     * own documentation says the directory layout is load-bearing.
+     */
+    asar: {
+      unpack: '{**/*.node,**/node_modules/@node-llama-cpp/**,**/node_modules/node-llama-cpp/**}',
+    },
 
     /**
      * Which files reach the package.
@@ -25,14 +36,19 @@ const config: ForgeConfig = {
      * the whole `node_modules` tree.
      *
      * The prebuilt binaries live in platform-specific packages
-     * (`@lydell/node-pty-darwin-arm64` and friends), which is why the whole
-     * `@lydell` scope is kept rather than one directory.
+     * (`@lydell/node-pty-darwin-arm64`, `@node-llama-cpp/mac-arm64-metal`),
+     * which is why whole scopes are kept rather than single directories.
      */
     ignore: (file: string) => {
       if (!file) return false;
       if (file === '/package.json') return false;
 
-      const keep = ['/.vite', '/node_modules/@lydell'];
+      const keep = [
+        '/.vite',
+        '/node_modules/@lydell',
+        '/node_modules/node-llama-cpp',
+        '/node_modules/@node-llama-cpp',
+      ];
       return !keep.some(
         (prefix) =>
           // Inside a kept path, or a directory on the way to one. Packager

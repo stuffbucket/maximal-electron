@@ -12,11 +12,16 @@ import { defineConfig } from 'vite';
 // survive the move into `.vite/build`. It stays external and is loaded from
 // `node_modules` at run time, which is also why `forge.config.ts` unpacks it
 // from the asar.
+//
+// `node-llama-cpp` is external for a stronger reason: its own documentation
+// says the file structure is load-bearing and bundling breaks it. It is also
+// ESM only, while this bundle is CommonJS, so `src/main/native/llama.ts`
+// reaches it through a hidden dynamic import rather than a top-level one.
 export default defineConfig({
   build: {
     sourcemap: true,
     rollupOptions: {
-      external: ['electron', '@lydell/node-pty'],
+      external: ['electron', '@lydell/node-pty', 'node-llama-cpp'],
       output: { entryFileNames: 'main.js' },
     },
   },
