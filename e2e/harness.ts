@@ -171,7 +171,9 @@ export async function launchApp(): Promise<Harness> {
  * A signal means the process died rather than exited. That is a defect even
  * when everything before it passed.
  */
-export async function closeApp(harness: Harness | undefined): Promise<void> {
+export async function closeApp(
+  harness: { app: ElectronApplication } | undefined,
+): Promise<void> {
   if (!harness) return;
 
   const child = harness.app.process();

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
 
+import { closeApp } from '../harness.js';
 import { launchDemoApp, setTheme, type DemoHarness } from './launch.js';
 import { record, scene, type Scene } from './recorder.js';
 
@@ -335,6 +336,6 @@ test('records the agent workflow', async () => {
     // The recording ends in light. Leave the profile as the next run expects.
     await setTheme(window, 'dark');
   } finally {
-    await harness?.app.close().catch(() => undefined);
+    await closeApp(harness);
   }
 });

@@ -2,7 +2,7 @@ import path from 'node:path';
 
 import { expect, test } from '@playwright/test';
 
-import { launchApp, resetShell, type Harness } from '../harness.js';
+import { closeApp, launchApp, resetShell, type Harness } from '../harness.js';
 import { record, scene } from './recorder.js';
 
 /**
@@ -186,6 +186,6 @@ test('records a demonstration of the shell', async () => {
     expect(result.probe.seconds).toBeGreaterThanOrEqual(30);
     expect(result.probe.codec).toBe('h264');
   } finally {
-    await harness?.app.close().catch(() => undefined);
+    await closeApp(harness);
   }
 });
