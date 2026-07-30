@@ -49,7 +49,7 @@ export const NAV_SECTIONS: NavSection[] = [
   },
 ];
 
-const NAMES = [
+const NAMES: NonEmpty<string> = [
   'Design system',
   'Marketing site',
   'Mobile onboarding',
@@ -64,8 +64,29 @@ const NAMES = [
   'Component audit',
 ];
 
-const KINDS: Item['kind'][] = ['file', 'component', 'prototype'];
-const AUTHORS = ['Avery', 'Jordan', 'Sam', 'Riley'];
+const KINDS: NonEmpty<Item['kind']> = ['file', 'component', 'prototype'];
+const AUTHORS: NonEmpty<string> = ['Avery', 'Jordan', 'Sam', 'Riley'];
+
+/**
+ * A list the compiler knows has a first element.
+ *
+ * `noUncheckedIndexedAccess` types every index read as possibly undefined, so
+ * `list[i % list.length]` needs a fallback that can never run. Declaring the
+ * list non-empty removes the need for one, which removes the dead branch.
+ */
+type NonEmpty<T> = readonly [T, ...T[]];
+
+/**
+ * Read a list in a cycle, so an index of any size lands on a real element.
+ *
+ * The assertion carries what the type system cannot: a modulo by the length of
+ * a non-empty list is always in range. Writing it as a fallback instead would
+ * add a branch that can never run, which reads as untested rather than
+ * unreachable.
+ */
+function cycle<T>(list: NonEmpty<T>, index: number): T {
+  return list[index % list.length] as T;
+}
 
 /**
  * Deterministic sample rows. No randomness, so a screenshot test can baseline
@@ -82,11 +103,11 @@ export function itemsFor(view: ViewId): Item[] {
 
   return Array.from({ length: counts[view] }, (_unused, index) => ({
     id: `${view}-${index}`,
-    name: NAMES[index % NAMES.length] ?? `Item ${index}`,
-    kind: KINDS[index % KINDS.length] ?? 'file',
+    name: cycle(NAMES, index),
+    kind: cycle(KINDS, index),
     updated: `${index + 1} day${index === 0 ? '' : 's'} ago`,
     size: `${((index + 3) * 1.4).toFixed(1)} MB`,
-    author: AUTHORS[index % AUTHORS.length] ?? 'Avery',
+    author: cycle(AUTHORS, index),
   }));
 }
 

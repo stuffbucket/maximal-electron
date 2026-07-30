@@ -93,6 +93,22 @@ describe('toGrammarSchema', () => {
     });
   });
 
+  it('ignores a number that names a property once coerced', () => {
+    // `in` coerces its key, so `0 in { '0': ... }` is true. A number therefore
+    // reaches the output unless the type is checked as well as the membership.
+    // A grammar name must be a string, so this is dropped.
+    expect(
+      toGrammarSchema({
+        type: 'object',
+        properties: { '0': { type: 'string' } },
+        required: [0],
+      }),
+    ).toEqual({
+      type: 'object',
+      properties: { '0': { type: 'string' } },
+    });
+  });
+
   it('recurses into arrays', () => {
     expect(
       toGrammarSchema({

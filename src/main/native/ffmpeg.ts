@@ -144,12 +144,32 @@ function askVersion(command: string, timeoutMs: number): Promise<string | undefi
     timer.unref();
 
     child.stdout.on('data', (chunk: Buffer) => (out += chunk.toString()));
+    // This listener is not optional. A `ChildProcess` that emits `error` with
+    // nothing listening throws it as an uncaught exception, which would take
+    // the process down on a missing binary.
+    //
+    // Stryker disable next-line ArrowFunction: emptying the body cannot change
+    // the outcome. Node emits `close` after `error` (verified: ENOENT gives
+    // `error` then `close` with code -2), so the handler below settles the
+    // search either way. Calling it here settles on the first of the two.
     child.on('error', () => done(undefined));
     child.on('close', (code) => {
       if (code !== 0) return done(undefined);
-      done(out.split('\n')[0]?.trim() ?? '');
+      done(firstLine(out));
     });
   });
+}
+
+/**
+ * The first line of some output, trimmed.
+ *
+ * Written with `indexOf` rather than `split(...)[0]`. Indexing needs a
+ * fallback that can never run, because `split` always yields at least one
+ * element, and an unreachable branch reads as untested rather than impossible.
+ */
+export function firstLine(text: string): string {
+  const newline = text.indexOf('\n');
+  return (newline === -1 ? text : text.slice(0, newline)).trim();
 }
 
 /** Find one tool, or report that nothing answered. */

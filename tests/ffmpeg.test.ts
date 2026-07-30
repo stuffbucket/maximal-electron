@@ -1,13 +1,41 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
+import { afterAll, afterEach, describe, expect, it } from 'vitest';
 
 import {
   candidatePaths,
   detectFfmpeg,
   findTool,
+  firstLine,
   installHint,
   missingMessage,
   requireFfmpeg,
 } from '../src/main/native/ffmpeg.js';
+
+/**
+ * Stand-in binaries.
+ *
+ * Some behaviour here can only be observed against a real child process: a
+ * command that hangs, one that floods its error stream, one that pads its
+ * version line. A mock would assert that the code calls `spawn`, which is not
+ * the question. These are POSIX only, and the tests that use them say so.
+ */
+const scriptDir = mkdtempSync(path.join(tmpdir(), 'ffmpeg-test-'));
+/** The stand-in scripts need a POSIX shell. Skip them elsewhere. */
+const posix = process.platform !== 'win32';
+
+function script(name: string, body: string): string {
+  const file = path.join(scriptDir, name);
+  writeFileSync(file, `#!/bin/sh\n${body}\n`);
+  chmodSync(file, 0o755);
+  return file;
+}
+
+afterAll(() => {
+  rmSync(scriptDir, { recursive: true, force: true });
+});
 
 /**
  * The detection rules.
@@ -139,9 +167,53 @@ describe('findTool', () => {
     expect(found).toBeUndefined();
   });
 
-  it('gives up on a command that never exits', async () => {
-    const found = await findTool('ffmpeg', 'sunos', { FFMPEG: 'sleep' }, 200);
+  it.skipIf(!posix)('gives up on a command that never exits', async () => {
+    // `sleep -version` exits immediately with a usage error, so it proves
+    // nothing about the timeout. This one genuinely hangs.
+    const hangs = script('hangs', 'sleep 30');
+    const started = Date.now();
+    const found = await findTool('ffmpeg', 'sunos', { FFMPEG: hangs }, 300);
     expect(found).toBeUndefined();
+    // The timer has to fire and settle the promise. If it did not, this would
+    // sit here until the suite timeout rather than returning.
+    expect(Date.now() - started).toBeLessThan(5_000);
+  });
+
+  it('gives up immediately when the command cannot start', async () => {
+    // A missing binary emits `error`, which must settle the search at once.
+    // Waiting for the timeout instead would still return undefined, so the
+    // outcome alone cannot tell the two apart. The elapsed time can.
+    const started = Date.now();
+    const found = await findTool('ffmpeg', 'sunos', { FFMPEG: '/nope/ffmpeg' }, 30_000);
+    expect(found).toBeUndefined();
+    expect(Date.now() - started).toBeLessThan(5_000);
+  });
+
+  it.skipIf(!posix)('survives a command that floods its error stream', async () => {
+    // stderr is ignored rather than piped. Were it piped and never read, the
+    // pipe buffer would fill at roughly 64 KB and the child would block
+    // forever on the write, so detection would time out instead of answering.
+    const noisy = script(
+      'noisy',
+      ['i=0', 'while [ $i -lt 400 ]; do', '  head -c 1024 /dev/zero | tr "\\0" "x" >&2', '  i=$((i+1))', 'done', 'echo "ffmpeg version 9.9"'].join(
+        '\n',
+      ),
+    );
+    const found = await findTool('ffmpeg', 'sunos', { FFMPEG: noisy }, 10_000);
+    expect(found?.version).toBe('ffmpeg version 9.9');
+  });
+
+  it.skipIf(!posix)('reports the first line only, trimmed', async () => {
+    // Real `ffmpeg -version` prints several lines. Only the first identifies
+    // the build, and padding must not survive into the reported version.
+    const chatty = script(
+      'chatty',
+      ['printf "   ffmpeg version 9.9 padded   \\n"', 'printf "configuration: --lots\\n"'].join(
+        '\n',
+      ),
+    );
+    const found = await findTool('ffmpeg', 'sunos', { FFMPEG: chatty }, 10_000);
+    expect(found?.version).toBe('ffmpeg version 9.9 padded');
   });
 
   it('settles when the spawn itself throws', async () => {
@@ -150,6 +222,26 @@ describe('findTool', () => {
     // hang instead of moving to the next candidate.
     const found = await findTool('ffmpeg', 'sunos', { FFMPEG: '\0bad' }, 200);
     expect(found).toBeUndefined();
+  });
+});
+
+describe('firstLine', () => {
+  it('takes everything before the first newline', () => {
+    expect(firstLine('one\ntwo\nthree')).toBe('one');
+  });
+
+  it('takes the whole string when there is no newline', () => {
+    expect(firstLine('only')).toBe('only');
+  });
+
+  it('trims what it returns', () => {
+    expect(firstLine('  padded  \nnext')).toBe('padded');
+    expect(firstLine('  padded  ')).toBe('padded');
+  });
+
+  it('handles an empty string', () => {
+    expect(firstLine('')).toBe('');
+    expect(firstLine('\nsecond')).toBe('');
   });
 });
 

@@ -104,6 +104,9 @@ function convertNode(node: unknown): GrammarSchema | undefined {
     return described({ type: 'array', items });
   }
 
+  // Stryker disable next-line ConditionalExpression: the typeof narrows for the
+  // compiler and cannot change behaviour. SCALARS holds only strings, so
+  // `has` on a non-string is false either way. Removing it fails to compile.
   if (typeof schema.type === 'string' && SCALARS.has(schema.type)) {
     return described({ type: schema.type });
   }

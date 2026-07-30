@@ -264,7 +264,7 @@ still works.
 ## Mutation testing
 
 `npm run mutate` reports what the tests actually catch, which coverage does
-not. It is scoped to pure-logic modules, and it breaks below 80.
+not. It is scoped to pure-logic modules, and **it breaks below 100**.
 
 Anything importing `electron` cannot be mutated: it needs a real Electron
 runtime, not Node. Extend `mutate` in `stryker.conf.json` only with modules
@@ -272,6 +272,24 @@ that run under plain Node.
 
 A surviving mutant is a real gap. It found one here: `src/renderer/lib/data.ts`
 scored 0 with 77 untouched mutants, because it had no unit tests at all.
+
+### Reaching 100 again after you add code
+
+The threshold is 100, so a new module has to get there before it lands. Three
+moves, in order of preference:
+
+1. **Write the test.** Most survivors are real. If a mutant lives, ask what
+   behaviour it changed and whether anything asserts that behaviour.
+2. **Delete the unreachable branch.** `noUncheckedIndexedAccess` forces a
+   fallback on every index read, and a fallback that can never run is dead code
+   that reads as untested. `cycle` in `data.ts` and `firstLine` in `ffmpeg.ts`
+   both exist to remove one. Prefer this to a suppression.
+3. **Suppress, with the reason.** Only for a mutant that provably cannot change
+   behaviour. Use `// Stryker disable next-line <Mutator>: why`, and state the
+   evidence, not the conclusion. There are two in the repository. Read them
+   before you write a third.
+
+Never lower the threshold to make a change fit.
 
 ## Documentation
 
