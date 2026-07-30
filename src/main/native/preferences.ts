@@ -51,6 +51,11 @@ function coerce(raw: unknown): Preferences {
       typeof input.agentCwd === 'string'
         ? input.agentCwd
         : DEFAULT_PREFERENCES.agentCwd,
+    // Ids only, and strings only. A malformed entry here would reach the
+    // toolset registry, which skips what it does not recognise.
+    agentToolsets: Array.isArray(input.agentToolsets)
+      ? input.agentToolsets.filter((id): id is string => typeof id === 'string')
+      : [...DEFAULT_PREFERENCES.agentToolsets],
     theme:
       input.theme === 'light' || input.theme === 'dark' || input.theme === 'system'
         ? input.theme

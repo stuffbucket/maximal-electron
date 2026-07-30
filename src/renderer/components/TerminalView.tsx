@@ -29,11 +29,12 @@ function ensureWasm(): Promise<void> {
 /** The host element carries the terminal instance, for end-to-end tests. */
 export type TerminalHost = HTMLDivElement & { __terminal?: GhosttyTerminal };
 
-export function TerminalView({ id }: { id: string }) {
+export function TerminalView({ id, shell }: { id: string; shell?: string }) {
   const host = useRef<HTMLDivElement>(null);
 
   // `id` identifies the shell session for this tab's lifetime. Re-running this
-  // effect would orphan a shell, so it depends on `id` alone.
+  // effect would orphan a shell, so it depends on `id` alone. `shell` is read
+  // at spawn time and never changes for a live session.
   useEffect(() => {
     const element = host.current;
     if (!element) return;
@@ -89,7 +90,7 @@ export function TerminalView({ id }: { id: string }) {
         term?.write(`\r\n\x1b[2m[process exited with ${payload.exitCode}]\x1b[0m\r\n`);
       });
 
-      void bridge.invoke('pty:spawn', { id, cols: term.cols, rows: term.rows });
+      void bridge.invoke('pty:spawn', { id, cols: term.cols, rows: term.rows, shell });
 
       // The panel group resizes the host without a window resize, so a
       // ResizeObserver is the only reliable trigger.
@@ -109,7 +110,7 @@ export function TerminalView({ id }: { id: string }) {
       void bridge.invoke('pty:kill', { id });
       term?.dispose();
     };
-  }, [id]);
+  }, [id, shell]);
 
   return <div className="terminal" data-testid="terminal" ref={host} />;
 }

@@ -22,8 +22,9 @@ import type {
   ProviderStatus,
 } from '../../shared/ipc.js';
 
-import { describeToolCall, needsApproval } from './approval.js';
+import { describeToolCall, needsApproval, riskOf, type ToolRisk } from './approval.js';
 import { getPreferences } from './preferences.js';
+import { buildToolsetTools } from './toolsets.js';
 
 /**
  * The overlay agent, powered by the pi coding agent.
@@ -63,10 +64,14 @@ const PROBE_TIMEOUT_MS = 1500;
 const PLACEHOLDER_KEY = 'supplied-by-local-backend';
 
 const SYSTEM_PROMPT = [
-  'You are a terse coding assistant embedded in a desktop overlay.',
+  'You are a concierge embedded in the Stuffbucket desktop application.',
   'Answer in a few sentences unless asked for more.',
-  'You have read, write, edit, and bash tools. Use them when a question is',
-  'about the local machine or the files in the working directory.',
+  'You can read and change this application through your tools. When asked',
+  'about how the application is set up, call get_app_state rather than',
+  'guessing. When asked to change the appearance, call set_theme.',
+  'You also have read, write, edit, and bash tools for the working directory.',
+  'Use a tool only when it is needed to answer or to act. Answer general',
+  'questions directly, without calling anything.',
   'Never run a destructive command without being asked to.',
 ].join(' ');
 
@@ -153,31 +158,56 @@ function buildModel(provider: AgentProvider, id: string) {
  */
 type BoundTool = AgentTool<TSchema, unknown>;
 
-function buildTools(cwd: string): BoundTool[] {
-  const context = { env: new NodeExecutionEnv({ cwd }) };
+/** Tools for a run, plus what each one is allowed to do. */
+interface ToolSet {
+  tools: BoundTool[];
+  risk: Map<string, ToolRisk>;
+}
 
-  const factories = [
-    createReadTool(),
-    createWriteTool(),
-    createEditTool(),
-    createBashTool(),
-  ];
+function buildTools(options: {
+  cwd: string;
+  toolsetIds: readonly string[];
+  /** Include the read, write, edit, and bash tools from pi. */
+  coding: boolean;
+}): ToolSet {
+  const risk = new Map<string, ToolRisk>();
+  const tools: BoundTool[] = [];
 
-  return factories.map((tool) => {
-    const execute = tool.execute.bind(tool) as (
-      toolCallId: string,
-      params: unknown,
-      signal: AbortSignal | undefined,
-      onUpdate: AgentToolUpdateCallback<unknown> | undefined,
-      context: { env: NodeExecutionEnv },
-    ) => Promise<AgentToolResult<unknown>>;
+  if (options.coding) {
+    const context = { env: new NodeExecutionEnv({ cwd: options.cwd }) };
+    const factories = [
+      createReadTool(),
+      createWriteTool(),
+      createEditTool(),
+      createBashTool(),
+    ];
 
-    return {
-      ...tool,
-      execute: (toolCallId, params, signal, onUpdate) =>
-        execute(toolCallId, params, signal, onUpdate, context),
-    } as BoundTool;
-  });
+    for (const tool of factories) {
+      const execute = tool.execute.bind(tool) as (
+        toolCallId: string,
+        params: unknown,
+        signal: AbortSignal | undefined,
+        onUpdate: AgentToolUpdateCallback<unknown> | undefined,
+        context: { env: NodeExecutionEnv },
+      ) => Promise<AgentToolResult<unknown>>;
+
+      tools.push({
+        ...tool,
+        execute: (toolCallId, params, signal, onUpdate) =>
+          execute(toolCallId, params, signal, onUpdate, context),
+      } as BoundTool);
+      risk.set(tool.name, riskOf(tool.name));
+    }
+  }
+
+  // Toolsets are resolved here, at run start, which is what makes them
+  // swappable. A change lands on the next summon rather than mid-run.
+  for (const entry of buildToolsetTools(options.toolsetIds)) {
+    tools.push(entry.tool);
+    risk.set(entry.tool.name, entry.risk);
+  }
+
+  return { tools, risk };
 }
 
 /* ------------------------------------------------------------------ running */
@@ -312,6 +342,15 @@ export async function runAgent(prompt: string, sink: AgentSink): Promise<void> {
   const allowed = new Set<string>();
   const pending = new Map<string, PendingApproval>();
 
+  // The `app` toolset stays on even when coding tools are off. It only reads
+  // and changes this application, which is the concierge case, and it is what
+  // makes the agent useful without giving it the machine.
+  const built = buildTools({
+    cwd: prefs.agentCwd || homedir(),
+    toolsetIds: prefs.agentToolsets,
+    coding: prefs.agentTools,
+  });
+
   const agent = new Agent({
     streamFn: (model, context, options) =>
       stream(model, context, { ...options, apiKey: PLACEHOLDER_KEY }),
@@ -323,7 +362,8 @@ export async function runAgent(prompt: string, sink: AgentSink): Promise<void> {
      */
     beforeToolCall: async ({ toolCall, args }) => {
       const tool = toolCall.name;
-      if (!needsApproval(prefs.agentApproval, tool)) return undefined;
+      const risk = riskOf(tool, built.risk.get(tool));
+      if (!needsApproval(prefs.agentApproval, risk)) return undefined;
       if (allowed.has(tool)) return undefined;
 
       const summary = describeToolCall(tool, args);
@@ -334,9 +374,7 @@ export async function runAgent(prompt: string, sink: AgentSink): Promise<void> {
     initialState: {
       model: buildModel(status.provider, status.model),
       systemPrompt: SYSTEM_PROMPT,
-      // Tools give the agent the local machine. That is the point of a coding
-      // agent, and it is also why it is a preference.
-      tools: prefs.agentTools ? buildTools(prefs.agentCwd || homedir()) : [],
+      tools: built.tools,
     },
   });
 

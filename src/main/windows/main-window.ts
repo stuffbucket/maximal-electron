@@ -10,6 +10,19 @@ import { BrowserWindow, shell } from 'electron';
  * window controls through the `window:action` IPC channel.
  */
 
+/**
+ * Demo mode, for screenshots and screen recordings.
+ *
+ * `STUFFBUCKET_DEMO=1` loads the renderer with `?demo=1`, and the renderer
+ * branches on `location.search`. It travels as a query string rather than as an
+ * IPC channel on purpose: the contract in `src/shared/ipc.ts` is checked by an
+ * exhaustiveness proof and a tripwire test, and a presentation flag does not
+ * belong there. Unset, every path below is the production path.
+ */
+function isDemo(): boolean {
+  return process.env['STUFFBUCKET_DEMO'] === '1';
+}
+
 export function createMainWindow(): BrowserWindow {
   const window = new BrowserWindow({
     width: 1280,
@@ -60,13 +73,16 @@ export function createMainWindow(): BrowserWindow {
   });
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    void window.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+    const url = new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+    if (isDemo()) url.searchParams.set('demo', '1');
+    void window.loadURL(url.href);
     // Development only. The upstream Forge template opens DevTools in packaged
     // builds too, which ships a debugger to users.
     window.webContents.openDevTools({ mode: 'detach' });
   } else {
     void window.loadFile(
       path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
+      isDemo() ? { query: { demo: '1' } } : {},
     );
   }
 

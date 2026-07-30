@@ -80,6 +80,12 @@
   /* Blocking, but not an error. The overlay's approval prompt is the only
      current user, and it is deliberately not the same red as a failure. */
   --warning: #e0a33e;
+  /* Tinted fills for status chips, matching `--accent-soft`. A chip needs a
+     background the text still reads against, and the solid semantic colour is
+     too loud for a filled pill. */
+  --success-soft: rgb(95 208 138 / 0.16);
+  --warning-soft: rgb(224 163 62 / 0.16);
+  --danger-soft: rgb(244 113 116 / 0.16);
 
   color-scheme: dark;
 }
@@ -102,6 +108,9 @@
   --danger: #d3373b;
   --success: #17864a;
   --warning: #a9691b;
+  --success-soft: rgb(23 134 74 / 0.12);
+  --warning-soft: rgb(169 105 27 / 0.12);
+  --danger-soft: rgb(211 55 59 / 0.12);
 
   color-scheme: light;
 }

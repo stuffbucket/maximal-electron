@@ -23,6 +23,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "record": "node scripts/record.mjs",
     "mutate": "stryker run"
   },
   "dependencies": {

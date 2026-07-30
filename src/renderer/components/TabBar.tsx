@@ -1,11 +1,19 @@
 import * as Tabs from '@radix-ui/react-tabs';
-import { Plus, SquareTerminal, X } from 'lucide-react';
+import { Bot, Plus, SquareTerminal, X } from 'lucide-react';
 
 export interface DocumentTab {
   id: string;
   title: string;
-  /** `library` shows the file grid. `terminal` hosts a shell. */
-  kind: 'library' | 'terminal';
+  /** `library` shows the file grid, `terminal` hosts a shell, `run` an agent. */
+  kind: 'library' | 'terminal' | 'run';
+  /**
+   * Optional state dot, for a tab that tracks something with a lifecycle.
+   *
+   * The demo shell uses it for agent sessions. The union repeats `RunStatus`
+   * from `lib/demo-runs.ts` rather than importing it, because this component
+   * belongs to the production shell and must not depend on demo content.
+   */
+  state?: 'running' | 'blocked' | 'done' | 'failed';
 }
 
 /**
@@ -39,6 +47,8 @@ export function TabBar({
         {tabs.map((tab) => (
           <Tabs.Trigger key={tab.id} value={tab.id} className="tab">
             {tab.kind === 'terminal' && <SquareTerminal size={13} />}
+            {tab.kind === 'run' && <Bot size={13} />}
+            {tab.state && <span className="dot" data-status={tab.state} />}
             <span className="tab__label">{tab.title}</span>
             {tabs.length > 1 && (
               <span

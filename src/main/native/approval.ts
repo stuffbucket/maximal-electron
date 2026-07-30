@@ -15,22 +15,42 @@ import type { AgentApproval } from '../../shared/ipc.js';
  */
 
 /**
- * Tools that only read. They still touch the user's disk, so `all` gates them
- * too, but they cannot change anything.
- *
- * This is an allow-list rather than a deny-list. An unrecognised tool needs
- * approval, so adding a tool cannot silently widen what runs unattended.
+ * What a tool can do. The approval gate keys off this rather than off a tool
+ * name, so a toolset added later cannot widen what runs unattended by
+ * forgetting to update a list in another file.
  */
-const READ_ONLY_TOOLS: ReadonlySet<string> = new Set(['read']);
+export type ToolRisk = 'safe' | 'mutating' | 'dangerous';
+
+/**
+ * Risk of the tools that come from `pi-agent-core` rather than from a toolset
+ * of ours. They cannot declare their own, so they are classified here.
+ */
+const BUILT_IN_RISK: Readonly<Record<string, ToolRisk>> = {
+  read: 'safe',
+  write: 'mutating',
+  edit: 'mutating',
+  bash: 'dangerous',
+};
+
+/**
+ * Classify a tool.
+ *
+ * `declared` wins when a toolset supplied one. Anything unrecognised is
+ * `dangerous`, which is the whole point: an unknown tool asks, so adding one
+ * cannot silently skip the gate.
+ */
+export function riskOf(tool: string, declared?: ToolRisk): ToolRisk {
+  return declared ?? BUILT_IN_RISK[tool] ?? 'dangerous';
+}
 
 /** Longest summary shown in the card. Longer text is truncated. */
 export const MAX_SUMMARY = 200;
 
-/** Does this tool call need a decision from the user? */
-export function needsApproval(policy: AgentApproval, tool: string): boolean {
+/** Does a tool call at this risk need a decision from the user? */
+export function needsApproval(policy: AgentApproval, risk: ToolRisk): boolean {
   if (policy === 'none') return false;
   if (policy === 'all') return true;
-  return !READ_ONLY_TOOLS.has(tool);
+  return risk !== 'safe';
 }
 
 /** Cut `text` to `MAX_SUMMARY`, marking that something was removed. */

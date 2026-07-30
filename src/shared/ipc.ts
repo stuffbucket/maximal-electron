@@ -59,6 +59,13 @@ export interface Preferences {
   agentApproval: AgentApproval;
   /** Working directory for those tools. Empty means the home directory. */
   agentCwd: string;
+  /**
+   * Toolsets the overlay agent may use, by id.
+   *
+   * Resolved when a run starts, so a change takes effect on the next summon
+   * rather than needing a restart. See `src/main/native/toolsets.ts`.
+   */
+  agentToolsets: string[];
   /** Theme preference. `system` follows the OS. */
   theme: 'system' | 'light' | 'dark';
 }
@@ -324,5 +331,6 @@ export const DEFAULT_PREFERENCES: Preferences = {
   agentTools: true,
   agentApproval: 'writes',
   agentCwd: '',
+  agentToolsets: ['app'],
   theme: 'system',
 };

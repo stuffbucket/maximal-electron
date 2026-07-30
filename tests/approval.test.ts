@@ -4,6 +4,7 @@ import {
   MAX_SUMMARY,
   describeToolCall,
   needsApproval,
+  riskOf,
 } from '../src/main/native/approval.js';
 
 /**
@@ -15,34 +16,57 @@ import {
  * kill a specific mutant, not for coverage.
  */
 
+describe('riskOf', () => {
+  it('classifies the tools that come from pi', () => {
+    expect(riskOf('read')).toBe('safe');
+    expect(riskOf('write')).toBe('mutating');
+    expect(riskOf('edit')).toBe('mutating');
+    expect(riskOf('bash')).toBe('dangerous');
+  });
+
+  // The load-bearing default. A toolset added later that forgets to declare a
+  // risk lands on "ask", never on "run it".
+  it('treats an unrecognised tool as dangerous', () => {
+    expect(riskOf('fetch')).toBe('dangerous');
+    expect(riskOf('')).toBe('dangerous');
+  });
+
+  it('lets a toolset declare its own risk', () => {
+    expect(riskOf('get_app_state', 'safe')).toBe('safe');
+    expect(riskOf('set_theme', 'mutating')).toBe('mutating');
+  });
+
+  it('prefers a declared risk over the built-in table', () => {
+    expect(riskOf('bash', 'safe')).toBe('safe');
+  });
+});
+
 describe('needsApproval', () => {
   it('never asks under "none"', () => {
-    for (const tool of ['read', 'write', 'edit', 'bash']) {
-      expect(needsApproval('none', tool)).toBe(false);
+    for (const risk of ['safe', 'mutating', 'dangerous'] as const) {
+      expect(needsApproval('none', risk)).toBe(false);
     }
   });
 
-  it('always asks under "all", including for reads', () => {
-    for (const tool of ['read', 'write', 'edit', 'bash']) {
-      expect(needsApproval('all', tool)).toBe(true);
+  it('always asks under "all", including for safe tools', () => {
+    for (const risk of ['safe', 'mutating', 'dangerous'] as const) {
+      expect(needsApproval('all', risk)).toBe(true);
     }
   });
 
   describe('under "writes"', () => {
-    it('lets a read through', () => {
-      expect(needsApproval('writes', 'read')).toBe(false);
+    it('lets a safe tool through', () => {
+      expect(needsApproval('writes', 'safe')).toBe(false);
     });
 
-    it.each(['write', 'edit', 'bash'])('asks before %s', (tool) => {
-      expect(needsApproval('writes', tool)).toBe(true);
+    it.each(['mutating', 'dangerous'] as const)('asks before %s', (risk) => {
+      expect(needsApproval('writes', risk)).toBe(true);
     });
+  });
 
-    // The allow-list is the point. A tool this build has never heard of must
-    // default to asking, so adding one cannot widen what runs unattended.
-    it('asks before a tool it does not recognise', () => {
-      expect(needsApproval('writes', 'fetch')).toBe(true);
-      expect(needsApproval('writes', '')).toBe(true);
-    });
+  it('asks before an unknown tool under "writes"', () => {
+    // The two functions compose to the property that actually matters.
+    expect(needsApproval('writes', riskOf('some_new_tool'))).toBe(true);
   });
 });
 
