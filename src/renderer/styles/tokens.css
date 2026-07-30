@@ -1,0 +1,107 @@
+/*
+ * Design tokens.
+ *
+ * The scale and the naming follow `stuffbucket/maximal`'s
+ * `shell/src/ui/styles/tokens.css`, so a component can move between the two
+ * projects without a rewrite. The palette differs: this template is a
+ * document-style application shell, not a menu-bar utility.
+ *
+ * Every colour is defined twice, once per scheme. Components reference the
+ * semantic name only, never a raw hex value.
+ */
+
+:root {
+  /* ---- Font stacks ---- */
+  --font-body:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* ---- Type ramp ---- */
+  --text-xs: 0.6875rem;
+  --text-sm: 0.75rem;
+  --text-base: 0.8125rem;
+  --text-md: 0.875rem;
+  --text-lg: 1rem;
+  --text-xl: 1.25rem;
+  --weight-base: 400;
+  --weight-md: 500;
+  --weight-lg: 600;
+  --leading-base: 1.5;
+  --tracking-caps: 0.04em;
+
+  /* ---- Spacing ---- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  /* ---- Radii ---- */
+  --radius-input: 6px;
+  --radius-card: 8px;
+  --radius-chip: 4px;
+  --radius-pill: 9999px;
+
+  /* ---- Sizing ---- */
+  --size-titlebar: 40px;
+  --size-tabbar: 36px;
+  --size-row: 30px;
+  --size-icon: 16px;
+
+  /* ---- Motion ---- */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+
+  /* ---- Elevation ---- */
+  --elevation-card: 0 1px 2px rgb(0 0 0 / 0.16);
+  --elevation-popover: 0 8px 24px rgb(0 0 0 / 0.28);
+
+  /* ---- Dark palette (default) ---- */
+  --bg-app: #16181d;
+  --bg-panel: #1b1e24;
+  --bg-canvas: #101216;
+  --bg-raised: #23272f;
+  --bg-hover: #272c35;
+  --bg-active: #2f3540;
+  --border-subtle: #262b33;
+  --border-strong: #363d48;
+  --text-primary: #e6e8ec;
+  --text-secondary: #a0a8b4;
+  --text-muted: #6f7783;
+  --accent: #6ea8fe;
+  --accent-contrast: #0d1117;
+  --accent-soft: rgb(110 168 254 / 0.16);
+  --danger: #f47174;
+  --success: #5fd08a;
+  /* Blocking, but not an error. The overlay's approval prompt is the only
+     current user, and it is deliberately not the same red as a failure. */
+  --warning: #e0a33e;
+
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  --bg-app: #ffffff;
+  --bg-panel: #f7f8fa;
+  --bg-canvas: #eef0f4;
+  --bg-raised: #ffffff;
+  --bg-hover: #eceef2;
+  --bg-active: #e2e6ec;
+  --border-subtle: #e3e6eb;
+  --border-strong: #ccd2da;
+  --text-primary: #12141a;
+  --text-secondary: #545c68;
+  --text-muted: #838b97;
+  --accent: #2d6ff7;
+  --accent-contrast: #ffffff;
+  --accent-soft: rgb(45 111 247 / 0.1);
+  --danger: #d3373b;
+  --success: #17864a;
+  --warning: #a9691b;
+
+  color-scheme: light;
+}

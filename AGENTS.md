@@ -1,0 +1,206 @@
+# AGENTS.md
+
+Instructions for coding agents working in this repository. Read this before
+you change anything. `CLAUDE.md` points here.
+
+The style of this file follows `openai/codex`: it states rules, not
+background. If a rule looks arbitrary, the reason is in the linked document.
+
+## Commands
+
+| Task | Command |
+| --- | --- |
+| Run the app | `npm start` |
+| Lint | `npm run lint`, `npm run lint:fix` |
+| Types | `npm run typecheck` |
+| Unit tests | `npm test` |
+| Mutation tests | `npm run mutate` |
+| End-to-end tests | `npm run package && npm run test:e2e` |
+| Package | `npm run package` |
+| Verify a package | `npm run verify:package` |
+| Documentation lint | `npm run lint:docs` |
+| Regenerate icons | `npm run icons` |
+
+Run `npm run lint:fix` after you change code. Do not ask first.
+
+Run `npm run typecheck` and `npm test` before you report a change as done.
+
+## The IPC contract
+
+`src/shared/ipc.ts` is the single source of truth for every channel and event.
+
+- Declare a channel there first. Then handle it in `src/main/ipc.ts`.
+- The handler map is `Record<IpcChannel, ...>`. A missing handler is a compile
+  error. Keep it that way.
+- Add the channel name to `IPC_CHANNELS`, and the event name to `IPC_EVENTS`.
+  The exhaustiveness proof at the bottom of the file fails if you forget.
+- **Never** expose `ipcRenderer` through `contextBridge`. The renderer gets
+  `invoke` and `on`, both of which reject a name outside the contract.
+- Main sends events through `sendEvent` in `src/main/ipc.ts`, not through raw
+  `webContents.send`.
+
+Use `.claude/skills/add-ipc-channel/SKILL.md` for the full walk-through.
+
+## Security invariants
+
+Do not relax any of these. Each one is load-bearing.
+
+- `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true` on every
+  window.
+- DevTools open only when `MAIN_WINDOW_VITE_DEV_SERVER_URL` has a value.
+- `shell:open-external` validates the protocol against an allow-list. Do not
+  widen it beyond `http`, `https`, and `mailto`.
+- `setWindowOpenHandler` denies, and `will-navigate` blocks cross-origin
+  navigation. Both send the URL to the real browser instead.
+
+## Fuses
+
+`forge.config.ts` fuses the packaged binary. Two rules:
+
+1. A change to `FusesPlugin` invalidates an existing signature. Say so in the
+   pull request, because the macOS build must be redone.
+2. `scripts/verify-package.mjs` holds a copy of the expected values. Change
+   both, in the same commit, or the check passes on a stale expectation.
+
+`EnableNodeCliInspectArguments: false` is why the end-to-end tests drive the
+unpackaged build. Playwright attaches through the Node inspector, which that
+fuse disables. Do not "fix" the tests by turning the fuse back on.
+
+## Terminals
+
+- `@lydell/node-pty` is native and **must stay external** to the Vite bundle.
+  It is listed in `vite.main.config.ts`.
+- Because it is external, `forge.config.ts` supplies its own
+  `packagerConfig.ignore`. Forge's Vite plugin would otherwise exclude all of
+  `node_modules`, which silently ships a package with no terminal.
+- Adding another external native module means editing three places: the Vite
+  external list, the `ignore` filter, and `scripts/verify-package.mjs`.
+- Never unmount a terminal to hide it. Use `hidden`. A remount kills the shell.
+
+## The overlay agent
+
+It runs the pi coding agent: `@earendil-works/pi-ai` for the provider, and
+`@earendil-works/pi-agent-core` for the loop and tools. Both pinned at 0.83.0.
+
+- **Never add an API key.** Discovery finds maximal or Ollama on localhost. A
+  key in this repository is a defect.
+- The tool bridge in `buildTools` exists because `AgentHarnessTool.execute`
+  takes its context as a fifth argument, and plain `Agent` does not pass one.
+  Do not "simplify" it away.
+- Tools give the agent a shell. Keep that behind the `agentTools` preference.
+- A run streams. `overlay:ask` returns once the run starts, and text arrives as
+  `agent:delta` events. Do not make it block.
+
+### The approval gate
+
+`beforeToolCall` in `src/main/native/agent.ts` is the only thing between a
+local model and the user's shell. Four rules:
+
+1. **The gate denies on every edge.** Timeout, abort, a dismissed card, and a
+   failed run all end as a refusal. Never add a path that falls through to
+   allow.
+2. **`src/main/native/approval.ts` stays free of `electron`.** It is in the
+   `stryker.conf.json` mutate list, and it holds the decision of what to gate.
+   That logic must be mutation tested.
+3. **`READ_ONLY_TOOLS` is an allow-list.** An unknown tool asks. Adding a tool
+   must not widen what runs unattended.
+4. **Remember applies to an allow only**, and only for the current run. A
+   remembered deny would break the rest of a run with no way to see why.
+   Nothing about a decision is persisted.
+
+`preferences.ts` validates `agentApproval` against the three literals rather
+than casting. A hand-edited file must not be able to land on `none`.
+
+## Build layout
+
+- Main and preload emit to `.vite/build/` as `main.js` and `preload.js`. Both
+  entry files are named `index.ts`, so each Vite config sets `entryFileNames`.
+  Without it the two bundles collide.
+- The renderer sets `root` to `src/renderer`, so it must also set an absolute
+  `outDir`. Forge's default `outDir` is relative to the root it supplies, and
+  overriding root without outDir writes the build somewhere the package never
+  sees.
+
+## Module size
+
+- Target under 300 lines for a module, excluding tests.
+- Past roughly 400 lines, add a new module instead of growing the file.
+- This applies most to `src/renderer/App.tsx` and `src/main/index.ts`, which
+  both attract unrelated changes.
+
+## User interface changes
+
+Green unit tests are necessary but not sufficient for a layout change.
+
+Assert **computed** layout in a real engine, and look at the screenshot. See
+`.claude/skills/verify-ui/SKILL.md`. This rule is carried over from maximal's
+`ui-layout-verification` skill, which exists because two real regressions
+shipped past a green suite.
+
+Use `capture` from `e2e/harness.ts` rather than `page.screenshot`. macOS stops
+giving an occluded window frames. The plain call then hangs until its timeout.
+That reproduced against the overlay under seed 587000642. `capture` reads the
+renderer through the debugger, which does not care what is in front.
+
+## The suite stays off the screen
+
+A run drives a real application on the developer's desktop. Left alone, the
+overlay paints over their full-screen editor and takes the keyboard, once per
+scenario. So a test run parks its windows off the side of the display.
+
+- `isE2EQuiet` and `quietBounds` in `src/main/native/preferences.ts` decide
+  this. Quiet is the default. `STUFFBUCKET_E2E_VISIBLE=1` shows a run.
+- **Move windows, never hide them.** `setOpacity(0)` also makes a run
+  invisible, and it stops the compositor producing content. Every reference
+  screenshot came back blank white while the suite stayed green.
+- Both windows set `backgroundThrottling: false`. An off-screen window reads as
+  occluded to macOS, and Chromium then throttles the renderer to that same
+  blank result.
+- `capture` fails when an image lands under `MIN_SCREENSHOT_BYTES`. That guard
+  exists because the blank captures above looked exactly like success.
+
+## Tests run in a random order
+
+Both suites shuffle. A suite that only passes in declaration order is hiding
+shared state. These specs share one Electron application, which makes that easy
+to do by accident. It has already happened here once.
+
+- **No test may depend on another.** Set up what you need inside the test.
+- `e2e/harness.ts` exports `resetShell`, called from `beforeEach`. Extend it
+  when you add state that leaks between tests.
+- Seeds are printed. `VITEST_SEED` and `E2E_SEED` replay a failing order.
+- `E2E_SHUFFLE=0` restores declaration order while debugging.
+
+Known cost: the end-to-end tests all register from one call site, so the
+reporter shows the same source line for each. Names stay unique, and `--grep`
+still works.
+
+## Mutation testing
+
+`npm run mutate` reports what the tests actually catch, which coverage does
+not. It is scoped to pure-logic modules, and it breaks below 80.
+
+Anything importing `electron` cannot be mutated: it needs a real Electron
+runtime, not Node. Extend `mutate` in `stryker.conf.json` only with modules
+that run under plain Node.
+
+A surviving mutant is a real gap. It found one here: `src/renderer/lib/data.ts`
+scored 0 with 77 untouched mutants, because it had no unit tests at all.
+
+## Documentation
+
+`npm run lint:docs` gates on `STE.SentenceLength` (25 words) and
+`STE.Contractions`. Warnings and suggestions print but do not fail.
+
+Keep sentences short. Do not use contractions.
+
+## Release
+
+- Never add an asset to a published release. GitHub immutable releases reject
+  it with HTTP 422. Everything attaches to the draft.
+- This repository holds no Apple credential, and it must stay that way. macOS
+  signing lives in the private `stuffbucket/macos-builder`.
+- Windows ships unsigned. That is an organisation-wide decision, not an
+  oversight.
+
+See `docs/release.md` and `.claude/skills/cut-release/SKILL.md`.

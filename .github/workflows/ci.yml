@@ -1,0 +1,98 @@
+# Blocking CI. Runs on pull requests and pushes to main.
+#
+# The split between this and the release workflow follows openai/codex:
+# a fast blocking gate here, and the expensive platform matrix at release time.
+# Packaging runs on both macOS and Windows, because most breakage between
+# `npm start` and a shipped build shows up only at package time.
+
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    name: lint, types, docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+
+      # Unit tests run in a random order. The seed is printed, and VITEST_SEED
+      # replays a failure exactly.
+      - run: npm test
+
+      # Mutation testing. It measures what the tests actually catch, which
+      # coverage does not. Scoped to pure-logic modules; see stryker.conf.json.
+      - run: npm run mutate
+
+      # Documentation gate. Fails only on STE.SentenceLength and
+      # STE.Contractions; warnings and suggestions print but pass.
+      - name: Install vale
+        run: brew install vale
+      - run: npm run lint:docs
+
+  package:
+    name: package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run package
+
+      # asar contents plus the fuse values. The end-to-end tests cannot cover
+      # these: the EnableNodeCliInspectArguments fuse stops Playwright
+      # attaching to a packaged build.
+      - run: npm run verify:package
+
+  e2e:
+    name: end-to-end (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # Produces the .vite bundles the harness drives.
+      - run: npm run package
+      - run: npm run test:e2e
+
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts-${{ matrix.os }}
+          path: |
+            test-results/
+            playwright-report/
+            reports/
+          if-no-files-found: ignore

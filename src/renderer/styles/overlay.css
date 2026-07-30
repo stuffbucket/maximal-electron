@@ -1,0 +1,231 @@
+@import './tokens.css';
+
+/*
+ * The floating overlay.
+ *
+ * The window is transparent and full screen. The dim and the card are drawn
+ * here rather than natively, which is the split stuffbucket/wiggle uses.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  overflow: hidden;
+}
+
+.overlay-body {
+  font:
+    var(--weight-base) var(--text-md) / var(--leading-base) var(--font-body);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  /* The whole surface is a dismiss target, so no text selection anywhere. */
+  user-select: none;
+  cursor: default;
+}
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  /* Wiggle drops the card near the bottom of the focused monitor. */
+  padding-bottom: 18vh;
+  background: rgb(0 0 0 / 0.34);
+  animation: scrim-in 140ms var(--ease-out);
+}
+
+.card {
+  width: min(680px, 82vw);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: 14px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 24px 64px rgb(0 0 0 / 0.5);
+  animation: card-in 180ms var(--ease-out);
+}
+
+.card__input {
+  width: 100%;
+  resize: none;
+  padding: var(--space-3);
+  border-radius: var(--radius-input);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  font: inherit;
+  user-select: text;
+  cursor: text;
+}
+
+.card__input::placeholder {
+  color: var(--text-muted);
+}
+
+.card__input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.card__input:disabled {
+  opacity: var(--opacity-disabled, 0.5);
+}
+
+.card__answer {
+  max-height: 40vh;
+  overflow-y: auto;
+  padding: var(--space-3);
+  border-radius: var(--radius-input);
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-subtle);
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+  white-space: pre-wrap;
+  user-select: text;
+  cursor: text;
+}
+
+.card__error {
+  display: block;
+  margin-top: var(--space-2);
+  color: var(--danger);
+}
+
+/*
+ * The approval prompt.
+ *
+ * This is the one place the card asks for something rather than reporting.
+ * It sits directly above the footer, so the question and the key hint that
+ * answers it are next to each other.
+ */
+.approval {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-input);
+  background: var(--bg-canvas);
+  /* Warm border, because this is the one blocking state in the card. */
+  border: 1px solid var(--warning);
+}
+
+.approval__head {
+  font-size: var(--text-base);
+}
+
+.approval__tool {
+  font-family: var(--font-mono);
+  color: var(--accent);
+}
+
+.approval__summary {
+  margin: 0;
+  max-height: 20vh;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  /* A long command wraps rather than scrolling sideways. A decision cannot be
+     made from the first 60 characters of a pipeline. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+  cursor: text;
+}
+
+.approval__actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.approval__button {
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-input);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.approval__button:hover {
+  border-color: var(--accent);
+}
+
+.approval__button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.approval__button--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.card__footer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.card__status {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card__status--ready {
+  color: var(--success);
+}
+
+.card__status--probing {
+  color: var(--text-muted);
+}
+
+.card__status--unavailable {
+  color: var(--danger);
+  /* The reason can be a full sentence, so let it wrap rather than truncate. */
+  white-space: normal;
+}
+
+.card__hint {
+  color: var(--text-muted);
+  flex: none;
+}
+
+@keyframes scrim-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scrim,
+  .card {
+    animation: none;
+  }
+}

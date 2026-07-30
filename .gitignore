@@ -1,0 +1,15 @@
+out/
+.vite/
+node_modules/
+dist/
+dist-release/
+staging/
+*.log
+.DS_Store
+test-results/
+playwright-report/
+blob-report/
+coverage/
+
+.stryker-tmp/
+reports/

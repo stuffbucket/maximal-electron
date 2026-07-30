@@ -1,0 +1,230 @@
+import { mkdir, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+
+import {
+  _electron as electron,
+  type ElectronApplication,
+  type Page,
+} from '@playwright/test';
+
+const ROOT = path.resolve(__dirname, '..');
+
+/**
+ * Smallest believable reference screenshot, in bytes.
+ *
+ * A guard against a silent failure that already happened here. Parking the
+ * windows with `setOpacity(0)` for a quiet run stopped the compositor giving
+ * out content, so every capture came back solid white. The suite stayed green,
+ * because nothing asserted on the images.
+ *
+ * Observed: real captures run from 101 KB to 221 KB, blank ones 20 KB to
+ * 37 KB. This sits between, and is a smoke check rather than a pixel
+ * assertion.
+ */
+const MIN_SCREENSHOT_BYTES = 60_000;
+
+/**
+ * Write a reference screenshot.
+ *
+ * `page.screenshot` captures the operating system surface. macOS stops giving
+ * a window frames once another application fully occludes it, so that call
+ * hangs until its timeout rather than returning a stale image. It reproduced
+ * against the overlay under seed 587000642, and it is latent in every other
+ * screenshot here: whether it fires depends on what happens to be in front of
+ * the test run.
+ *
+ * Capturing through the debugger instead reads the renderer's own compositor,
+ * which does not care what is in front. The fallback keeps a working capture
+ * on any platform where the debugger route is unavailable.
+ *
+ * A capture that fails outright warns rather than failing the run, because
+ * these are documentation artifacts and behaviour is asserted separately. A
+ * capture that succeeds and is blank does fail, because that looks like
+ * success and is not.
+ */
+export async function capture(page: Page, file: string): Promise<boolean> {
+  await mkdir(path.dirname(file), { recursive: true });
+
+  let bytes: number | undefined;
+
+  try {
+    const session = await page.context().newCDPSession(page);
+    try {
+      const shot = await session.send('Page.captureScreenshot', {
+        format: 'png',
+        fromSurface: false,
+      });
+      const data = Buffer.from(shot.data, 'base64');
+      await writeFile(file, data);
+      bytes = data.byteLength;
+    } finally {
+      await session.detach().catch(() => undefined);
+    }
+  } catch {
+    // Fall through to the ordinary path.
+  }
+
+  if (bytes === undefined) {
+    try {
+      const data = await page.screenshot({ timeout: 10_000 });
+      await writeFile(file, data);
+      bytes = data.byteLength;
+    } catch {
+      console.warn(`screenshot skipped, window not composited: ${file}`);
+      return false;
+    }
+  }
+
+  if (bytes < MIN_SCREENSHOT_BYTES) {
+    throw new Error(
+      `${file} is ${bytes} bytes, under the ${MIN_SCREENSHOT_BYTES} floor. ` +
+        'The window is probably not compositing, so the image is blank.',
+    );
+  }
+
+  return true;
+}
+
+/**
+ * Launch the application under Playwright.
+ *
+ * ## Why this drives the unpackaged build
+ *
+ * Playwright's Electron driver attaches through the Node inspector. This
+ * application fuses `EnableNodeCliInspectArguments` off in `forge.config.ts`,
+ * which is correct for a shipped binary and also makes the packaged app
+ * impossible for Playwright to attach to. Launching the packaged `.app` here
+ * fails with a launch timeout, not a useful error.
+ *
+ * So the split is deliberate:
+ *
+ * - These tests run against `.vite/`, the same main, preload, and renderer
+ *   bundles the package contains. They cover behaviour and layout.
+ * - Packaging concerns that this cannot reach — asar packing and the fuse
+ *   values — are verified separately by `npm run verify:package`.
+ *
+ * Run `npm run package` first: it produces the `.vite` bundles this needs.
+ */
+
+export interface Harness {
+  app: ElectronApplication;
+  window: Page;
+}
+
+/**
+ * Find the shell window.
+ *
+ * `firstWindow()` is not enough on its own: the splash is a real window, and if
+ * it opens first the handle dies the moment the splash closes. `STUFFBUCKET_E2E`
+ * disables the splash, and this scan is the second guard.
+ */
+async function shellWindow(app: ElectronApplication): Promise<Page> {
+  const deadline = Date.now() + 30_000;
+
+  while (Date.now() < deadline) {
+    for (const candidate of app.windows()) {
+      if (candidate.isClosed()) continue;
+      if (candidate.url().includes('splash')) continue;
+      return candidate;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+
+  throw new Error('No shell window appeared within 30 seconds.');
+}
+
+export async function launchApp(): Promise<Harness> {
+  const app = await electron.launch({
+    // Resolve Electron from the project, and point it at the built bundles.
+    args: [ROOT],
+    cwd: ROOT,
+    env: {
+      ...process.env,
+      // Keep the profile out of the real user data directory, so a test run
+      // never clobbers a developer's preferences.
+      STUFFBUCKET_E2E: '1',
+    },
+  });
+
+  const window = await shellWindow(app);
+  await window.waitForSelector('[data-testid="titlebar"]', { timeout: 30_000 });
+
+  // Determinism, per maximal's ui-layout-verification skill: no motion, so a
+  // screenshot or a measured width never races an animation.
+  await window.emulateMedia({ reducedMotion: 'reduce' });
+  await window.addStyleTag({
+    content: '*,*::before,*::after{animation:none!important;transition:none!important}',
+  });
+
+  return { app, window };
+}
+
+/**
+ * Return the shell to a known state.
+ *
+ * These specs share one Electron application, because launching a fresh one
+ * per test is slow. Sharing means state leaks between tests, and the suite
+ * runs in a random order, so no test may assume what ran before it.
+ *
+ * Call this from `beforeEach`. It is deliberately tolerant: a control that is
+ * already in the wanted state, or missing entirely, is not an error.
+ */
+export async function resetShell({ app, window }: Harness): Promise<void> {
+  // Dismiss the overlay if a previous test left it up. It covers the screen,
+  // so every later click would land on the scrim.
+  for (const page of app.windows()) {
+    if (page.isClosed() || !page.url().includes('overlay')) continue;
+
+    // Abort first. A run parked on an unanswered approval keeps the agent
+    // busy, and hiding the window does not settle it, so the next test that
+    // asks anything would be told the agent is still working.
+    await page.evaluate(() => {
+      // `window` is shadowed by the Playwright page in this file, so the
+      // bridge has to be reached through `globalThis`.
+      const api = (
+        globalThis as unknown as {
+          stuffbucket?: { invoke: (channel: string) => Promise<unknown> };
+        }
+      ).stuffbucket;
+      return api?.invoke('overlay:abort');
+    });
+
+    const handle = await app.browserWindow(page);
+    if (await handle.evaluate((win) => win.isVisible())) {
+      await handle.evaluate((win) => {
+        win.hide();
+      });
+    }
+  }
+
+  // `bringToFront` activates the real window, which pulls the user's keyboard
+  // out of whatever they are doing, once per scenario. Playwright dispatches
+  // clicks and keys through the debugger, so it is only needed when someone is
+  // actually watching the run.
+  if (process.env['STUFFBUCKET_E2E_VISIBLE'] === '1') {
+    await window.bringToFront();
+  }
+
+  // Close every tab except the first. `.tab__close` only renders while more
+  // than one tab is open, which is the natural stop condition.
+  for (let guard = 0; guard < 20; guard += 1) {
+    const closers = window.locator('.tab__close');
+    if ((await closers.count()) === 0) break;
+    await closers.last().click();
+  }
+
+  await window.locator('.tab').first().click();
+
+  // Expand both side panels. The toggle reports its own state, so only click
+  // when it is actually collapsed.
+  for (const testId of ['toggle-left', 'toggle-right']) {
+    const button = window.locator(`[data-testid="${testId}"]`);
+    if ((await button.getAttribute('data-active')) !== 'true') {
+      await button.click();
+    }
+  }
+
+  // A known view and view mode, with nothing selected.
+  await window.click('[data-testid="nav-library"]');
+  await window.click('[data-testid="mode-grid"]');
+}

@@ -1,0 +1,286 @@
+# Tag-triggered release.
+#
+#   git tag -a v0.1.0 -m "Release 0.1.0"
+#   git push origin v0.1.0
+#
+# ## Why every asset lands on a DRAFT
+#
+# GitHub immutable releases reject an asset added after publish with HTTP 422.
+# So the release is created as a draft, every build job attaches to that draft,
+# and a single `publish` job flips it once at the end. This is the shape
+# stuffbucket/maximal uses, for exactly this reason.
+#
+# A failed macOS build therefore leaves the release as a draft rather than
+# publishing without a macOS artifact.
+#
+# ## macOS
+#
+# This repository holds no Apple credential. The `macos-dmg` job dispatches the
+# private stuffbucket/macos-builder, which owns the only self-hosted Mac runner
+# and every Apple secret, then polls the draft for the signed dmg.
+#
+# One-time setup per repository, both manual:
+#   - Install the `app-repoman` GitHub App here with Contents: read and write.
+#   - Add secret MACOS_BUILDER_PAT: a fine-grained PAT scoped to Actions: write
+#     on stuffbucket/macos-builder ONLY.
+
+name: release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  TAG: ${{ github.ref_name }}
+
+jobs:
+  # Fail before the matrix spends any minutes. Mirrors codex's `tag-check`.
+  tag-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Validate tag against package.json
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          [[ "${GITHUB_REF_TYPE}" == "tag" ]] \
+            || { echo "::error::Not a tag ref"; exit 1; }
+
+          [[ "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta)(\.[0-9]+)?)?$ ]] \
+            || { echo "::error::Tag '${TAG}' does not match the expected format"; exit 1; }
+
+          tag_ver="${TAG#v}"
+          pkg_ver="$(node -p "require('./package.json').version")"
+
+          [[ "${tag_ver}" == "${pkg_ver}" ]] \
+            || { echo "::error::Tag ${tag_ver} != package.json ${pkg_ver}"; exit 1; }
+
+          echo "Tag and package.json agree (${tag_ver})"
+
+  release:
+    needs: tag-check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — reusing it."
+            exit 0
+          fi
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$TAG" \
+            --draft \
+            --generate-notes
+
+  windows-msi:
+    needs: release
+    runs-on: windows-2022
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - run: npm ci
+
+      - name: Stamp version
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e '
+            const fs = require("node:fs");
+            const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+            pkg.version = process.argv[1];
+            fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
+          ' "${{ steps.ver.outputs.version }}"
+
+      - run: npm run package -- --arch=x64 --platform=win32
+      - run: npm run verify:package
+
+      - name: Install WiX
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          $userBin = Join-Path $env:USERPROFILE '.dotnet\tools'
+          echo $userBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          & "$userBin\wix.exe" --version
+          & "$userBin\wix.exe" extension add -g WixToolset.Util.wixext/5.0.2
+
+      - name: Build MSI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $appDir = "out\Stuffbucket-win32-x64"
+          if (-not (Test-Path "$appDir\Stuffbucket.exe")) {
+            Write-Error "Packaged app not found at $appDir"
+          }
+          New-Item -ItemType Directory -Path dist-release -Force | Out-Null
+          $out = "dist-release\stuffbucket-$env:TAG-windows-x64.msi"
+          wix build build\windows\app.wxs `
+            -d "Version=${{ steps.ver.outputs.version }}" `
+            -arch x64 `
+            -bindpath "AppDir=$appDir" `
+            -ext WixToolset.Util.wixext `
+            -out $out
+
+      - name: SHA-256
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist-release
+          MSI="stuffbucket-${TAG}-windows-x64.msi"
+          sha256sum "$MSI" > "$MSI.sha256"
+          cat "$MSI.sha256"
+
+      - name: Attach MSI to the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
+            "dist-release/stuffbucket-${TAG}-windows-x64.msi" \
+            "dist-release/stuffbucket-${TAG}-windows-x64.msi.sha256"
+
+  # Silent install, assert, run, uninstall, assert clean removal. Copied in
+  # shape from maximal's windows-msi-verify. `publish` gates on this, so a
+  # broken installer blocks the release rather than shipping.
+  windows-msi-verify:
+    needs: windows-msi
+    runs-on: windows-2022
+    permissions:
+      contents: read
+    steps:
+      - name: Download the MSI from the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern "stuffbucket-${TAG}-windows-x64.msi" --dir msi
+
+      - name: Install silently
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $msi = (Get-ChildItem msi -Filter *.msi)[0].FullName
+          $log = "install.log"
+          $p = Start-Process msiexec -ArgumentList "/i","`"$msi`"","/qn","/l*v",$log -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content $log -Tail 60; Write-Error "Install failed: $($p.ExitCode)" }
+
+      - name: Assert installed state
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\Stuffbucket'
+          if (-not (Test-Path "$dir\Stuffbucket.exe")) { Write-Error "Stuffbucket.exe missing from $dir" }
+
+          $marker = Get-ItemProperty -Path 'HKCU:\Software\stuffbucket\Stuffbucket' -Name installed
+          if ($marker.installed -ne 1) { Write-Error "HKCU installed marker not set" }
+
+          $arp = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' |
+            ForEach-Object { Get-ItemProperty $_.PSPath } |
+            Where-Object { $_.DisplayName -eq 'Stuffbucket' }
+          if (-not $arp) { Write-Error "No Add/Remove Programs entry" }
+          Write-Host "Installed OK: $dir"
+
+      - name: Uninstall silently
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $msi = (Get-ChildItem msi -Filter *.msi)[0].FullName
+          $p = Start-Process msiexec -ArgumentList "/x","`"$msi`"","/qn" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Write-Error "Uninstall failed: $($p.ExitCode)" }
+
+      - name: Assert clean removal
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\Stuffbucket'
+          if (Test-Path "$dir\Stuffbucket.exe") { Write-Error "Files left behind in $dir" }
+          Write-Host "Removed cleanly"
+
+  macos-dmg:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Trigger the private macOS builder
+        env:
+          GH_TOKEN: ${{ secrets.MACOS_BUILDER_PAT }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Triggering macOS build for ${REPO} at ${TAG}"
+          gh workflow run build.yml \
+            --repo stuffbucket/macos-builder \
+            --ref main \
+            -f "repo=${REPO}" \
+            -f "ref=${TAG}"
+
+      - name: Wait for the signed dmg to land on the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          DMG="stuffbucket-${VERSION}-darwin-arm64.dmg"
+
+          echo "Polling the draft for ${DMG} (sign and notarize take a few minutes)…"
+          for _ in $(seq 1 60); do
+            ASSETS="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --json assets --jq '.assets[].name' 2>/dev/null || echo '')"
+            if grep -Fxq "$DMG" <<<"$ASSETS"; then
+              echo "Found ${DMG} on the draft."
+              exit 0
+            fi
+            sleep 30
+          done
+
+          echo "::error::Timed out waiting for ${DMG}. Check the stuffbucket/macos-builder run. The release stays a draft rather than publishing without a macOS build." >&2
+          exit 1
+
+  publish:
+    needs: [windows-msi-verify, macos-dmg]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Flip the draft to published
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+          echo "Published ${TAG}"
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name'

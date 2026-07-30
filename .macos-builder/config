@@ -1,0 +1,35 @@
+# Client contract for stuffbucket/macos-builder.
+#
+# The private builder repo owns the only self-hosted Mac runner and every Apple
+# secret. This file tells it what to build and what to hand back. No Apple
+# credential belongs in this repository.
+#
+# Read docs/signing.md before you change anything here. Several of these values
+# are pinned on the builder side, so a change here without a matching change
+# there fails validation rather than building something unexpected.
+
+# Where .macos-builder/build.sh leaves the .app. Relative to the checkout root.
+# Electron Forge writes out/<Name>-darwin-<arch>/<Name>.app.
+app_path = out/Stuffbucket-darwin-arm64/Stuffbucket.app
+
+# Display and volume name for the disk image.
+volname = Stuffbucket
+
+# Must equal packagerConfig.appBundleId in forge.config.ts.
+bundle_id = co.stuffbucket.electron
+
+# One of the builder's enumerated entitlement sets: default, network,
+# virtualization, bun-runtime.
+#
+# `default` is hardened runtime with no added capability, which is right for an
+# Electron application with no sidecar. maximal uses `bun-runtime` only because
+# a Bun sidecar needs JIT. Do not widen this without a reason you can name.
+entitlements = default
+
+# The builder signs, packages, notarizes, staples, and checksums. It can also
+# emit an `updater` artifact, but that is a Tauri .app.tar.gz with an Ed25519
+# signature, which Electron cannot consume. See docs/release.md.
+artifact = dmg
+
+# {version} is the tag without the leading v. {tag} is the whole tag.
+dmg_name = stuffbucket-{version}-darwin-arm64.dmg
