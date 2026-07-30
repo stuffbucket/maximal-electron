@@ -231,7 +231,6 @@ function describeDownloadFailure(error: unknown): string {
 
 interface LoadedModel {
   model: unknown;
-  dispose: () => Promise<void>;
 }
 
 let loaded: LoadedModel | undefined;
@@ -242,6 +241,18 @@ let loaded: LoadedModel | undefined;
  * Loading costs seconds and holds memory, so it is cached for the life of the
  * process. The overlay is summoned briefly and often, and paying that on every
  * summon would make the embedded path feel broken.
+ *
+ * There is deliberately no counterpart that frees them.
+ *
+ * Disposal is native async work. Started while the application is quitting, it
+ * completes inside `node::Environment::RunCleanup`, and the addon then calls
+ * `ThrowAsJavaScriptException` against an environment that is already being
+ * torn down. The exception escapes into ggml's terminate handler and the
+ * process aborts. That crashed every embedded run on exit while the test suite
+ * stayed green, because the abort happens after the last assertion.
+ *
+ * Freeing memory microseconds before the process exits buys nothing. The
+ * operating system reclaims it either way, so the safe thing is to never ask.
  */
 export async function getEmbeddedModel(): Promise<unknown> {
   if (loaded) return loaded.model;
@@ -258,13 +269,6 @@ export async function getEmbeddedModel(): Promise<unknown> {
 
   const llama = await getLlama();
   const model = await llama.loadModel({ modelPath: modelPath() });
-  loaded = { model, dispose: () => model.dispose() };
+  loaded = { model };
   return model;
-}
-
-/** Release the weights. Called on quit. */
-export async function disposeEmbeddedModel(): Promise<void> {
-  const current = loaded;
-  loaded = undefined;
-  await current?.dispose().catch(() => undefined);
 }

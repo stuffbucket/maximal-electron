@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import { capture, launchApp, resetShell, type Harness } from './harness.js';
+import { capture, closeApp, launchApp, resetShell, type Harness } from './harness.js';
 import { createRegistry } from './shuffle.js';
 
 /**
@@ -30,7 +30,7 @@ test.beforeEach(async () => {
 });
 
 test.afterAll(async () => {
-  await harness?.app.close();
+  await closeApp(harness);
 });
 
 /* ------------------------------------------------------------------ shell */

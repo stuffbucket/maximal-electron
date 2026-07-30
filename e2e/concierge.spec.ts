@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import { launchApp, resetShell, type Harness } from './harness.js';
+import { closeApp, launchApp, resetShell, type Harness } from './harness.js';
 
 /**
  * The concierge loop, end to end.
@@ -25,7 +25,7 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  await harness?.app.close();
+  await closeApp(harness);
 });
 
 test('the overlay agent flips the shell theme', async () => {

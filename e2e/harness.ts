@@ -160,6 +160,35 @@ export async function launchApp(): Promise<Harness> {
 }
 
 /**
+ * Close the application, and insist that it exited cleanly.
+ *
+ * `app.close()` on its own hides a whole class of fault. The application can
+ * abort during teardown and Playwright still reports every test as passed,
+ * because the assertions already ran. That happened here: the embedded model
+ * crashed on quit through four consecutive green runs, and the only evidence
+ * was in the operating system's crash reports.
+ *
+ * A signal means the process died rather than exited. That is a defect even
+ * when everything before it passed.
+ */
+export async function closeApp(harness: Harness | undefined): Promise<void> {
+  if (!harness) return;
+
+  const child = harness.app.process();
+  await harness.app.close();
+
+  if (child.signalCode) {
+    throw new Error(
+      `The application died on ${child.signalCode} instead of exiting. ` +
+        'Native work outstanding at quit is the usual cause.',
+    );
+  }
+  if (child.exitCode !== null && child.exitCode !== 0) {
+    throw new Error(`The application exited with code ${String(child.exitCode)}.`);
+  }
+}
+
+/**
  * Return the shell to a known state.
  *
  * These specs share one Electron application, because launching a fresh one

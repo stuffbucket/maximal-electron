@@ -135,6 +135,25 @@ becomes callable and it looks like a model too small to follow instructions.
 A schema it cannot express means the tool is **dropped and logged**, never
 passed through unconstrained.
 
+### Quitting with native work in flight
+
+The embedded model runs on a worker thread. Tear the Node environment down
+while any of that is outstanding, and the addon completes into an environment
+that no longer exists. It calls `ThrowAsJavaScriptException` against it, and
+the process aborts inside ggml's terminate handler.
+
+- **Never start native work during `before-quit`.** An earlier version fired a
+  model disposal there without awaiting it. Every embedded run aborted on exit.
+- **Nothing frees the weights.** The process is ending and the operating
+  system reclaims the memory, so there is no reason to ask.
+- `before-quit` defers the quit through `shutdownAgent` when a run is in
+  flight, then quits again. The guard flag is what stops that looping.
+- Close an application under test with `closeApp` from `e2e/harness.ts`, not
+  `app.close()`. A crash during teardown happens after the last assertion, so
+  Playwright reports the run as passed. That hid this bug through four
+  consecutive green runs. The only evidence was in the operating system's
+  crash reports.
+
 ### The approval gate
 
 `beforeToolCall` in `src/main/native/agent.ts` is the only thing between a

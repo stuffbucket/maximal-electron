@@ -7,7 +7,7 @@ import { BrowserWindow, app, globalShortcut } from 'electron';
 import { registerIpcHandlers, sendEvent } from './ipc.js';
 import { focusWindow, installApplicationMenu } from './native/menu.js';
 import { clearBadge } from './native/notifications.js';
-import { disposeEmbeddedModel } from './native/llama.js';
+import { isAgentBusy, shutdownAgent } from './native/agent.js';
 import {
   getPreferences,
   isE2E,
@@ -15,7 +15,8 @@ import {
   onPreferencesChanged,
   quietBounds,
 } from './native/preferences.js';
-import { configurePty, killAllPtys } from './native/pty.js';import { destroyTray, setTrayEnabled } from './native/tray.js';
+import { configurePty, killAllPtys } from './native/pty.js';
+import { destroyTray, setTrayEnabled } from './native/tray.js';
 import { checkForUpdates } from './native/updates.js';
 import { createMainWindow } from './windows/main-window.js';
 import { destroyOverlay, toggleOverlay } from './windows/overlay.js';
@@ -223,7 +224,22 @@ if (!app.requestSingleInstanceLock()) {
     if (process.platform !== 'darwin') app.quit();
   });
 
-  app.on('before-quit', () => {
+  /**
+   * Quit cleanly.
+   *
+   * The embedded model runs native work on a worker thread. If the Node
+   * environment is torn down while any of it is outstanding, the addon
+   * completes into an environment that no longer exists, calls
+   * `ThrowAsJavaScriptException` against it, and the process aborts inside
+   * ggml's terminate handler.
+   *
+   * That is why this defers the quit rather than firing cleanup and hoping.
+   * The crash lands after the last assertion of a test, so the suite stayed
+   * green through four consecutive runs of it.
+   */
+  let quitting = false;
+
+  app.on('before-quit', (event) => {
     // Kill every shell first. A surviving child would outlive the application.
     killAllPtys();
     globalShortcut.unregisterAll();
@@ -231,8 +247,16 @@ if (!app.requestSingleInstanceLock()) {
     clearBadge();
     destroyTray();
     closeSplashWindow();
-    // The embedded weights hold a few hundred megabytes. Nothing depends on
-    // this completing, so it is not awaited.
-    void disposeEmbeddedModel();
+
+    // Second pass, after the agent has stopped. Let it through.
+    if (quitting) return;
+    // Nothing native is running, so there is nothing to wait for.
+    if (!isAgentBusy()) return;
+
+    quitting = true;
+    event.preventDefault();
+    void shutdownAgent().then(() => {
+      app.quit();
+    });
   });
 }

@@ -349,8 +349,40 @@ interface ActiveRun {
 
 let active: ActiveRun | undefined;
 
+/**
+ * The current run's promise, so shutdown can wait for it.
+ *
+ * `abortAgent` clears `active` immediately, but the engine underneath may
+ * still be finishing native work on a worker thread. Quitting while that is
+ * outstanding tears down the Node environment underneath it, and the addon
+ * then throws into an environment that no longer exists.
+ */
+let inFlight: Promise<void> | undefined;
+
 export function isAgentBusy(): boolean {
   return active !== undefined;
+}
+
+/**
+ * Stop any run and wait for it to actually finish.
+ *
+ * Call this before the application quits. Aborting alone is not enough: abort
+ * asks the engine to stop, and this waits for it to have stopped. The timeout
+ * exists so a wedged engine delays a quit rather than preventing one.
+ */
+export async function shutdownAgent(timeoutMs = 5_000): Promise<void> {
+  abortAgent();
+
+  const pending = inFlight;
+  if (!pending) return;
+
+  await Promise.race([
+    pending,
+    new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, timeoutMs);
+      timer.unref?.();
+    }),
+  ]);
 }
 
 /** Stop the current run. Safe to call when nothing is running. */
@@ -428,6 +460,14 @@ export async function runAgent(prompt: string, sink: AgentSink): Promise<void> {
     return;
   }
 
+  const run = execute(prompt, sink);
+  inFlight = run.finally(() => {
+    inFlight = undefined;
+  });
+  return inFlight;
+}
+
+async function execute(prompt: string, sink: AgentSink): Promise<void> {
   const status = await discoverProvider();
   if (status.state !== 'ready') {
     sink.onEnd({ ok: false, error: describeNotReady(status) });

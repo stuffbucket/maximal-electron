@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import { launchApp, resetShell, type Harness } from './harness.js';
+import { closeApp, launchApp, resetShell, type Harness } from './harness.js';
 
 /**
  * The embedded provider, end to end.
@@ -29,7 +29,7 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  await harness?.app.close();
+  await closeApp(harness);
 });
 
 test('the embedded model answers and uses a tool', async () => {

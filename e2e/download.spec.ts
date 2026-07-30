@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import { launchApp, resetShell, type Harness } from './harness.js';
+import { closeApp, launchApp, resetShell, type Harness } from './harness.js';
 
 /**
  * The first-run model download.
@@ -30,7 +30,7 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  await harness?.app.close();
+  await closeApp(harness);
 });
 
 test('the card offers the model, downloads it, and becomes ready', async () => {
