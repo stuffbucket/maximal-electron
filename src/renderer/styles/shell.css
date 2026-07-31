@@ -743,7 +743,6 @@ button {
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
   padding: 2px var(--space-2);
   border-radius: var(--radius-pill);
   background: var(--status-soft, var(--bg-active));
@@ -781,8 +780,6 @@ button {
 .run-card {
   gap: var(--space-3);
   padding: var(--space-3);
-  /* The status reads before the text does. */
-  border-left: 2px solid var(--status);
 }
 
 .run-card__head {

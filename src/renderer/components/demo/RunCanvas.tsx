@@ -7,7 +7,6 @@ import { STATUS_LABELS, type AgentRun } from '../../lib/demo-runs.js';
 export function StatusChip({ run }: { run: AgentRun }) {
   return (
     <span className="chip" data-status={run.status}>
-      <span className="dot" data-status={run.status} />
       {STATUS_LABELS[run.status]}
     </span>
   );
