@@ -1,12 +1,6 @@
 import { Check, PanelRight, X } from 'lucide-react';
 
-import { fleetSummary } from '../../lib/demo.js';
-import {
-  RUNS,
-  STATUS_LABELS,
-  type AgentRun,
-  type RunStatus,
-} from '../../lib/demo-runs.js';
+import { RUNS, type AgentRun } from '../../lib/demo-runs.js';
 import { IconButton } from '../Controls.js';
 
 import { StatusChip } from './RunCanvas.js';
@@ -20,24 +14,37 @@ function Field({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** How many runs sit in each bucket, shown when nothing is selected. */
-function FleetSummary() {
-  const order: RunStatus[] = ['running', 'blocked', 'done', 'failed'];
+/**
+ * What the inspector shows when nothing is selected.
+ *
+ * This used to repeat the four status counts, which the left rail already
+ * carries and the status bar summarised again. Three renderings of one fact on
+ * one screen, and the only reason this one existed was to stop the panel
+ * looking empty.
+ *
+ * A count is not worth repeating. Which runs are blocked is worth knowing, and
+ * it is the one thing on this screen a rail of numbers cannot tell you, so the
+ * empty state names them and offers a way in.
+ */
+function WaitingOnYou({ onSelect }: { onSelect: (id: string) => void }) {
+  const blocked = RUNS.filter((run) => run.status === 'blocked');
+  if (blocked.length === 0) return undefined;
 
   return (
     <section className="inspector__section">
-      <h3 className="inspector__title">By status</h3>
-      {order.map((status) => (
-        <div key={status} className="field field--status">
-          <span className="field__label">
-            <span className="dot" data-status={status} /> {STATUS_LABELS[status]}
-          </span>
-          <span className="field__value">
-            {RUNS.filter((run) => run.status === status).length}
-          </span>
-        </div>
+      <h3 className="inspector__title">Waiting on you</h3>
+      {blocked.map((run) => (
+        <button
+          key={run.id}
+          type="button"
+          className="waiting__item"
+          onClick={() => onSelect(run.id)}
+          data-testid={`waiting-${run.id}`}
+        >
+          <span className="waiting__title">{run.task}</span>
+          <span className="waiting__meta">{run.pendingSummary ?? run.step}</span>
+        </button>
       ))}
-      <p className="card__sub">{fleetSummary()}</p>
     </section>
   );
 }
@@ -53,9 +60,11 @@ function FleetSummary() {
 export function RunInspector({
   run,
   onCollapse,
+  onSelect,
 }: {
   run: AgentRun | undefined;
   onCollapse: () => void;
+  onSelect: (id: string) => void;
 }) {
   return (
     <div className="inspector" data-testid="inspector">
@@ -123,7 +132,7 @@ export function RunInspector({
         ) : (
           <>
             <p className="card__sub">Select a run to inspect it.</p>
-            <FleetSummary />
+            <WaitingOnYou onSelect={onSelect} />
           </>
         )}
       </div>

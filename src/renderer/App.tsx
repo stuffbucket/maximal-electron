@@ -210,7 +210,6 @@ export function App() {
                   view={view}
                   mode={mode}
                   onModeChange={setMode}
-                  count={items.length}
                 />
                 <Canvas
                   items={items}
@@ -221,9 +220,8 @@ export function App() {
               </>
             )}
             <footer className="statusbar">
-              <span>{current?.kind === 'terminal' ? current.title : VIEW_LABELS[view]}</span>
-              <span className="statusbar__grow" />
               <span>{selected ? selected.name : 'No selection'}</span>
+              <span className="statusbar__grow" />
             </footer>
           </Panel>
 

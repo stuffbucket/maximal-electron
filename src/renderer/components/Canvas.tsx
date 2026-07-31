@@ -17,19 +17,14 @@ export function Toolbar({
   view,
   mode,
   onModeChange,
-  count,
 }: {
   view: ViewId;
   mode: ViewMode;
   onModeChange: (mode: ViewMode) => void;
-  count: number;
 }) {
   return (
     <div className="toolbar">
       <h1 className="toolbar__title">{VIEW_LABELS[view]}</h1>
-      <span className="card__sub">
-        {count} item{count === 1 ? '' : 's'}
-      </span>
       <span className="toolbar__grow" />
       <div className="segmented" role="group" aria-label="View mode">
         <button

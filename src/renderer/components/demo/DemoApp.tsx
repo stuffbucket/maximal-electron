@@ -15,7 +15,6 @@ import { TitleBar } from '../TitleBar.js';
 import { useBridgeEvent, usePreferences } from '../../lib/bridge.js';
 import {
   DEFAULT_VIEW,
-  fleetSummary,
   runsFor,
   viewLabel,
   type DemoViewId,
@@ -189,7 +188,6 @@ export function DemoApp() {
                   title={viewLabel(view)}
                   mode={mode}
                   onModeChange={setMode}
-                  count={runs.length}
                 />
                 <RunCanvas
                   runs={runs}
@@ -200,9 +198,8 @@ export function DemoApp() {
               </>
             )}
             <footer className="statusbar">
-              <span>{current?.kind === 'terminal' ? current.title : fleetSummary()}</span>
-              <span className="statusbar__grow" />
               <span>{selected ? selected.branch : 'No run selected'}</span>
+              <span className="statusbar__grow" />
             </footer>
           </Panel>
 
@@ -221,7 +218,11 @@ export function DemoApp() {
             }
             className="panel"
           >
-            <RunInspector run={selected} onCollapse={() => togglePanel('right')} />
+            <RunInspector
+              run={selected}
+              onCollapse={() => togglePanel('right')}
+              onSelect={setSelectedId}
+            />
           </Panel>
         </Group>
       </div>
