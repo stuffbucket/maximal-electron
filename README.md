@@ -64,7 +64,8 @@ and stills that produces.
 
 ```bash
 npm run package
-npm run record
+npm run record                  # drive the app, then cut the video
+npm run compose -- workflow     # re-cut, without touching the app
 ```
 
 Nothing in the output is a mock. The window is the window `npm start` opens,
@@ -72,8 +73,14 @@ the terminal runs a real shell, and the overlay talks to a real model through
 the real approval gate. So a change that breaks the interface breaks the
 recording, and a demo cannot quietly go stale.
 
-The pacing rules are enforced in code rather than left to whoever writes a
-timeline. See [docs/recording.md](./docs/recording.md).
+Recording is two steps. **Capture** drives the application and keeps every
+frame. **Compose** cuts those frames into a video. An edit file says what plays,
+in what order, how long each beat holds, and where it freezes.
+
+That split is what makes the timing workable. A capture takes about 45 seconds.
+A re-cut takes about 6, and needs no build and no application.
+
+See [docs/recording.md](./docs/recording.md).
 
 ## Release
 

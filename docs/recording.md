@@ -66,9 +66,14 @@ where it freezes. Small, tracked, and edited by hand.
 | `e2e/demo/launch.ts` | Launch the shell in demo mode. Application specific. |
 | `e2e/demo/*.demo.ts` | The timelines. Application specific. |
 | `e2e/demo/rules.demo.ts` | Proves the pacing rules, in milliseconds. |
+| `e2e/demo/record.config.ts` | Playwright config for `.demo.ts`. |
+| `e2e/demo/compose.config.ts` | Playwright config for `.compose.ts`. |
+| `e2e/demo/cut.compose.ts` | The compose run itself. |
+| `e2e/demo/global-setup.ts` | Proves `ffmpeg` is installed, once, before anything. |
 
-Everything except `launch.ts` and the timelines is generic. A fork keeps them
-and rewrites only those two.
+Everything except `launch.ts` and the `*.demo.ts` timelines is generic. A fork
+keeps the rest unchanged, rewrites those two, and writes its own
+`demo/edits/*.json`.
 
 ## Re-cutting
 
@@ -142,9 +147,8 @@ clicks, or a typing delay, is part of what the viewer watches. Holds are not.
 
 ## The pacing rules
 
-These live in `edit.ts` and are checked against the edit, not left to
-whoever writes one.
-Every one of them is easy to shave off and hard to notice until the video is
+These live in `edit.ts` and are checked against the edit, not left to whoever
+writes one. Each is easy to shave off and hard to notice until the video is
 unwatchable.
 
 | Rule | Value | Why |

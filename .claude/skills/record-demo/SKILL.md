@@ -44,7 +44,7 @@ A run takes minutes and drives a real application. It parks its windows off the
 display, so it does not take the desktop. Set `STUFFBUCKET_E2E_VISIBLE=1` to
 watch it.
 
-## Add a scene
+## Add a sequence
 
 Edit a `*.demo.ts` timeline. A sequence is a card and the actions the viewer
 watches. Its hold lives in the edit, not here.

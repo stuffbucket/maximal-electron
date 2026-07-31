@@ -17,8 +17,9 @@ build and release mechanics.
 | `build/windows/app.wxs` | Mostly | Rename the product, and mint a **new** `UpgradeCode`. |
 | `scripts/verify-package.mjs` | Electron only | It reads asar and fuses. |
 | `AGENTS.md` and `.claude/skills` | Yes | Adapt the commands table. |
-| `e2e/demo/recorder.ts` and its three helpers | Yes | Generic. Pages, frames, and seconds only. |
+| `e2e/demo/*` except the two below | Yes | Generic. Pages, frames, and seconds only. |
 | `e2e/demo/launch.ts` and `*.demo.ts` | No | Rewrite. These are the timelines. |
+| `demo/edits/*.json` | No | One per video. The cut, not the machinery. |
 | `src/shared/ipc.ts` pattern | Electron only | Tauri has its own command layer. |
 | `src/renderer/**` | Yes | React plus Radix plus `react-resizable-panels`. |
 
