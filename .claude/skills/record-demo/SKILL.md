@@ -1,6 +1,6 @@
 ---
 name: record-demo
-description: Record a video of the application driving itself, or add a scene to an existing timeline
+description: Record a video of the application driving itself, or re-cut one that exists
 ---
 
 # Record a demo video
@@ -21,9 +21,15 @@ is far quicker.
 
 ```bash
 npm run package                     # the recorder drives .vite/, not the package
-npm run record                      # every timeline
+npm run record                      # capture and cut every timeline
 npm run record -- --grep workflow   # one of them
+
+npm run compose -- workflow         # re-cut from frames already captured
 ```
+
+**Reach for `compose` first.** Changing a hold, an order, a freeze, or a card is
+an edit to `demo/edits/<name>.json` and takes about six seconds. Only capture
+again when the interface itself changed.
 
 Requires `ffmpeg` and `ffprobe`. Nothing installs them for you. When either is
 absent the run stops before it launches anything, names the one command that
@@ -40,34 +46,38 @@ watch it.
 
 ## Add a scene
 
-Edit a `*.demo.ts` timeline. A scene is a caption, a hold, and the actions the
-viewer watches.
+Edit a `*.demo.ts` timeline. A sequence is a card and the actions the viewer
+watches. Its hold lives in the edit, not here.
 
 ```ts
-scene({
+sequence({
+  id: 'library',
   name: 'The caption in the lower third',
   note: 'An optional second line',
-  hold: 6,
-  drive: async ({ shell }) => {
+  drive: async ({ shell, mark }) => {
     await shell.click('[data-testid="nav-library"]');
+    mark('library-open');
   },
 });
 ```
 
-Use `scene()`. An object literal skips the hold check.
+Then add a clip to `demo/edits/<name>.json`. The hold lives there, not here.
 
-Four rules, in the order they catch people:
+Use `sequence()`. An object literal skips the id checks.
 
-1. **Make the visible change early in `drive`.** The hold sits on whatever is on
-   screen when `drive` returns. A scene that flips the theme on its last line
-   spends its whole hold on the picture before the change. This is the mistake
-   that produced the first unusable cut of the workflow video.
-2. **Do not lower a pacing constant to fit.** If a timeline runs long, cut a
-   scene. `MIN_HOLD_SECONDS` is 5 because 2.5 read as a slideshow.
-3. **Move the caption to the top** when the page draws along its bottom edge.
-   The overlay card does. Pass `caption: 'top'`.
-4. **Set `target`** when the scene records a window other than the shell. It
-   runs before the scene clock starts, so setup stays out of the video.
+Five rules, in the order they catch people:
+
+1. **Make the visible change early in `drive`.** The hold sits on whatever was
+   on screen when `drive` returned. `freezeAt` can rescue a badly timed one, but
+   only if a frame of the right moment exists.
+2. **Call `mark()`** the moment something becomes true. An edit freezes by name,
+   which survives the next capture being slower.
+3. **Do not lower a pacing constant to fit.** Cut a clip instead.
+   `MIN_HOLD_SECONDS` is 5 because 2.5 read as a slideshow.
+4. **Move the card to the top** when the page draws along its bottom edge. The
+   overlay does. Pass `caption: 'top'`.
+5. **Set `target`** when the sequence records a window other than the shell. It
+   runs before the clock starts, so setup stays out of the video.
 
 ## Add a timeline
 
@@ -78,7 +88,8 @@ Copy an existing `*.demo.ts`. Keep three things:
 - `closeApp(harness)` from `../harness.js`, **not** `app.close()`. A crash
   during teardown lands after the last frame, and a plain close reports a clean
   recording over a process that aborted.
-- `record({ app, shell, scenes, output })`, with `output` under `demo/`.
+- `record({ app, shell, name, sequences })`, plus an edit at
+  `demo/edits/<name>.json` naming the output.
 
 ## When a recording looks wrong
 
@@ -89,7 +100,9 @@ Copy an existing `*.demo.ts`. Keep three things:
 | Washed out or crushed colour | The `in_range=full:out_range=tv` conversion was dropped from the filter graph. |
 | A caption in a later screenshot | `clearCaption` did not run. It belongs in a `finally`. |
 | `ffmpeg` reported missing when it is installed | It is somewhere unusual, or it does not run. Set `FFMPEG`, and check the binary matches the architecture. |
-| The run rejects the timeline before launching | Correct behaviour. The timeline cannot reach 30 seconds. Add scenes. |
+| The run rejects the edit before launching | Correct behaviour. It cannot reach 30 seconds. Add clips. |
+| A dark box around a card | The card image lost its alpha. See the Cards section of `docs/recording.md`. |
+| A card sitting a few pixels off | Its capture rectangle was clamped at the page edge. It must be inset by its margin. |
 
 ## Verify
 

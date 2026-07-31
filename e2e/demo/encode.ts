@@ -20,10 +20,27 @@ import { spawn } from 'node:child_process';
  * out as fifty one seconds of slow motion.
  */
 export interface Segment {
-  /** Absolute `printf` pattern, for example `/tmp/scene-00/%06d.jpg`. */
+  /** Absolute `printf` pattern, for example `/tmp/clip-00/%06d.jpg`. */
   pattern: string;
   /** How many stills the sequence holds. */
   frames: number;
+  /** Card to lay over this clip, if it has one. */
+  card?: SegmentCard;
+}
+
+/**
+ * A card overlay for one clip.
+ *
+ * `x` and `y` are the top left of the image in output pixels, and the image is
+ * rendered at `scale` times output size for sharpness. Halving it here rather
+ * than at render time keeps the card matched to frames that were themselves
+ * captured large and scaled down.
+ */
+export interface SegmentCard {
+  file: string;
+  x: number;
+  y: number;
+  scale: number;
 }
 
 export interface EncodeOptions {
@@ -90,12 +107,19 @@ function run(command: string, args: string[]): Promise<string> {
 /**
  * Build the filter graph.
  *
- * Every scene is scaled into the same frame, padded rather than stretched, so
- * a scene recorded from a differently shaped window still cuts together. The
- * fade at each end is the dip that keeps two scenes from butting up against
- * each other. The first fade in and the last fade out double as the titles.
+ * Every clip is scaled into the same frame, padded rather than stretched, so a
+ * clip recorded from a differently shaped window still cuts together. The fade
+ * at each end is the dip that keeps two clips from butting up against each
+ * other. The first fade in and the last fade out double as the titles.
+ *
+ * The card is laid over the scaled frame, so the image and the frame share one
+ * coordinate space and the offsets in the take mean what they say. The fades
+ * come last, so a clip dips to black with its card rather than around it.
+ *
+ * `inputIndex` maps a clip to its ffmpeg input, because a clip with a card
+ * contributes two inputs and one without contributes one.
  */
-function filterGraph(options: EncodeOptions): string {
+function filterGraph(options: EncodeOptions, inputIndex: number[]): string {
   const { width: w, height: h, fps, dip } = options;
   // `in_range=full:out_range=tv` matters. The stills are JPEG, which is full
   // range, and carrying that through tags the mp4 as `yuvj420p`. Players
@@ -107,15 +131,35 @@ function filterGraph(options: EncodeOptions): string {
     `scale=${String(w)}:${String(h)}:force_original_aspect_ratio=decrease` +
     ':in_range=full:out_range=tv,' +
     `pad=${String(w)}:${String(h)}:(ow-iw)/2:(oh-ih)/2:color=black,` +
-    'setsar=1,format=yuv420p';
+    'setsar=1';
 
-  const parts = options.segments.map((segment, index) => {
+  const parts: string[] = [];
+
+  options.segments.forEach((segment, index) => {
     const seconds = segment.frames / fps;
     const out = Math.max(0, seconds - dip).toFixed(3);
-    return (
-      `[${String(index)}:v]${scale},` +
+    const video = inputIndex[index] ?? 0;
+    const label = `v${String(index)}`;
+    const fades =
       `fade=t=in:st=0:d=${dip.toFixed(3)},` +
-      `fade=t=out:st=${out}:d=${dip.toFixed(3)}[v${String(index)}]`
+      `fade=t=out:st=${out}:d=${dip.toFixed(3)}`;
+
+    if (!segment.card) {
+      parts.push(`[${String(video)}:v]${scale},format=yuv420p,${fades}[${label}]`);
+      return;
+    }
+
+    const card = segment.card;
+    parts.push(`[${String(video)}:v]${scale}[base${String(index)}]`);
+    parts.push(
+      `[${String(video + 1)}:v]scale=iw/${String(card.scale)}:ih/${String(card.scale)}` +
+        `[card${String(index)}]`,
+    );
+    // `shortest` stops the looped card extending the clip past its frames.
+    parts.push(
+      `[base${String(index)}][card${String(index)}]` +
+        `overlay=x=${String(Math.round(card.x))}:y=${String(Math.round(card.y))}` +
+        `:shortest=1,format=yuv420p,${fades}[${label}]`,
     );
   });
 
@@ -128,7 +172,13 @@ function filterGraph(options: EncodeOptions): string {
 export async function encode(options: EncodeOptions): Promise<void> {
   const args = ['-y', '-hide_banner', '-loglevel', 'error'];
 
+  // A clip is one input, or two when it carries a card. Record where each
+  // clip's video landed, because the filter graph refers to inputs by number.
+  const inputIndex: number[] = [];
+  let next = 0;
+
   for (const segment of options.segments) {
+    inputIndex.push(next);
     args.push(
       '-framerate',
       String(options.fps),
@@ -137,11 +187,19 @@ export async function encode(options: EncodeOptions): Promise<void> {
       '-i',
       segment.pattern,
     );
+    next += 1;
+
+    if (segment.card) {
+      // `-loop 1` makes the still an endless stream. `shortest` in the overlay
+      // is what ends it, so the card cannot outlive the clip it belongs to.
+      args.push('-loop', '1', '-framerate', String(options.fps), '-i', segment.card.file);
+      next += 1;
+    }
   }
 
   args.push(
     '-filter_complex',
-    filterGraph(options),
+    filterGraph(options, inputIndex),
     '-map',
     '[out]',
     '-an',
@@ -167,6 +225,59 @@ export async function encode(options: EncodeOptions): Promise<void> {
   );
 
   await run(ffmpegPath(), args);
+}
+
+/** Pixel dimensions of an image on disk. */
+export async function imageSize(
+  file: string,
+): Promise<{ width: number; height: number }> {
+  const raw = await run(ffprobePath(), [
+    '-v',
+    'error',
+    '-select_streams',
+    'v:0',
+    '-show_entries',
+    'stream=width,height',
+    '-of',
+    'json',
+    file,
+  ]);
+
+  const parsed = JSON.parse(raw) as { streams?: { width?: number; height?: number }[] };
+  const stream = parsed.streams?.[0];
+  if (!stream?.width || !stream.height) {
+    throw new Error(`${file} has no readable image size.`);
+  }
+  return { width: stream.width, height: stream.height };
+}
+
+/**
+ * Cut a rectangle out of an image, keeping transparency.
+ *
+ * `-c:v png` is not optional. ffmpeg picks an encoder from the extension, and
+ * the default for a cropped stream drops the alpha channel, which would give
+ * every card an opaque black backing.
+ */
+export async function cropImage(
+  source: string,
+  target: string,
+  rect: { left: number; top: number; width: number; height: number },
+): Promise<void> {
+  await run(ffmpegPath(), [
+    '-y',
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-i',
+    source,
+    '-vf',
+    `crop=${String(rect.width)}:${String(rect.height)}:${String(rect.left)}:${String(rect.top)}`,
+    '-c:v',
+    'png',
+    '-pix_fmt',
+    'rgba',
+    target,
+  ]);
 }
 
 /** Read back what was actually written. */

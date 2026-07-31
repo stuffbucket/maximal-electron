@@ -5,7 +5,7 @@ import type { ElectronApplication, Locator, Page } from '@playwright/test';
 
 import { closeApp } from '../harness.js';
 import { launchDemoApp, setTheme, type DemoHarness } from './launch.js';
-import { record, scene, type Scene } from './recorder.js';
+import { record, sequence, type SequenceDef } from './recorder.js';
 
 /**
  * The product video: a shell that orchestrates coding agents.
@@ -24,7 +24,6 @@ import { record, scene, type Scene } from './recorder.js';
  */
 
 const ROOT = path.resolve(__dirname, '../..');
-const OUTPUT = path.join(ROOT, 'demo', 'stuffbucket-workflow.mp4');
 
 /**
  * The overlay window is sized for the shot rather than for the desktop.
@@ -123,30 +122,31 @@ function terminalText(terminal: Locator): Promise<string> {
 /* ---------------------------------------------------------- the timeline */
 
 /** The four scenes that need nothing but the application itself. */
-function shellScenes(): Scene[] {
+function shellSequences(): SequenceDef[] {
   return [
-    scene({
+    sequence({
+      id: 'fleet',
       name: 'A fleet of coding agents',
       note: 'Seventeen runs across four projects, in one window',
-      hold: 7,
       // Nothing to drive. The fade in is the reveal, and the hold is the shot.
       drive: async () => undefined,
     }),
 
-    scene({
+    sequence({
+      id: 'inspector',
       name: 'One run, waiting on a human',
       note: 'The inspector shows what the agent wants to do next',
-      hold: 8,
-      async drive({ shell }) {
+      async drive({ shell, mark }) {
         await shell.click('[data-testid="run-run-102"]');
         await expect(shell.locator('[data-testid="approval"]')).toBeVisible();
+        mark('approval-shown');
       },
     }),
 
-    scene({
+    sequence({
+      id: 'tabs',
       name: 'Concurrent sessions, in tabs',
       note: 'Each tab follows one agent, and the panels follow the tab',
-      hold: 7,
       async drive({ shell }) {
         const tabs = shell.locator('.tab');
         for (const index of [2, 1, 0, 1]) {
@@ -156,11 +156,11 @@ function shellScenes(): Scene[] {
       },
     }),
 
-    scene({
+    sequence({
+      id: 'terminal',
       name: 'A real coding agent, in a tab',
       note: 'Claude Code, running on a native pseudo terminal',
-      hold: 10,
-      async drive({ shell }) {
+      async drive({ shell, mark }) {
         await shell.click('[data-testid="tab-new"]');
         const terminal = shell.locator('[data-testid="terminal"]').last();
         await expect(terminal.locator('canvas').first()).toBeVisible({
@@ -192,6 +192,7 @@ function shellScenes(): Scene[] {
         } catch {
           notes.push('the claude CLI never printed its banner in the terminal');
         }
+        mark('claude-ready');
         await shell.waitForTimeout(1_500);
       },
     }),
@@ -199,12 +200,12 @@ function shellScenes(): Scene[] {
 }
 
 /** The scenes that need a local model. Empty when none is running. */
-function overlayScenes(harness: DemoHarness): Scene[] {
+function overlaySequences(harness: DemoHarness): SequenceDef[] {
   return [
-    scene({
+    sequence({
+      id: 'ask-version',
       name: 'Ask the app about itself',
       note: 'The agent calls a read-only tool, so nothing asks permission',
-      hold: 7,
       caption: 'top',
       target: ({ app, shell }) => summonOverlay(app, shell),
       async drive({ app }) {
@@ -217,10 +218,10 @@ function overlayScenes(harness: DemoHarness): Scene[] {
       },
     }),
 
-    scene({
+    sequence({
+      id: 'ask-theme',
       name: 'And about how it is set up',
       note: 'Same tool, reading the live preferences',
-      hold: 7,
       caption: 'top',
       target: ({ app }) => Promise.resolve(findOverlay(app)),
       async drive({ app }) {
@@ -233,13 +234,13 @@ function overlayScenes(harness: DemoHarness): Scene[] {
       },
     }),
 
-    scene({
+    sequence({
+      id: 'gate-asks',
       name: 'Now change something',
       note: 'set_theme is mutating, so the gate asks before it runs',
-      hold: 8,
       caption: 'top',
       target: ({ app }) => Promise.resolve(findOverlay(app)),
-      async drive({ app }) {
+      async drive({ app, mark }) {
         const overlay = findOverlay(app);
         await ask(overlay, 'Switch this application to the light theme.');
         await expect(overlay.locator('[data-testid="overlay-approval"]')).toBeVisible({
@@ -248,13 +249,14 @@ function overlayScenes(harness: DemoHarness): Scene[] {
         await expect(
           overlay.locator('[data-testid="overlay-approval-summary"]'),
         ).toContainText('light');
+        mark('gate-shown');
       },
     }),
 
-    scene({
+    sequence({
+      id: 'repaints',
       name: 'Allowed, and the app repaints',
       note: 'The tool runs in the main process; the window follows on its own',
-      hold: 11,
       // Back to the shell. This is the only scene where the payoff is in the
       // application rather than in the overlay.
       async target({ shell }) {
@@ -264,7 +266,7 @@ function overlayScenes(harness: DemoHarness): Scene[] {
         await expect(shell.locator('[data-testid="view-grid"]')).toBeVisible();
         return shell;
       },
-      async drive({ app, shell }) {
+      async drive({ app, shell, mark }) {
         const overlay = findOverlay(app);
         await overlay.click('[data-testid="overlay-allow"]');
 
@@ -277,6 +279,7 @@ function overlayScenes(harness: DemoHarness): Scene[] {
             { timeout: 60_000 },
           )
           .toBe('light');
+        mark('theme-light');
 
         // Put the overlay away, so the hold is on the application alone.
         await overlay.keyboard.press('Escape');
@@ -301,13 +304,13 @@ test('records the agent workflow', async () => {
 
     await expect(window.locator('.run-card')).toHaveCount(17);
 
-    const scenes = shellScenes();
+    const sequences = shellSequences();
 
     // The overlay scenes need a model. Skip them rather than fake them.
     const probe = await summonOverlay(app, window);
     const backend = await hasBackend(probe);
     if (backend) {
-      scenes.push(...overlayScenes(harness));
+      sequences.push(...overlaySequences(harness));
     } else {
       notes.push('no local model was running, so the overlay scenes were skipped');
     }
@@ -317,15 +320,17 @@ test('records the agent workflow', async () => {
       win.hide();
     });
 
-    const result = await record({ app, shell: window, output: OUTPUT, scenes });
+    const result = await record({ app, shell: window, name: 'workflow', sequences });
 
     process.stdout.write(
       `\n  ${result.output}\n` +
         `  capture: ${result.method}, ${String(result.frames)} frames\n` +
+        `  take: ${result.takeDir}\n` +
         `  ${result.probe.seconds.toFixed(2)}s, ${result.probe.codec}, ` +
         `${String(result.probe.width)}x${String(result.probe.height)}, ` +
         `${result.probe.frameRate} fps, ` +
         `${(result.probe.bytes / 1e6).toFixed(2)} MB\n` +
+        result.dropped.map((seq) => `  note: no clip for "${seq}"\n`).join('') +
         notes.map((note) => `  note: ${note}\n`).join('') +
         '\n',
     );

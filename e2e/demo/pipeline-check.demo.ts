@@ -1,9 +1,7 @@
-import path from 'node:path';
-
 import { expect, test } from '@playwright/test';
 
 import { closeApp, launchApp, resetShell, type Harness } from '../harness.js';
-import { record, scene } from './recorder.js';
+import { record, sequence } from './recorder.js';
 
 /**
  * The self-contained proof that the recorder works.
@@ -17,8 +15,6 @@ import { record, scene } from './recorder.js';
  * ends in `.demo.ts` so the ordinary end-to-end run never picks it up.
  */
 
-const ROOT = path.resolve(__dirname, '../..');
-const OUTPUT = path.join(ROOT, 'demo', 'pipeline-check.mp4');
 
 /** Long enough for the whole timeline, the encode, and a slow terminal. */
 test.setTimeout(10 * 60_000);
@@ -36,12 +32,12 @@ test('records a demonstration of the shell', async () => {
     const result = await record({
       app,
       shell: window,
-      output: OUTPUT,
-      scenes: [
-        scene({
+      name: 'pipeline-check',
+      sequences: [
+        sequence({
+          id: 'shell',
           name: 'Stuffbucket',
           note: 'A three panel shell: navigation, canvas, inspector',
-          hold: 7,
           async drive({ shell }) {
             await shell.locator('.card').nth(2).click();
             await shell.waitForTimeout(1_200);
@@ -49,10 +45,10 @@ test('records a demonstration of the shell', async () => {
           },
         }),
 
-        scene({
+        sequence({
+          id: 'navigation',
           name: 'One navigation, many views',
           note: 'The left rail swaps what the canvas holds',
-          hold: 6,
           async drive({ shell }) {
             for (const view of ['recents', 'drafts', 'shared', 'trash']) {
               await shell.click(`[data-testid="nav-${view}"]`);
@@ -62,10 +58,10 @@ test('records a demonstration of the shell', async () => {
           },
         }),
 
-        scene({
+        sequence({
+          id: 'layout',
           name: 'Grid or list',
           note: 'The same items, laid out two ways',
-          hold: 6,
           async drive({ shell }) {
             await shell.click('[data-testid="mode-list"]');
             await expect(shell.locator('[data-testid="view-list"]')).toBeVisible();
@@ -76,10 +72,10 @@ test('records a demonstration of the shell', async () => {
           },
         }),
 
-        scene({
+        sequence({
+          id: 'panels',
           name: 'Fold the panels away',
           note: 'Both sides collapse, and the canvas takes the room',
-          hold: 6,
           async drive({ shell }) {
             await shell.click('[data-testid="toggle-right"]');
             await shell.waitForTimeout(1_000);
@@ -91,10 +87,10 @@ test('records a demonstration of the shell', async () => {
           },
         }),
 
-        scene({
+        sequence({
+          id: 'terminal',
           name: 'A real terminal in a tab',
           note: 'Ghostty over a native pseudo terminal',
-          hold: 8,
           async drive({ shell }) {
             await shell.click('[data-testid="tab-new"]');
             const terminal = shell.locator('[data-testid="terminal"]').last();
@@ -114,10 +110,10 @@ test('records a demonstration of the shell', async () => {
           },
         }),
 
-        scene({
+        sequence({
+          id: 'overlay',
           name: 'Ask, without leaving the app',
           note: 'A floating overlay, summoned over anything',
-          hold: 8,
           caption: 'top',
           async target({ app: application, shell }) {
             await shell.click('[data-testid="toggle-overlay"]');

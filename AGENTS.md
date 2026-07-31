@@ -16,7 +16,8 @@ background. If a rule looks arbitrary, the reason is in the linked document.
 | Unit tests | `npm test` |
 | Mutation tests | `npm run mutate` |
 | End-to-end tests | `npm run package && npm run test:e2e` |
-| Record a demo video | `npm run package && npm run record` |
+| Record a demo | `npm run package && npm run record` |
+| Re-cut a demo | `npm run compose -- <name>` |
 | Package | `npm run package` |
 | Verify a package | `npm run verify:package` |
 | Documentation lint | `npm run lint:docs` |
@@ -225,23 +226,23 @@ scenario. So a test run parks its windows off the side of the display.
 
 ## Screen recordings
 
-`npm run record` drives the application through a scripted timeline and encodes
-the frames into an mp4. See `docs/recording.md`. Full rules live there. Four
-that bite an agent working here:
+Recording is **capture then compose**, with a take on disk between them. See
+`docs/recording.md`. Full rules live there. Five that bite an agent here:
 
-- `e2e/demo/*.demo.ts` are timelines, not tests. `record.config.ts` matches
-  `*.demo.ts` and the suite matches `*.spec.ts`, so neither runner sees the
-  other. Do not merge the two configurations.
-- **`recorder.ts`, `screencast.ts`, `encode.ts`, and `caption.ts` stay generic.**
-  They know about pages, frames, and seconds. Application knowledge belongs in
-  `launch.ts` and the timelines. A fork keeps the first four unchanged.
-- **Never lower the pacing constants** to make a timeline fit. `MIN_HOLD_SECONDS`
-  and `SETTLE_SECONDS` are the difference between a video and a slideshow of
-  things that already happened. `rules.demo.ts` proves them.
-- A scene that ends in a visible change wastes its hold. Make the change early
-  in `drive`, and let the hold sit on the result.
+- **Capture never waits out a hold.** Timing belongs to `demo/edits/*.json`,
+  applied by `compose.ts`. Putting a sleep back into a timeline undoes the whole
+  design. A capture costs 45 seconds. A re-cut costs 6.
+- `SETTLE_SECONDS` is the one exception, and it has to be. A frame that was
+  never captured cannot be recovered at compose time.
+- `e2e/demo/*.demo.ts` are timelines, not tests. Three configs match three
+  suffixes: `.demo.ts`, `.compose.ts`, `.spec.ts`. Do not merge them.
+- **Only `launch.ts` and the timelines know about this application.** Everything
+  else in `e2e/demo/` is generic, and a fork keeps it unchanged.
+- **Never lower the pacing constants** to make an edit fit. `MIN_HOLD_SECONDS`
+  is the difference between a video and a slideshow of things that already
+  happened. `rules.demo.ts` proves them.
 - **`src/main/native/ffmpeg.ts` is the only copy of the encoder search.** It
-  imports no `electron`, so main and the recorder share it, and it is in the
+  imports no `electron`, so main and the recorder share it. It is in the
   `stryker.conf.json` mutate list. The application never downloads or installs
   `ffmpeg`. It detects, and it names the command that fixes a miss.
 
