@@ -82,7 +82,7 @@ export function RunInspector({
             <section className="inspector__section">
               <StatusChip run={run} />
               <p className="run-detail__task">{run.task}</p>
-              <p className="card__sub">{run.step}</p>
+              <p className="card__sub card__sub--wrap">{run.step}</p>
             </section>
 
             {run.status === 'blocked' && (
@@ -131,7 +131,7 @@ export function RunInspector({
           </>
         ) : (
           <>
-            <p className="card__sub">Select a run to inspect it.</p>
+            <p className="card__sub card__sub--wrap">Select a run to inspect it.</p>
             <WaitingOnYou onSelect={onSelect} />
           </>
         )}

@@ -10,6 +10,7 @@ import { clearBadge } from './native/notifications.js';
 import { isAgentBusy, shutdownAgent } from './native/agent.js';
 import {
   getPreferences,
+  isDemo,
   isE2E,
   isE2EQuiet,
   onPreferencesChanged,
@@ -22,10 +23,27 @@ import { createMainWindow } from './windows/main-window.js';
 import { destroyOverlay, toggleOverlay } from './windows/overlay.js';
 import { closeSplashWindow, createSplashWindow } from './windows/splash.js';
 
-// Under test, use a throwaway profile. This must happen before `whenReady`,
-// and it keeps a test run from clobbering a developer's real preferences.
+/*
+ * Pick the profile before anything else touches it.
+ *
+ * This has to happen before `whenReady`, and before the single instance lock
+ * below, because the lock is derived from the profile directory. Two builds
+ * pointing at the same directory are the same application as far as Chromium
+ * is concerned, and the second one to start will not get a window.
+ *
+ * - Under test: a throwaway directory, so a run never clobbers a developer's
+ *   real preferences.
+ * - In demo mode: a sibling directory that persists. The demo shell is a
+ *   different application with different data, and giving it its own profile
+ *   means `npm start` and `STUFFBUCKET_DEMO=1 npm start` can run side by side.
+ *   They could not before, and the failure was silent: the second process took
+ *   no lock, quit, and asked the first to come forward, so a developer saw a
+ *   clean build and a window that was not the one they had just asked for.
+ */
 if (isE2E()) {
   app.setPath('userData', mkdtempSync(path.join(tmpdir(), 'stuffbucket-e2e-')));
+} else if (isDemo()) {
+  app.setPath('userData', `${app.getPath('userData')}-demo`);
 }
 
 let mainWindow: BrowserWindow | undefined;
@@ -197,8 +215,14 @@ function bootstrap(): void {
 
 /* ------------------------------------------------------------- lifecycle */
 
-// A second instance should activate the first, not open another window.
+// A second instance should activate the first, not open another window. Say
+// so, because the alternative is a developer watching a clean build produce a
+// window that belongs to a process they started an hour ago.
 if (!app.requestSingleInstanceLock()) {
+  console.error(
+    `Another instance already holds ${app.getPath('userData')}. ` +
+      'Bringing it forward instead of opening a second window.',
+  );
   app.quit();
 } else {
   app.on('second-instance', activate);

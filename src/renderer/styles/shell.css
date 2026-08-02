@@ -130,12 +130,22 @@ button {
   min-height: 0;
 }
 
+/*
+ * The side panels are chrome, not content.
+ *
+ * They used to carry `--bg-panel`, which in dark sits lighter than the title
+ * bar and much lighter than the canvas. That made each one a filled slab, and
+ * a rail holding nine items above six hundred pixels of nothing read as an
+ * unfinished container rather than as margin. Matching the title bar makes the
+ * whole frame one surface, so the canvas is the only thing that looks like
+ * content and the empty stretch below the nav is just space.
+ */
 .panel {
   display: flex;
   flex-direction: column;
   min-height: 0;
   min-width: 0;
-  background: var(--bg-panel);
+  background: var(--bg-app);
 }
 
 .panel--canvas {
@@ -272,8 +282,8 @@ button {
   align-items: center;
   gap: var(--space-2);
   padding: 0 var(--space-2) 0 var(--space-3);
-  max-width: 180px;
-  min-width: 92px;
+  max-width: 200px;
+  min-width: 96px;
   color: var(--text-muted);
   white-space: nowrap;
   border-radius: var(--radius-input) var(--radius-input) 0 0;
@@ -391,7 +401,7 @@ button {
 
 .grid {
   display: grid;
-  gap: var(--space-4);
+  gap: var(--space-3);
   grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
 }
 
@@ -459,6 +469,20 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/*
+ * The same muted size, but as prose.
+ *
+ * `.card__sub` clips to one line, which is right for a card subtitle and wrong
+ * for an explanation. The settings panel borrowed it and lost the end of every
+ * sentence, which the larger type ramp made obvious.
+ */
+.card__sub--wrap {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  line-height: var(--leading-base);
 }
 
 .row {
@@ -774,11 +798,18 @@ button {
 /* ---- grid mode ---- */
 
 .grid--runs {
-  grid-template-columns: repeat(auto-fill, minmax(268px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(248px, 1fr));
 }
 
+/*
+ * The card pays for the larger type out of its own spacing.
+ *
+ * A fleet grid that shows seven of seventeen runs is losing to the list view,
+ * which shows all of them. Tightening the stack rather than shrinking the text
+ * keeps the reading size and buys back the rows.
+ */
 .run-card {
-  gap: var(--space-3);
+  gap: var(--space-2);
   padding: var(--space-3);
 }
 
@@ -858,17 +889,17 @@ button {
 }
 
 .run-row__model {
-  width: 126px;
+  width: 148px;
   font-family: var(--font-mono);
 }
 
 .run-row__tokens {
-  width: 52px;
+  width: 58px;
   text-align: right;
 }
 
 .run-row__elapsed {
-  width: 60px;
+  width: 66px;
   text-align: right;
 }
 
@@ -1024,4 +1055,50 @@ button {
 .waiting__meta {
   font-size: var(--text-sm);
   color: var(--text-muted);
+}
+
+/* ------------------------------------------------------------ scrollbars */
+
+/*
+ * A quiet scrollbar.
+ *
+ * The default one is sized and coloured for a document, and it became the
+ * loudest thing on the canvas once the side panels stopped competing with it.
+ * This keeps it legible and lets it fade into the surface it sits on.
+ */
+.canvas,
+.nav,
+.inspector__body {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.canvas::-webkit-scrollbar,
+.nav::-webkit-scrollbar,
+.inspector__body::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.canvas::-webkit-scrollbar-thumb,
+.nav::-webkit-scrollbar-thumb,
+.inspector__body::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  /* Inset the thumb so it reads as a hint rather than a rail. */
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: var(--radius-pill);
+}
+
+.canvas::-webkit-scrollbar-thumb:hover,
+.nav::-webkit-scrollbar-thumb:hover,
+.inspector__body::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+  background-clip: content-box;
+}
+
+.canvas::-webkit-scrollbar-track,
+.nav::-webkit-scrollbar-track,
+.inspector__body::-webkit-scrollbar-track {
+  background: transparent;
 }

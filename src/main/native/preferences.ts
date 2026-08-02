@@ -74,6 +74,21 @@ export function isE2E(): boolean {
 }
 
 /**
+ * True when the window should mount the demo shell.
+ *
+ * `STUFFBUCKET_DEMO=1` loads the renderer with `?demo=1`, and the renderer
+ * branches on `location.search`. It travels as a query string rather than as
+ * an IPC channel on purpose: the contract in `src/shared/ipc.ts` is checked by
+ * an exhaustiveness proof and a tripwire test, and a presentation flag does
+ * not belong there.
+ *
+ * It also earns a profile of its own. See `src/main/index.ts`.
+ */
+export function isDemo(): boolean {
+  return process.env['STUFFBUCKET_DEMO'] === '1';
+}
+
+/**
  * True when the suite should stay off the user's screen.
  *
  * A test run drives a real application on a real desktop. Left alone it paints

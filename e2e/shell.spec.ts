@@ -91,8 +91,10 @@ scenario('grid and list modes swap the content layout', async () => {
 
   expect(gridStyles.display).toBe('grid');
   // The historical failure mode: the gap resolves to `normal` or `0px`,
-  // because the token never reached the element.
-  expect(gridStyles.gap).toBe('16px');
+  // because the token never reached the element. The number tracks
+  // `--space-3`, which the grid moved to when the type ramp grew and the
+  // cards needed the room back.
+  expect(gridStyles.gap).toBe('12px');
 });
 
 scenario('both side panels collapse and expand', async () => {

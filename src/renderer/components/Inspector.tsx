@@ -81,7 +81,9 @@ export function Inspector({
             <Field label="Size" value={item.size} />
           </section>
         ) : (
-          <p className="card__sub">Select an item to inspect its properties.</p>
+          <p className="card__sub card__sub--wrap">
+            Select an item to inspect its properties.
+          </p>
         )}
 
         {prefs && (
@@ -111,7 +113,7 @@ export function Inspector({
               onChange={(next) => onPrefChange({ agentTools: next })}
               testId="pref-agent-tools"
             />
-            <p className="card__sub">
+            <p className="card__sub card__sub--wrap">
               Lets the overlay agent read, write, and run shell commands in your
               working directory.
             </p>
@@ -167,7 +169,7 @@ export function Inspector({
           >
             Check for updates
           </button>
-          <p className="card__sub">{updateLabel(updateStatus)}</p>
+          <p className="card__sub card__sub--wrap">{updateLabel(updateStatus)}</p>
         </section>
 
         {versions && (

@@ -2,6 +2,8 @@ import path from 'node:path';
 
 import { BrowserWindow, shell } from 'electron';
 
+import { isDemo } from '../native/preferences.js';
+
 /**
  * The main application window.
  *
@@ -9,19 +11,6 @@ import { BrowserWindow, shell } from 'electron';
  * the React shell can draw its own toolbar into that strip. The renderer gets
  * window controls through the `window:action` IPC channel.
  */
-
-/**
- * Demo mode, for screenshots and screen recordings.
- *
- * `STUFFBUCKET_DEMO=1` loads the renderer with `?demo=1`, and the renderer
- * branches on `location.search`. It travels as a query string rather than as an
- * IPC channel on purpose: the contract in `src/shared/ipc.ts` is checked by an
- * exhaustiveness proof and a tripwire test, and a presentation flag does not
- * belong there. Unset, every path below is the production path.
- */
-function isDemo(): boolean {
-  return process.env['STUFFBUCKET_DEMO'] === '1';
-}
 
 export function createMainWindow(): BrowserWindow {
   const window = new BrowserWindow({

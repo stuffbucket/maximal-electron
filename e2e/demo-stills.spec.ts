@@ -84,6 +84,10 @@ test('01 projects and agents, grid mode', async () => {
   await expect(window.locator('[data-testid="left-nav"]')).toContainText(
     'maximal-core',
   );
+  // The fleet opens as a list, so this asks for the grid rather than assuming
+  // it. A still that depends on a default breaks when the default is the thing
+  // being changed.
+  await window.click('[data-testid="mode-grid"]');
   await expect(window.locator('[data-testid="view-grid"]')).toBeVisible();
   await expect(window.locator('.run-card')).toHaveCount(17);
   await expect(window.locator('[data-testid="inspector"]')).toContainText('Fleet');
@@ -112,6 +116,7 @@ test('03 several agent sessions and a terminal open', async () => {
 
   // Back to a session tab, so the canvas shows the fleet behind the strip.
   await window.locator('.tab').first().click();
+  await window.click('[data-testid="mode-grid"]');
   await expect(window.locator('[data-testid="view-grid"]')).toBeVisible();
   await expect(window.locator('[data-testid="inspector"]')).toContainText(
     'Refactor auth middleware',

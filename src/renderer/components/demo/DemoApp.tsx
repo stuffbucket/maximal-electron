@@ -56,7 +56,16 @@ const DEMO_SHELL = navigator.userAgent.includes('Windows')
 
 export function DemoApp() {
   const [view, setView] = useState<DemoViewId>(DEFAULT_VIEW);
-  const [mode, setMode] = useState<ViewMode>('grid');
+  /*
+   * A fleet opens as a queue, not as a wall of cards.
+   *
+   * The grid fits seven of seventeen runs, and an operator watching agents
+   * wants to see all of them and what each is waiting on. The list does that
+   * in one screen. The grid is still a click away, and the production shell
+   * still opens on the grid, because documents are things you recognise by
+   * sight and runs are things you read.
+   */
+  const [mode, setMode] = useState<ViewMode>('list');
   const [selectedId, setSelectedId] = useState<string>();
   const [prefs] = usePreferences();
 
