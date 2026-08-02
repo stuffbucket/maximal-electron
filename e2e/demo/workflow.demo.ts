@@ -263,7 +263,10 @@ function overlaySequences(harness: DemoHarness): SequenceDef[] {
         // Put the fleet in front, so the change lands on the whole interface
         // rather than on a terminal that is mostly black either way.
         await shell.locator('.tab').first().click();
-        await expect(shell.locator('[data-testid="view-grid"]')).toBeVisible();
+        // Wait for the canvas, not for one view mode. This scene only needs
+        // the fleet in front so the repaint lands on the whole interface;
+        // which way it is laid out is the edit's business.
+        await expect(shell.locator('[data-testid="canvas"]')).toBeVisible();
         return shell;
       },
       async drive({ app, shell, mark }) {
@@ -302,7 +305,10 @@ test('records the agent workflow', async () => {
     harness = await launchDemoApp();
     const { app, window } = harness;
 
-    await expect(window.locator('.run-card')).toHaveCount(17);
+    // Count by the per-run test id rather than by the card class. The fleet
+    // opens as a list now, and an assertion pinned to one view mode breaks
+    // whenever the default moves rather than when the fixture does.
+    await expect(window.locator('[data-testid^="run-run-"]')).toHaveCount(17);
 
     const sequences = shellSequences();
 
