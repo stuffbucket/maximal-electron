@@ -138,18 +138,18 @@ sequence({
 });
 ```
 
-Use `sequence()` rather than an object literal. It is where the id rules are
-checked, and a literal would skip them. Ids are lower case, digits, and dashes,
-because they are keys in a JSON file a person edits by hand.
+Use `sequence()` rather than an object literal. It checks the id rules, and a
+literal would skip them. Ids are lower case, digits, and dashes, because they
+are keys in a JSON file a person edits by hand.
 
 Internal pacing inside `drive` is content and stays. A pause between two tab
 clicks, or a typing delay, is part of what the viewer watches. Holds are not.
 
 ## The pacing rules
 
-These live in `edit.ts` and are checked against the edit, not left to whoever
-writes one. Each is easy to shave off and hard to notice until the video is
-unwatchable.
+These live in `edit.ts`, which checks them against the edit rather than leaving
+it to whoever writes one. Each is easy to shave off and hard to notice until
+the video is unwatchable.
 
 | Rule | Value | Why |
 | --- | --- | --- |
@@ -160,13 +160,13 @@ unwatchable.
 | `MIN_TOTAL_SECONDS` | 30 | Give a viewer time to take it in. |
 | `MAX_FINAL_PAD_SECONDS` | 12 | A cap, so padding cannot rescue a stub. |
 
-An edit that cannot reach the duration floor is rejected before a frame is
-written.
+`edit.ts` rejects an edit that cannot reach the duration floor, before compose
+writes a frame.
 
 `SETTLE_SECONDS` is the only one that is still a real wait during capture. It
 has to be. The interface is mid-reaction when `drive` returns, and a frame that
-was never captured cannot be recovered later. Every other number is applied at
-compose time, so breaking one costs six seconds to find and six to fix.
+was never captured cannot be recovered later. Compose applies every other
+number, so breaking one costs six seconds to find and six to fix.
 
 One rule the code cannot enforce. When the point of a sequence is a visible
 change, make the change happen **early** in `drive`. Freezing helps here, but
@@ -191,13 +191,13 @@ A screencast emits at irregular intervals. The obvious fix is an `ffmpeg`
 concat list with a `duration` per still. That is wrong.
 
 The concat demuxer rounds every duration to the inner demuxer time base, which
-for a still is a fortieth of a second. Frames arriving at about 30 a second
+for a still is a twenty-fifth of a second. Frames arriving at about 30 a second
 each rounded up to 40 milliseconds. A 38 second timeline came out as 51 seconds
 of slow motion.
 
-So each clip is written as a numbered sequence at the output frame rate, using
-symbolic links rather than copies. A minute of video is 1800 ticks over roughly
-900 distinct stills.
+So compose writes each clip as a numbered sequence at the output frame rate,
+using symbolic links rather than copies. A minute of video is 1800 ticks over
+roughly 900 distinct stills.
 
 ## Colour
 
@@ -290,13 +290,13 @@ the agent, and the approval gate are all the production code paths.
 
 ## Cards
 
-Cards are rendered to transparent images and laid over the video at compose
-time. They used to be injected into the page while recording, which burned them
-into the frames. Moving one, hiding one, or changing where it sat then meant
-driving the application again.
+Capture renders cards to transparent images, and compose lays them over the
+video. Capture used to inject them into the page while recording, which burned
+them into the frames. Moving one, hiding one, or changing where it sat then
+meant driving the application again.
 
-They are still drawn by a browser rather than by the encoder. `drawtext` cannot
-do the rounded corner, the hairline border, or the drop shadow.
+A browser still draws them rather than the encoder. `drawtext` cannot do the
+rounded corner, the hairline border, or the drop shadow.
 
 Three things about that rendering are not obvious, and each one produced a
 visible defect first:
@@ -307,7 +307,7 @@ visible defect first:
   shadow. A throwaway `transparent: true` window has real alpha.
 - **The rules go in a `<style>` block, not a `style` attribute.** The font stack
   contains `"Segoe UI"`, and those double quotes close an HTML attribute early.
-  Everything after them is dropped, which cost a card its colour and its
+  The browser drops everything after them, which cost a card its colour and its
   typeface.
 - **The card is inset by the margin it needs.** The image carries a transparent
   border wide enough for the shadow. Sitting the card 40 pixels from the edge

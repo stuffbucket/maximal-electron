@@ -2,7 +2,7 @@
 
 ## Processes
 
-```
+```text
 main process                  preload (sandboxed)         renderer
 ─────────────                 ───────────────────         ────────
 src/main/index.ts             src/preload/index.ts        src/renderer/main.tsx
@@ -84,7 +84,7 @@ shell     -> `pty:data` event                   -> term.write
 
 Three details are load-bearing.
 
-- **Output is batched.** A build log emits thousands of small writes per
+- **`pty.ts` batches output.** A build log emits thousands of small writes per
   second. One message each would swamp the channel, so `pty.ts` coalesces on an
   8 millisecond timer.
 - **Terminals stay mounted.** Switching tabs hides the inactive host rather
@@ -151,10 +151,26 @@ Components reference semantic names only. No component contains a hex value.
 | Embedded model | `native/llama.ts` | Downloads and loads the local weights. |
 | Embedded run | `native/embedded.ts` | The llama.cpp engine, behind the same gate. |
 | Tool approval | `native/approval.ts` | Decides what the agent must ask about. Pure, and mutation tested. |
+| Toolsets | `native/toolsets.ts` | Named groups of tools. Each tool declares its own risk, so the gate cannot go stale. |
 | Schema bridge | `native/grammar.ts` | Translates tool schemas for llama.cpp. Pure, and mutation tested. |
 
 The menu and the tray both route through `sendEvent`, so the React shell stays
 the single owner of view state.
+
+### The overlay window
+
+`windows/overlay.ts` builds a `BrowserWindow` with `type: 'panel'`, held above
+full-screen applications by `setAlwaysOnTop(true, 'screen-saver')`, and placed
+on the display `getDisplayNearestPoint` returns for the cursor. A preference
+holds the accelerator that summons it.
+
+Two behaviours are deliberate.
+
+- **It does not hide on blur.** The window covers the display, so a click
+  outside the card already lands on the scrim. A blur handler on top of that
+  makes the card vanish whenever a notification takes focus.
+- **`showInactive`, then `focus`.** That pair puts the panel on screen and
+  gives it key input without activating this application.
 
 ## Build output
 
@@ -188,7 +204,7 @@ renderer through the debugger. So it does not depend on what is in front.
 
 A run also keeps off the developer's screen. The overlay is built to sit above
 full-screen applications and take the keyboard, which is correct in production
-and hostile during sixteen scenarios. Under `STUFFBUCKET_E2E` the windows move
+and hostile during eighteen scenarios. Under `STUFFBUCKET_E2E` the windows move
 off the side of the display instead. They still show, still report visible, and
 still lay out identically. `STUFFBUCKET_E2E_VISIBLE=1` puts them back.
 

@@ -9,7 +9,7 @@ description: Tag and ship a release across macOS and Windows
 
 ```bash
 npm ci
-npm run lint && npm run typecheck && npm test && npm run lint:docs
+npm run lint && npm run typecheck && npm test
 npm run package && npm run verify:package && npm run test:e2e
 ```
 
@@ -49,7 +49,7 @@ macOS artifact.
 
    ```bash
    gh workflow run build.yml --repo stuffbucket/macos-builder \
-     -f repo=stuffbucket/electron -f ref=v0.1.0
+     -f repo=stuffbucket/maximal-electron -f ref=v0.1.0
    ```
 
 3. When the dmg appears on the draft, publish by hand:

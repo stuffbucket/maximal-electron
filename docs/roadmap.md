@@ -1,168 +1,38 @@
 # Roadmap
 
-Work that is scoped but not built. Each entry records what I verified, so the
-next person does not repeat the research.
+Work that is scoped but not built.
 
-## 1. Ghostty in the tab webview
+The design of what already works lives elsewhere: `docs/architecture.md` for
+the shell, the terminal, and the windows, and `AGENTS.md` for the overlay
+agent, the provider chain, and the approval gate. This file only records what
+is missing, so it does not drift out of step with them.
 
-**Status: done.** See `docs/architecture.md` for the design.
+## Terminals
 
-`coder/ghostty-web` is the answer: Ghostty's virtual terminal compiled to
-WebAssembly, with the xterm.js API, MIT licensed, built for Coder's Mux. The
-shell runs in the main process through `@lydell/node-pty`, which keeps the
-renderer sandboxed.
-
-I was wrong in an earlier version of this document. I claimed no web or
-WebAssembly build existed. My search was one query with poor terms. There is a
-whole ecosystem: `ghostty-web` and `@slopus/ghostty-wasm` on npm, plus
-`libghostty-vt` users such as `restty`, `hauntty`, and an Obsidian plugin.
-
-**Remaining work.**
+Working. `coder/ghostty-web` in the renderer, `@lydell/node-pty` in the main
+process. See `docs/architecture.md`.
 
 - Verified on macOS only. The prebuilt pty covers Windows and Linux, but no one
   has run it there.
 - No tab-level working directory. Every shell starts in the home directory.
 - No flow control. A process that floods output will still outrun the batcher.
 
-## 2. Floating overlay, in the wiggle model
+## The overlay
 
-**Status: working.** Summon with the accelerator, or the sparkle button in the
-title bar.
+Working. Summon with the accelerator, or the sparkle button in the title bar.
 
-The Electron translation of wiggle's design:
-
-| Concern | Wiggle | Here |
-| --- | --- | --- |
-| Window | Non-activating `NSPanel` | `BrowserWindow` with `type: 'panel'` |
-| Stacking | Above full screen | `setAlwaysOnTop(true, 'screen-saver')` |
-| Dim and card | CSS | CSS |
-| Placement | Focused monitor | `getDisplayNearestPoint` on the cursor |
-| Summon | Double tap of Ctrl | `CommandOrControl+Shift+Space` |
-
-Two decisions worth keeping.
-
-- **No hide on blur.** The window covers the display, so a click outside the
-  card already hits the scrim. A blur handler on top of that makes the card
-  vanish whenever a notification steals focus.
-- **`showInactive` then `focus`.** That pair puts the panel on screen and gives
-  it key input without activating this application.
-
-### The remaining gap: double tap of Ctrl
-
-`globalShortcut` cannot bind a bare modifier, so it cannot see a double tap.
-That needs a native monitor: either a small addon around
-`NSEvent.addGlobalMonitorForEvents`, or `uiohook-napi`. Both need the
-Accessibility permission on macOS, which the application must request and
-explain.
+**The summon is an accelerator, not a double tap of Ctrl.** `globalShortcut`
+cannot bind a bare modifier, so it cannot see a double tap. That needs a native
+monitor: either a small addon around `NSEvent.addGlobalMonitorForEvents`, or
+`uiohook-napi`. Both need the Accessibility permission on macOS, which the
+application must request and explain.
 
 The accelerator exists so the feature is usable and testable before that lands.
 It is a preference, so the native monitor can replace it without a redesign.
 
-## 3. The overlay agent
+## The agent
 
-**Status: working, with tools and streaming.** Verified end to end: the overlay
-asked the agent to run `echo AGENT_TOOL_5521` through its bash tool, and it
-reported the real output.
-
-It runs the **pi coding agent**, from `badlogic/pi-mono`:
-
-| Package | Role |
-| --- | --- |
-| `@earendil-works/pi-ai` | Provider layer. Streams from the local endpoint. |
-| `@earendil-works/pi-agent-core` | The agent loop, tools, and session state. |
-
-Both pinned at 0.83.0. Note the repository is `badlogic/pi-mono`. `badlogic/pi`
-is a different project, a vLLM deployment CLI, and is easy to vendor by
-mistake.
-
-Discovery copies wiggle, and the property worth keeping is that there is
-**nothing to configure to start**:
-
-1. Try maximal on `localhost:4141`. It speaks the Anthropic API.
-2. Fall back to Ollama on `localhost:11434`, using a model it actually has.
-3. Otherwise run the embedded model, in this process.
-
-So this application holds no API key, and it needs nothing installed.
-
-### The embedded model
-
-**Status: working.** `node-llama-cpp` runs Qwen3 0.6B Q8_0 in the main process
-over Metal.
-
-It is the floor rather than the default. A proxy backed by a real subscription
-beats it on every axis. What it buys is that the application works offline, and
-on a machine with nothing set up.
-
-The weights are fetched once, into the user data directory, and are not in the
-installer. They are 610 MB and they change on a different schedule to the
-application. Shipping them would put that on every release, and would pin the
-model to the app version.
-
-Two things are worth knowing.
-
-**The engines differ.** The proxy path uses pi's agent loop. The embedded path
-lets llama.cpp own the loop, because it constrains sampling to the tool
-grammar. That is most of why a model this small can call tools. Both share the
-approval gate and the sink.
-
-**The schemas differ too.** pi describes a closed set of strings the TypeBox
-way, and llama.cpp wants an `enum`. Handed the wrong dialect it throws, and the
-tool never becomes callable. That looks exactly like a model too small to
-follow an instruction. `src/main/native/grammar.ts` translates.
-
-### Why this model
-
-It was picked for restraint rather than for size. In a published comparison of
-21 open-weight models it tied for the best agent score. The measure that
-matters for a concierge is not calling a tool when none is needed. Llama 3.2 at
-a similar size calls one on every prompt, which trains people to dismiss the
-approval card unread.
-
-Verified here: three concierge cases, all correct, each under 1.4 seconds,
-including the case where the right answer is to call nothing.
-
-### Two details worth knowing
-
-**The tool bridge.** `AgentHarnessTool.execute` takes its context as a fifth
-argument. The plain `Agent` does not pass one. `buildTools` closes over that
-context, and that closure is the whole bridge between the two layers.
-
-**Tools mean shell access.** The agent gets read, write, edit, and bash in the
-working directory. That is what makes it a coding agent rather than a prompt
-box. It is also why `agentTools` is a preference, with a switch in the
-inspector.
-
-### The approval gate
-
-**Status: working.** A tool call stops and asks before it runs.
-
-`beforeToolCall` blocks the agent loop on a promise. The overlay card then
-grows a prompt showing the tool and what it would act on. That is the command
-for `bash`, and the path for anything touching a file. Enter allows, Escape
-denies, and a third button allows that one tool for the rest of the run.
-
-The policy is a preference, `agentApproval`:
-
-| Value | Behaviour |
-| --- | --- |
-| `writes` | Default. Reading is free; anything that can change the machine asks. |
-| `all` | Every tool asks, including reads. |
-| `none` | Never ask. The unattended behaviour, as a deliberate choice. |
-
-Three properties are load-bearing.
-
-- **The gate denies on every edge.** A prompt nobody answers times out after
-  45 seconds. Abort denies. Dismissing the card denies. A gate that can hang is
-  worse than no gate. The run would hold the agent busy until restart.
-- **Remember is per run, and allow only.** Nothing about a decision is stored
-  on disk. A remembered deny would break the rest of a run silently.
-- **The tool list is an allow-list.** An unrecognised tool asks, so adding one
-  cannot quietly widen what runs unattended.
-
-`src/main/native/approval.ts` holds that logic, free of `electron`, so it is
-mutation tested rather than merely covered.
-
-### Not yet done
+Working, with tools, streaming, and an approval gate. See `AGENTS.md`.
 
 - **No conversation.** Each summon starts a fresh transcript. `pi-agent-core`
   has session storage; wiring it is the next step.
@@ -171,9 +41,6 @@ mutation tested rather than merely covered.
   not the diff. Reviewing a change needs the diff.
 
 ## Sequencing
-
-The overlay, the terminal, the agent, and the approval gate all work. What is
-left, in order:
 
 1. Conversation history across summons.
 2. A diff view in the approval prompt for `edit` and `write`.
