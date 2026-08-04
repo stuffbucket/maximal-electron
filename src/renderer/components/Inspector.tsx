@@ -9,16 +9,7 @@ import type {
 import { bridge } from '../lib/bridge.js';
 import type { Item } from '../lib/data.js';
 
-import { IconButton, Switch } from './Controls.js';
-
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="field">
-      <span className="field__label">{label}</span>
-      <span className="field__value">{value}</span>
-    </div>
-  );
-}
+import { Field, IconButton, Switch } from './Controls.js';
 
 function updateLabel(status: UpdateStatus): string {
   switch (status.state) {
