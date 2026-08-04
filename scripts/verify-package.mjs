@@ -14,11 +14,21 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+/**
+ * `npx`, by the name this platform can actually execute.
+ *
+ * npm ships `npx.cmd` on Windows. libuv's process spawn appends `.exe` to an
+ * extension-less name and does not try `.cmd`, so a bare `npx` fails with
+ * ENOENT. That is not a packaging fault, but it failed the Windows job as
+ * though it were one.
+ */
+const NPX = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 
 const failures = [];
 const check = (ok, message) => {
@@ -58,7 +68,7 @@ if (!existsSync(app)) {
 console.log('asar contents');
 
 const listing = execFileSync(
-  'npx',
+  NPX,
   ['--yes', '@electron/asar', 'list', asar],
   { encoding: 'utf8' },
 ).split('\n');
@@ -97,12 +107,27 @@ check(
 // The prebuilt binary is unpacked beside the asar, because a .node file cannot
 // be loaded from inside one.
 const unpacked = path.join(path.dirname(asar), 'app.asar.unpacked');
-const findUnpacked = (pattern) =>
-  existsSync(unpacked)
-    ? execFileSync('find', [unpacked, '-name', pattern], { encoding: 'utf8' })
-        .split('\n')
-        .filter(Boolean)
-    : [];
+
+/**
+ * Unpacked files whose name matches a simple `*` glob.
+ *
+ * This used to shell out to `find`. On Windows that name resolves to
+ * `System32\find.exe`, which searches for a string inside files and takes
+ * unrelated arguments, so these checks reported a packaging fault that was
+ * really a portability one. Reading the directory needs no subprocess and
+ * behaves the same everywhere.
+ */
+const findUnpacked = (pattern) => {
+  if (!existsSync(unpacked)) return [];
+  const expression = pattern
+    .split('*')
+    .map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))
+    .join('.*');
+  const matches = new RegExp(`^${expression}$`);
+  return readdirSync(unpacked, { recursive: true, encoding: 'utf8' }).filter(
+    (entry) => matches.test(path.basename(entry)),
+  );
+};
 
 check(findUnpacked('*.node').length > 0, 'a native .node binary is unpacked');
 
@@ -132,7 +157,7 @@ const EXPECTED = {
 
 let report = '';
 try {
-  report = execFileSync('npx', ['--yes', '@electron/fuses', 'read', '--app', app], {
+  report = execFileSync(NPX, ['--yes', '@electron/fuses', 'read', '--app', app], {
     encoding: 'utf8',
   });
 } catch (error) {

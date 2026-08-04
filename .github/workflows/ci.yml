@@ -43,8 +43,25 @@ jobs:
 
       # Documentation gate. Fails only on STE.SentenceLength and
       # STE.Contractions; warnings and suggestions print but pass.
+      #
+      # This is `stuffbucket/vale`, not errata-ai Vale. It compiles the STE
+      # rules into the binary, so there is no `.vale.ini` or styles directory
+      # to keep in step. `brew install vale` was wrong twice over: Homebrew is
+      # not on an ubuntu runner, which is the 127 this used to fail with, and
+      # the tap that carries the fork is not tapped there, so the name would
+      # have resolved to a different program with different flags.
+      #
+      # Pinned, because the rules decide whether the build passes.
       - name: Install vale
-        run: brew install vale
+        env:
+          VALE_VERSION: 0.15.0
+        run: |
+          curl -fsSL -o vale.tar.gz \
+            "https://github.com/stuffbucket/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_linux_amd64.tar.gz"
+          tar -xzf vale.tar.gz vale
+          sudo install -m 755 vale /usr/local/bin/vale
+          rm vale vale.tar.gz
+          vale --version
       - run: npm run lint:docs
 
   package:
