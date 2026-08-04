@@ -20,7 +20,6 @@ background. If a rule looks arbitrary, the reason is in the linked document.
 | Re-cut a demo | `npm run compose -- <name>` |
 | Package | `npm run package` |
 | Verify a package | `npm run verify:package` |
-| Documentation lint | `npm run lint:docs` |
 | Regenerate icons | `npm run icons` |
 
 Run `npm run lint:fix` after you change code. Do not ask first.
@@ -294,10 +293,12 @@ Never lower the threshold to make a change fit.
 
 ## Documentation
 
-`npm run lint:docs` gates on `STE.SentenceLength` (25 words) and
-`STE.Contractions`. Warnings and suggestions print but do not fail.
+Keep sentences short. Do not use contractions. Name the component that acts,
+rather than writing a passive that leaves the actor out: `pty.ts` coalesces
+output, rather than output is batched.
 
-Keep sentences short. Do not use contractions.
+There is no automated check. Style here is a matter of judgement, and the one
+tool that was tried could not tell a rule from a description.
 
 ## Release
 

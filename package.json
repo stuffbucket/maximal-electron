@@ -18,7 +18,6 @@
     "verify:package": "node scripts/verify-package.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "lint:docs": "vale --min-severity error README.md AGENTS.md docs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
