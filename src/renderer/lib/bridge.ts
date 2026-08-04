@@ -54,18 +54,3 @@ export function usePreferences(): [
 
   return [prefs, update];
 }
-
-/** Track whether the window is maximized, for the custom title bar controls. */
-export function useMaximized(): boolean {
-  const [maximized, setMaximized] = useState(false);
-
-  useEffect(() => {
-    void bridge.invoke('window:is-maximized').then(setMaximized);
-  }, []);
-
-  useBridgeEvent('window:maximized-changed', ({ maximized: next }) =>
-    setMaximized(next),
-  );
-
-  return maximized;
-}

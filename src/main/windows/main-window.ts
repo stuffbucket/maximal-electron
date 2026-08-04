@@ -8,8 +8,9 @@ import { isDemo } from '../native/preferences.js';
  * The main application window.
  *
  * The title bar is hidden on macOS (`hiddenInset`) and overlaid on Windows, so
- * the React shell can draw its own toolbar into that strip. The renderer gets
- * window controls through the `window:action` IPC channel.
+ * the React shell can draw its own toolbar into that strip. The system draws
+ * the window controls: native traffic lights on macOS, `titleBarOverlay`
+ * elsewhere. Nothing in the renderer draws or drives them.
  */
 
 export function createMainWindow(): BrowserWindow {

@@ -96,13 +96,3 @@ export function viewLabel(view: DemoViewId): string {
   }
   return 'All runs';
 }
-
-/** The status line under the canvas: how the fleet is doing overall. */
-export function fleetSummary(): string {
-  return (
-    `${String(RUNS.length)} runs · ` +
-    `${String(countBy('running'))} running · ` +
-    `${String(countBy('blocked'))} need approval · ` +
-    `${String(countBy('failed'))} failed`
-  );
-}

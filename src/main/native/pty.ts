@@ -132,7 +132,3 @@ export function killPty(id: string): void {
 export function killAllPtys(): void {
   for (const id of [...sessions.keys()]) killPty(id);
 }
-
-export function ptyCount(): number {
-  return sessions.size;
-}

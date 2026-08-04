@@ -51,8 +51,8 @@ describe('IPC contract', () => {
     // noticing this list is not. Update it in the same change.
     const channels: IpcChannel[] = [...IPC_CHANNELS];
     const events: IpcEvent[] = [...IPC_EVENTS];
-    expect(channels).toHaveLength(21);
-    expect(events).toHaveLength(12);
+    expect(channels).toHaveLength(19);
+    expect(events).toHaveLength(11);
   });
 
   it('keeps the terminal channels together', () => {

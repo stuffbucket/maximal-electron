@@ -86,9 +86,6 @@ export type UpdateStatus =
   | { state: 'up-to-date'; version: string }
   | { state: 'error'; message: string };
 
-/** Window controls, used by the custom title bar. */
-export type WindowAction = 'minimize' | 'maximize' | 'close';
-
 /** Top-level views the left navigation can select. */
 export type ViewId = 'library' | 'recents' | 'drafts' | 'shared' | 'trash';
 
@@ -143,10 +140,6 @@ export interface AskRequest {
   prompt: string;
 }
 
-export type AskResult =
-  | { ok: true; text: string }
-  | { ok: false; error: string };
-
 /** A run either started, or could not. Output arrives as events. */
 export type AskAccepted = { started: true } | { started: false; reason: string };
 
@@ -191,8 +184,6 @@ export interface IpcContract {
   'app:versions': { request: void; response: AppVersions };
   'prefs:get': { request: void; response: Preferences };
   'prefs:set': { request: Partial<Preferences>; response: Preferences };
-  'window:action': { request: WindowAction; response: void };
-  'window:is-maximized': { request: void; response: boolean };
   'notify:show': { request: NotifyRequest; response: void };
   'dock:set-badge': { request: { count: number }; response: void };
   'update:check': { request: void; response: UpdateStatus };
@@ -237,8 +228,6 @@ export const IPC_CHANNELS = [
   'app:versions',
   'prefs:get',
   'prefs:set',
-  'window:action',
-  'window:is-maximized',
   'notify:show',
   'dock:set-badge',
   'update:check',
@@ -269,8 +258,6 @@ export interface IpcEvents {
   'update:status': UpdateStatus;
   /** Preferences changed, from any source. */
   'prefs:changed': Preferences;
-  /** The window was maximized or restored. */
-  'window:maximized-changed': { maximized: boolean };
 
   /** A batch of terminal output for one tab's shell. */
   'pty:data': { id: string; data: string };
@@ -297,7 +284,6 @@ export const IPC_EVENTS = [
   'menu:toggle-panel',
   'update:status',
   'prefs:changed',
-  'window:maximized-changed',
   'pty:data',
   'pty:exit',
   'agent:delta',

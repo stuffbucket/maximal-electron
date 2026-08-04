@@ -68,17 +68,6 @@ const handlers: IpcHandlers = {
   'prefs:get': () => getPreferences(),
   'prefs:set': (patch) => setPreferences(patch),
 
-  'window:action': (action, window) => {
-    if (!window || window.isDestroyed()) return;
-    if (action === 'minimize') window.minimize();
-    else if (action === 'close') window.close();
-    else if (window.isMaximized()) window.unmaximize();
-    else window.maximize();
-  },
-
-  'window:is-maximized': (_request, window) =>
-    Boolean(window && !window.isDestroyed() && window.isMaximized()),
-
   'notify:show': (request) => showNotification(request),
 
   'dock:set-badge': (request) => setBadgeCount(request.count),

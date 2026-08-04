@@ -115,10 +115,6 @@ export function isModelPresent(): boolean {
 let inFlight: Promise<ModelProgress> | undefined;
 let controller: AbortController | undefined;
 
-export function isDownloading(): boolean {
-  return inFlight !== undefined;
-}
-
 /** Stop a download in progress. The partial file is left for a later resume. */
 export function cancelModelDownload(): void {
   controller?.abort();
