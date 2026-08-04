@@ -1,7 +1,7 @@
 import { Bot, GitBranch } from 'lucide-react';
 
 import { STATUS_LABELS, type AgentRun } from '../../lib/demo-runs.js';
-import { EmptyState, StatusChip, type ViewMode } from '../Controls.js';
+import { Card, EmptyState, Row, StatusChip, type ViewMode } from '../Controls.js';
 
 function RunCard({
   run,
@@ -13,13 +13,12 @@ function RunCard({
   onSelect: () => void;
 }) {
   return (
-    <button
-      type="button"
-      className="card run-card"
-      data-status={run.status}
-      aria-selected={selected}
-      onClick={onSelect}
-      data-testid={`run-${run.id}`}
+    <Card
+      modifier="run-card"
+      status={run.status}
+      selected={selected}
+      onSelect={onSelect}
+      testId={`run-${run.id}`}
     >
       <span className="run-card__head">
         <StatusChip status={run.status} label={STATUS_LABELS[run.status]} />
@@ -38,7 +37,7 @@ function RunCard({
         </span>
         <span className="run-card__diff">{run.diff}</span>
       </span>
-    </button>
+    </Card>
   );
 }
 
@@ -52,12 +51,11 @@ function RunRow({
   onSelect: () => void;
 }) {
   return (
-    <button
-      type="button"
-      className="row run-row"
-      aria-selected={selected}
-      onClick={onSelect}
-      data-testid={`run-${run.id}`}
+    <Row
+      modifier="run-row"
+      selected={selected}
+      onSelect={onSelect}
+      testId={`run-${run.id}`}
     >
       <span className="dot" data-status={run.status} />
       <span className="row__name">{run.task}</span>
@@ -65,7 +63,7 @@ function RunRow({
       <span className="row__sub run-row__model">{run.model}</span>
       <span className="row__sub run-row__tokens">{run.tokens}</span>
       <span className="row__sub run-row__elapsed">{run.elapsed}</span>
-    </button>
+    </Row>
   );
 }
 

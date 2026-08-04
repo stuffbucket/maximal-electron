@@ -3,7 +3,7 @@ import type { ComponentType } from 'react';
 
 import { type Item } from '../lib/data.js';
 
-import { EmptyState, type ViewMode } from './Controls.js';
+import { Card, EmptyState, Row, type ViewMode } from './Controls.js';
 
 const KIND_ICONS: Record<Item['kind'], ComponentType<{ size?: number }>> = {
   file: FileText,
@@ -40,29 +40,25 @@ export function Canvas({
 
           if (mode === 'list') {
             return (
-              <button
+              <Row
                 key={item.id}
-                type="button"
-                className="row"
-                aria-selected={selected}
-                onClick={() => onSelect(item.id)}
+                selected={selected}
+                onSelect={() => onSelect(item.id)}
               >
                 <Icon size={14} />
                 <span className="row__name">{item.name}</span>
                 <span className="row__sub">{item.author}</span>
                 <span className="row__sub">{item.updated}</span>
                 <span className="row__sub">{item.size}</span>
-              </button>
+              </Row>
             );
           }
 
           return (
-            <button
+            <Card
               key={item.id}
-              type="button"
-              className="card"
-              aria-selected={selected}
-              onClick={() => onSelect(item.id)}
+              selected={selected}
+              onSelect={() => onSelect(item.id)}
             >
               <span className="card__thumb">
                 <Icon size={28} />
@@ -71,7 +67,7 @@ export function Canvas({
                 <span className="card__name">{item.name}</span>
                 <span className="card__sub">Edited {item.updated}</span>
               </span>
-            </button>
+            </Card>
           );
         })}
       </div>
