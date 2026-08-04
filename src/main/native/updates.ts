@@ -1,5 +1,3 @@
-import { app } from 'electron';
-
 import type { UpdateStatus } from '../../shared/ipc.js';
 
 /**
@@ -25,10 +23,6 @@ const REASON =
 
 let last: UpdateStatus = { state: 'idle' };
 
-export function getUpdateStatus(): UpdateStatus {
-  return last;
-}
-
 export async function checkForUpdates(): Promise<UpdateStatus> {
   last = { state: 'checking' };
 
@@ -40,9 +34,4 @@ export async function checkForUpdates(): Promise<UpdateStatus> {
   // changes.
   await Promise.resolve();
   return last;
-}
-
-/** Version string used by the About panel and the update UI. */
-export function currentVersion(): string {
-  return app.getVersion();
 }

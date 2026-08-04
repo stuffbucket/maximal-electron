@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { BrowserWindow, app } from 'electron';
+import { BrowserWindow } from 'electron';
 
 /**
  * Pre-boot splash, modeled on `stuffbucket/maximal`'s `shell/splash.html`.
@@ -66,14 +66,4 @@ export function closeSplashWindow(): void {
   }
   if (splash && !splash.isDestroyed()) splash.close();
   splash = undefined;
-}
-
-/** True while the splash is on screen. Used by tests. */
-export function isSplashOpen(): boolean {
-  return Boolean(splash && !splash.isDestroyed());
-}
-
-/** The splash is pointless once the app is already running. */
-export function shouldShowSplash(enabled: boolean): boolean {
-  return enabled && !app.isReady();
 }

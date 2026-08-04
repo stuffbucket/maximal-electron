@@ -54,7 +54,3 @@ export function destroyTray(): void {
   tray?.destroy();
   tray = undefined;
 }
-
-export function isTrayActive(): boolean {
-  return Boolean(tray && !tray.isDestroyed());
-}

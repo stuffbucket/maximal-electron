@@ -146,11 +146,3 @@ export function destroyOverlay(): void {
   if (overlay && !overlay.isDestroyed()) overlay.destroy();
   overlay = undefined;
 }
-
-export function overlayWindow(): BrowserWindow | undefined {
-  return overlay;
-}
-
-export function isOverlayVisible(): boolean {
-  return Boolean(overlay && !overlay.isDestroyed() && overlay.isVisible());
-}

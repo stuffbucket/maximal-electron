@@ -104,15 +104,6 @@ function activate(): void {
 /* ---------------------------------------------------------------- windows */
 
 function wireWindow(window: BrowserWindow): void {
-  // The renderer draws its own title bar, so it needs the maximized state to
-  // pick the right control glyph.
-  const report = () =>
-    sendEvent(window, 'window:maximized-changed', {
-      maximized: window.isMaximized(),
-    });
-  window.on('maximize', report);
-  window.on('unmaximize', report);
-
   window.once('ready-to-show', () => {
     closeSplashWindow();
     // A quiet test run parks the window off screen rather than hiding it, so

@@ -177,14 +177,6 @@ export function registerToolset(toolset: Toolset): void {
   registry.set(toolset.id, toolset);
 }
 
-export function unregisterToolset(id: string): boolean {
-  return registry.delete(id);
-}
-
-export function listToolsets(): Toolset[] {
-  return [...registry.values()];
-}
-
 /** Build the tools for a set of toolset ids. Unknown ids are skipped. */
 export function buildToolsetTools(ids: readonly string[]): RiskyTool[] {
   return ids.flatMap((id) => registry.get(id)?.build() ?? []);
