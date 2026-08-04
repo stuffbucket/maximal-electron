@@ -24,11 +24,9 @@ draft. It does not publish without a macOS artifact.
 
 ## macOS
 
-This repository holds no Apple credential, and it must stay that way.
-
-`stuffbucket/macos-builder` is a private repository that owns the only
-self-hosted Mac runner and every Apple secret. This repository is a client. It
-supplies two files:
+This repository holds no Apple credential, and it must stay that way. Signing
+happens in the private `stuffbucket/macos-builder`. This repository is a
+client, and supplies two files:
 
 - `.macos-builder/config` declares the bundle identifier, the entitlement set,
   and the artifact name.
@@ -61,35 +59,30 @@ Neither installer carries an update channel. This is a documented position, not
 an oversight.
 
 - An MSI has no update feed.
-- The macOS builder **can** emit an updater artifact. `lib/package-macos.sh`
-  accepts `--artifact updater`. It produces a notarized and stapled
+- The macOS builder **can** emit an updater artifact: a notarized and stapled
   `.app.tar.gz` plus an Ed25519 signature. That pair is what
   `tauri-plugin-updater` consumes.
 - Electron cannot read it. Squirrel.Mac installs from a `.zip`.
-
-Note that the `macos-runner` README understates this. Its table still reads
-`{dmg, pkg}`, but the script accepts `updater` as well.
 
 ### What would unblock it
 
 Two options, in rough order of effort.
 
-1. **Add a `zip` artifact to the builder.** Extend the artifact enum in
-   `lib/package-macos.sh` to emit a notarized, stapled `.zip` beside the dmg.
-   Then `update-electron-app` works against GitHub Releases, provided this
-   repository is public.
+1. **Add a `zip` artifact to the builder.** Have it emit a notarized, stapled
+   `.zip` beside the dmg. Then `update-electron-app` works against GitHub
+   Releases, provided this repository is public.
 2. **Write a small updater in the main process** that consumes the existing
    `.app.tar.gz` and verifies the Ed25519 signature. No builder change, but
    real code to own.
 
-Windows would need a separate answer, because the MSI cannot self-update. The
-usual move is to ship Squirrel or NSIS beside the MSI.
+Windows would need a separate answer, because the MSI cannot self-update. One
+option is to ship Squirrel or NSIS beside the MSI.
 
 ## Extension points
 
 Deliberately not built. Each is a small, contained addition.
 
-- **Linux.** The makers are configured in `forge.config.ts` and scoped to
+- **Linux.** `forge.config.ts` configures the makers and scopes them to
   `linux`. Add a job to `release.yml` on `ubuntu-22.04`. Build on 22.04 rather
   than latest, for the older glibc baseline.
 - **Windows Authenticode.** Deferred organisation-wide. See `docs/signing.md`.

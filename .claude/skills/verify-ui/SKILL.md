@@ -57,7 +57,7 @@ Read computed style or a bounding box. Do not assert on class names.
 const gap = await window
   .locator('[data-testid="view-grid"]')
   .evaluate((node) => getComputedStyle(node).rowGap);
-expect(gap).toBe('16px');
+expect(gap).toBe('12px');
 
 // Good: two elements really are on separate lines.
 expect(subBox!.y).toBeGreaterThanOrEqual(nameBox!.y + nameBox!.height);

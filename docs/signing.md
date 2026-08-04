@@ -17,7 +17,7 @@ the runner and the secrets. Public repositories only trigger it.
 
 | Side | Holds |
 | --- | --- |
-| Builder (private) | `KEYCHAIN_PASSWORD`, `DEVELOPER_ID_APPLICATION`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`, and the `app-repoman` private key |
+| Builder (private) | The runner, and every Apple secret |
 | This repository | One secret: `MACOS_BUILDER_PAT` |
 
 `MACOS_BUILDER_PAT` is a fine-grained token with Actions: write on
@@ -65,13 +65,13 @@ builds reputation.
 
 1. A code-signing certificate. An Extended Validation certificate gets
    SmartScreen reputation immediately; a standard one accumulates it over
-   downloads. Azure Trusted Signing is the option that avoids handling a
-   private key.
+   downloads. Azure Trusted Signing avoids handling a private key.
 2. Two secrets on the repository, or a `signCommand` pointing at a key vault.
 3. A signing step in `windows-msi`, after `wix build` and before the checksum.
    Sign the `.exe` inside the package as well as the MSI.
 
-Because the checksum is generated after signing, the order in that job matters.
+Because `windows-msi` generates the checksum after signing, the order of its
+steps matters.
 
 ## Verifying a signed build
 

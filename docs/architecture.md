@@ -2,7 +2,7 @@
 
 ## Processes
 
-```
+```text
 main process                  preload (sandboxed)         renderer
 ─────────────                 ───────────────────         ────────
 src/main/index.ts             src/preload/index.ts        src/renderer/main.tsx
@@ -84,7 +84,7 @@ shell     -> `pty:data` event                   -> term.write
 
 Three details are load-bearing.
 
-- **Output is batched.** A build log emits thousands of small writes per
+- **`pty.ts` batches output.** A build log emits thousands of small writes per
   second. One message each would swamp the channel, so `pty.ts` coalesces on an
   8 millisecond timer.
 - **Terminals stay mounted.** Switching tabs hides the inactive host rather
@@ -188,7 +188,7 @@ renderer through the debugger. So it does not depend on what is in front.
 
 A run also keeps off the developer's screen. The overlay is built to sit above
 full-screen applications and take the keyboard, which is correct in production
-and hostile during sixteen scenarios. Under `STUFFBUCKET_E2E` the windows move
+and hostile during eighteen scenarios. Under `STUFFBUCKET_E2E` the windows move
 off the side of the display instead. They still show, still report visible, and
 still lay out identically. `STUFFBUCKET_E2E_VISIBLE=1` puts them back.
 

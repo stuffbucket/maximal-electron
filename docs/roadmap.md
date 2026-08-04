@@ -71,7 +71,7 @@ It runs the **pi coding agent**, from `badlogic/pi-mono`:
 | `@earendil-works/pi-ai` | Provider layer. Streams from the local endpoint. |
 | `@earendil-works/pi-agent-core` | The agent loop, tools, and session state. |
 
-Both pinned at 0.83.0. Note the repository is `badlogic/pi-mono`. `badlogic/pi`
+Both at `^0.83.0`. Note the repository is `badlogic/pi-mono`. `badlogic/pi`
 is a different project, a vLLM deployment CLI, and is easy to vendor by
 mistake.
 
@@ -93,10 +93,10 @@ It is the floor rather than the default. A proxy backed by a real subscription
 beats it on every axis. What it buys is that the application works offline, and
 on a machine with nothing set up.
 
-The weights are fetched once, into the user data directory, and are not in the
-installer. They are 610 MB and they change on a different schedule to the
-application. Shipping them would put that on every release, and would pin the
-model to the app version.
+The application fetches the weights once, into the user data directory; they
+are not in the installer. They are 610 MB and they change on a different
+schedule to the application. Shipping them would put that on every release, and
+would pin the model to the app version.
 
 Two things are worth knowing.
 

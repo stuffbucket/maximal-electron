@@ -81,7 +81,7 @@ fuse disables. Do not "fix" the tests by turning the fuse back on.
 ## The overlay agent
 
 It runs the pi coding agent: `@earendil-works/pi-ai` for the provider, and
-`@earendil-works/pi-agent-core` for the loop and tools. Both pinned at 0.83.0.
+`@earendil-works/pi-agent-core` for the loop and tools. Both at `^0.83.0`.
 
 - **Never add an API key.** Discovery finds maximal or Ollama on localhost. A
   key in this repository is a defect.
@@ -99,7 +99,7 @@ It runs the pi coding agent: `@earendil-works/pi-ai` for the provider, and
 1. **maximal** on `localhost:4141`, when it is up. A proxy backed by a real
    subscription beats any local model.
 2. **Ollama** on `localhost:11434`, when it has a model pulled. The model comes
-   from `/api/tags`, so only something installed is named.
+   from `/api/tags`, so `discoverProvider` names only something installed.
 3. **embedded**, always. `node-llama-cpp` runs Qwen3 0.6B in this process.
 
 Rules:
@@ -109,8 +109,8 @@ Rules:
 - **Never name a model that might not exist.** The old code pinned
   `llama3.2`, which was both absent on most machines and the worst tested
   model for restraint.
-- The weights are **not** in the installer. They are fetched once into
-  `userData` on first use. `src/main/native/llama.ts` owns that.
+- The weights are **not** in the installer. `src/main/native/llama.ts` fetches
+  them once into `userData` on first use.
 - `STUFFBUCKET_PROVIDER=embedded` pins a provider and
   `STUFFBUCKET_MODEL_PATH` points at existing weights. Without them the
   embedded path is unreachable on any machine running a proxy, which is every
@@ -143,8 +143,9 @@ while any of that is outstanding, and the addon completes into an environment
 that no longer exists. It calls `ThrowAsJavaScriptException` against it, and
 the process aborts inside ggml's terminate handler.
 
-- **Never start native work during `before-quit`.** An earlier version fired a
-  model disposal there without awaiting it. Every embedded run aborted on exit.
+- **Never start native work during `before-quit`.** An earlier version disposed
+  of a model there without awaiting the result. Every embedded run aborted on
+  exit.
 - **Nothing frees the weights.** The process is ending and the operating
   system reclaims the memory, so there is no reason to ask.
 - `before-quit` defers the quit through `shutdownAgent` when a run is in
@@ -164,10 +165,11 @@ local model and the user's shell. Four rules:
    failed run all end as a refusal. Never add a path that falls through to
    allow.
 2. **`src/main/native/approval.ts` stays free of `electron`.** It is in the
-   `stryker.conf.json` mutate list, and it holds the decision of what to gate.
-   That logic must be mutation tested.
-3. **`READ_ONLY_TOOLS` is an allow-list.** An unknown tool asks. Adding a tool
-   must not widen what runs unattended.
+   `stryker.conf.json` mutate list, and it decides what to gate. That logic
+   must be mutation tested.
+3. **`riskOf` sends an unrecognised tool to `dangerous`.** A toolset may
+   declare its own risk; anything else falls through `BUILT_IN_RISK` to
+   `dangerous`, so adding a tool cannot widen what runs unattended.
 4. **Remember applies to an allow only**, and only for the current run. A
    remembered deny would break the rest of a run with no way to see why.
    Nothing about a decision is persisted.
@@ -197,7 +199,7 @@ than casting. A hand-edited file must not be able to land on `none`.
 Green unit tests are necessary but not sufficient for a layout change.
 
 Assert **computed** layout in a real engine, and look at the screenshot. See
-`.claude/skills/verify-ui/SKILL.md`. This rule is carried over from maximal's
+`.claude/skills/verify-ui/SKILL.md`. This rule comes from maximal's
 `ui-layout-verification` skill, which exists because two real regressions
 shipped past a green suite.
 
@@ -220,8 +222,11 @@ scenario. So a test run parks its windows off the side of the display.
 - Both windows set `backgroundThrottling: false`. An off-screen window reads as
   occluded to macOS, and Chromium then throttles the renderer to that same
   blank result.
-- `capture` fails when an image lands under `MIN_SCREENSHOT_BYTES`. That guard
-  exists because the blank captures above looked exactly like success.
+- `capture` fails when an image falls under `MIN_BYTES_PER_PIXEL`, in
+  `e2e/screenshot.ts`. That guard exists because the blank captures above
+  looked exactly like success. It measures compressed bytes per pixel rather
+  than a byte count, because an absolute floor is a pixel-density constant and
+  failed real Windows screenshots.
 
 ## Screen recordings
 
@@ -231,8 +236,8 @@ Recording is **capture then compose**, with a take on disk between them. See
 - **Capture never waits out a hold.** Timing belongs to `demo/edits/*.json`,
   applied by `compose.ts`. Putting a sleep back into a timeline undoes the whole
   design. A capture costs 45 seconds. A re-cut costs 6.
-- `SETTLE_SECONDS` is the one exception, and it has to be. A frame that was
-  never captured cannot be recovered at compose time.
+- `SETTLE_SECONDS` is the one exception, and it has to be. Compose cannot
+  recover a frame that capture never recorded.
 - `e2e/demo/*.demo.ts` are timelines, not tests. Three configs match three
   suffixes: `.demo.ts`, `.compose.ts`, `.spec.ts`. Do not merge them.
 - **Only `launch.ts` and the timelines know about this application.** Everything
@@ -254,7 +259,8 @@ to do by accident. It has already happened here once.
 - **No test may depend on another.** Set up what you need inside the test.
 - `e2e/harness.ts` exports `resetShell`, called from `beforeEach`. Extend it
   when you add state that leaks between tests.
-- Seeds are printed. `VITEST_SEED` and `E2E_SEED` replay a failing order.
+- Both suites print a seed. `VITEST_SEED` and `E2E_SEED` replay a failing
+  order.
 - `E2E_SHUFFLE=0` restores declaration order while debugging.
 
 Known cost: the end-to-end tests all register from one call site, so the
@@ -266,9 +272,9 @@ still works.
 `npm run mutate` reports what the tests actually catch, which coverage does
 not. It is scoped to pure-logic modules, and **it breaks below 100**.
 
-Anything importing `electron` cannot be mutated: it needs a real Electron
-runtime, not Node. Extend `mutate` in `stryker.conf.json` only with modules
-that run under plain Node.
+Stryker cannot mutate anything importing `electron`: that code needs a real
+Electron runtime, not Node. Extend `mutate` in `stryker.conf.json` only with
+modules that run under plain Node.
 
 A surviving mutant is a real gap. It found one here: `src/renderer/lib/data.ts`
 scored 0 with 77 untouched mutants, because it had no unit tests at all.
@@ -297,8 +303,8 @@ Keep sentences short. Do not use contractions. Name the component that acts,
 rather than writing a passive that leaves the actor out: `pty.ts` coalesces
 output, rather than output is batched.
 
-There is no automated check. Style here is a matter of judgement, and the one
-tool that was tried could not tell a rule from a description.
+There is no automated check. Style here needs judgement, and the one tool that
+was tried could not tell a rule from a description.
 
 ## Release
 
