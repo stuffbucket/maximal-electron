@@ -9,21 +9,10 @@ import {
 
 import type { ProviderStatus } from '../src/shared/ipc.js';
 
+import { inspectCapture } from './screenshot.js';
+
 const ROOT = path.resolve(__dirname, '..');
 
-/**
- * Smallest believable reference screenshot, in bytes.
- *
- * A guard against a silent failure that already happened here. Parking the
- * windows with `setOpacity(0)` for a quiet run stopped the compositor giving
- * out content, so every capture came back solid white. The suite stayed green,
- * because nothing asserted on the images.
- *
- * Observed: real captures run from 101 KB to 221 KB, blank ones 20 KB to
- * 37 KB. This sits between, and is a smoke check rather than a pixel
- * assertion.
- */
-const MIN_SCREENSHOT_BYTES = 60_000;
 
 /**
  * Write a reference screenshot.
@@ -47,7 +36,7 @@ const MIN_SCREENSHOT_BYTES = 60_000;
 export async function capture(page: Page, file: string): Promise<boolean> {
   await mkdir(path.dirname(file), { recursive: true });
 
-  let bytes: number | undefined;
+  let image: Buffer | undefined;
 
   try {
     const session = await page.context().newCDPSession(page);
@@ -56,9 +45,7 @@ export async function capture(page: Page, file: string): Promise<boolean> {
         format: 'png',
         fromSurface: false,
       });
-      const data = Buffer.from(shot.data, 'base64');
-      await writeFile(file, data);
-      bytes = data.byteLength;
+      image = Buffer.from(shot.data, 'base64');
     } finally {
       await session.detach().catch(() => undefined);
     }
@@ -66,23 +53,19 @@ export async function capture(page: Page, file: string): Promise<boolean> {
     // Fall through to the ordinary path.
   }
 
-  if (bytes === undefined) {
+  if (image === undefined) {
     try {
-      const data = await page.screenshot({ timeout: 10_000 });
-      await writeFile(file, data);
-      bytes = data.byteLength;
+      image = await page.screenshot({ timeout: 10_000 });
     } catch {
       console.warn(`screenshot skipped, window not composited: ${file}`);
       return false;
     }
   }
 
-  if (bytes < MIN_SCREENSHOT_BYTES) {
-    throw new Error(
-      `${file} is ${bytes} bytes, under the ${MIN_SCREENSHOT_BYTES} floor. ` +
-        'The window is probably not compositing, so the image is blank.',
-    );
-  }
+  await writeFile(file, image);
+
+  const verdict = inspectCapture(image);
+  if (!verdict.ok) throw new Error(`${file}: ${verdict.reason}`);
 
   return true;
 }
