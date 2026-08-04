@@ -1,6 +1,14 @@
 import { expect, test, type Locator } from '@playwright/test';
 
-import { capture, closeApp, launchApp, resetShell, setTheme, type Harness } from './harness.js';
+import {
+  capture,
+  closeApp,
+  launchApp,
+  providerState,
+  resetShell,
+  setTheme,
+  type Harness,
+} from './harness.js';
 import { createRegistry } from './shuffle.js';
 
 /**
@@ -313,13 +321,44 @@ scenario('the floating overlay summons and dismisses', async () => {
     .poll(() => handle.evaluate((win) => win.isVisible()), { timeout: 10_000 })
     .toBe(true);
 
-  await capture(overlay, 'test-results/overlay.png');
+  // The reference image is captured separately. It is a documentation
+  // artifact, and a runner that cannot composite the overlay should not fail a
+  // behaviour test.
 
   await overlay.keyboard.press('Escape');
 
   await expect
     .poll(() => handle.evaluate((win) => win.isVisible()), { timeout: 10_000 })
     .toBe(false);
+});
+
+scenario('capture a reference screenshot of the overlay', async () => {
+  // The overlay is a non-activating panel, parked off the side of the display
+  // under `STUFFBUCKET_E2E`. A desktop session still composites it, so this
+  // produces a real image locally. A CI runner does not, and `capture` is
+  // right to reject the blank result: an image that looks like success and is
+  // not, is the failure this template already learned about the hard way.
+  //
+  // So the artifact is skipped where it cannot be produced, rather than
+  // lowering the floor that catches it.
+  test.skip(
+    Boolean(process.env['CI']),
+    'A CI runner does not composite the off-screen overlay panel.',
+  );
+
+  const { app, window } = harness;
+
+  await window.click('[data-testid="toggle-overlay"]');
+  const overlay =
+    app.windows().find((page) => page.url().includes('overlay')) ??
+    (await app.waitForEvent('window', { timeout: 15_000 }));
+  await overlay.waitForSelector('[data-testid="overlay-card"]', {
+    timeout: 15_000,
+  });
+
+  await capture(overlay, 'test-results/overlay.png');
+
+  await overlay.keyboard.press('Escape');
 });
 
 scenario('the overlay answers when a local backend is running', async () => {
@@ -336,13 +375,8 @@ scenario('the overlay answers when a local backend is running', async () => {
 
   // Skip rather than fail when nothing is listening. A contributor without
   // maximal or Ollama should still get a green suite, and CI has neither.
-  const status = await overlay
-    .locator('[data-testid="overlay-status"]')
-    .textContent();
-  test.skip(
-    !status || status.includes('Waiting') || status.includes('No local model'),
-    `No local model backend: ${status ?? 'unknown'}`,
-  );
+  const state = await providerState(overlay);
+  test.skip(state !== 'ready', `No local model backend: ${state}`);
 
   await overlay.fill('[data-testid="overlay-input"]', 'Reply with exactly: OVERLAY_OK');
   await overlay.keyboard.press('Enter');
@@ -377,15 +411,17 @@ async function openOverlay() {
   return overlay;
 }
 
-/** Skip rather than fail when no local model is running. */
+/**
+ * Skip rather than fail when no local model is running.
+ *
+ * A contributor without maximal or Ollama should still get a green suite, and
+ * CI has neither. This reads the state from the IPC contract rather than the
+ * status line's wording; see `providerState` in `e2e/harness.ts` for why the
+ * substring version could never fire.
+ */
 async function requireBackend(overlay: Awaited<ReturnType<typeof openOverlay>>) {
-  const status = await overlay
-    .locator('[data-testid="overlay-status"]')
-    .textContent();
-  test.skip(
-    !status || status.includes('Waiting') || status.includes('No local model'),
-    `No local model backend: ${status ?? 'unknown'}`,
-  );
+  const state = await providerState(overlay);
+  test.skip(state !== 'ready', `No local model backend: ${state}`);
 }
 
 scenario('the overlay agent asks before it runs bash, and runs it when allowed', async () => {

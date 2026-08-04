@@ -7,6 +7,8 @@ import {
   type Page,
 } from '@playwright/test';
 
+import type { ProviderStatus } from '../src/shared/ipc.js';
+
 const ROOT = path.resolve(__dirname, '..');
 
 /**
@@ -282,4 +284,32 @@ export async function setTheme(
     ).stuffbucket;
     return api?.invoke('prefs:set', { theme: value });
   }, theme);
+}
+
+/**
+ * The agent backend's state, read from the contract.
+ *
+ * Every agent scenario needs the same decision: is a model actually reachable,
+ * or should this skip? That used to be answered by matching substrings against
+ * the overlay's status line. It could not work. The guards looked for `Waiting`
+ * and `No local model`, and `providerLabel` in `src/renderer/overlay.tsx`
+ * produces neither, so they never fired. On a runner with no backend the
+ * status reads "<model> is not downloaded yet", every guard passed through, and
+ * four scenarios failed on a timeout instead of skipping.
+ *
+ * `ProviderStatus` is already a discriminated union in the IPC contract. Asking
+ * for the state directly cannot drift when the copy is reworded, and the
+ * compiler checks the states.
+ */
+export async function providerState(page: Page): Promise<ProviderStatus['state']> {
+  const status = await page.evaluate(() => {
+    const api = (
+      globalThis as unknown as {
+        stuffbucket?: { invoke: (channel: string) => Promise<unknown> };
+      }
+    ).stuffbucket;
+    return api?.invoke('overlay:provider');
+  });
+
+  return (status as ProviderStatus | undefined)?.state ?? 'unavailable';
 }
