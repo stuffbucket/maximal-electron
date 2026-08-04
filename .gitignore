@@ -17,3 +17,6 @@ demo/takes/
 
 # Agent worktrees. Whole copies of this repository, created per task.
 .claude/worktrees/
+
+# Another agent tool writes its session database here.
+.opencode/
