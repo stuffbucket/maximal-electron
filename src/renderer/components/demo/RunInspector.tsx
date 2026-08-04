@@ -1,18 +1,7 @@
 import { Check, PanelRight, X } from 'lucide-react';
 
-import { RUNS, type AgentRun } from '../../lib/demo-runs.js';
-import { IconButton } from '../Controls.js';
-
-import { StatusChip } from './RunCanvas.js';
-
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="field">
-      <span className="field__label">{label}</span>
-      <span className="field__value">{value}</span>
-    </div>
-  );
-}
+import { RUNS, STATUS_LABELS, type AgentRun } from '../../lib/demo-runs.js';
+import { Field, IconButton, StatusChip } from '../Controls.js';
 
 /**
  * What the inspector shows when nothing is selected.
@@ -80,7 +69,7 @@ export function RunInspector({
         {run ? (
           <>
             <section className="inspector__section">
-              <StatusChip run={run} />
+              <StatusChip status={run.status} label={STATUS_LABELS[run.status]} />
               <p className="run-detail__task">{run.task}</p>
               <p className="card__sub card__sub--wrap">{run.step}</p>
             </section>

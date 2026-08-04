@@ -10,7 +10,8 @@ import {
 
 import type { AppVersions, UpdateStatus, ViewId } from '../shared/ipc.js';
 
-import { Canvas, Toolbar, type ViewMode } from './components/Canvas.js';
+import { Canvas } from './components/Canvas.js';
+import { Toolbar, type ViewMode } from './components/Controls.js';
 import { Inspector } from './components/Inspector.js';
 import { LeftNav } from './components/LeftNav.js';
 import { type DocumentTab } from './components/TabBar.js';
@@ -207,7 +208,7 @@ export function App() {
             ) : (
               <>
                 <Toolbar
-                  view={view}
+                  title={VIEW_LABELS[view]}
                   mode={mode}
                   onModeChange={setMode}
                 />

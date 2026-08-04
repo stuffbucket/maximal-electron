@@ -1,54 +1,7 @@
-import { Bot, GitBranch, LayoutGrid, List } from 'lucide-react';
+import { Bot, GitBranch } from 'lucide-react';
 
-import type { ViewMode } from '../Canvas.js';
 import { STATUS_LABELS, type AgentRun } from '../../lib/demo-runs.js';
-
-/** A filled pill carrying the run state. Colour comes from the status tokens. */
-export function StatusChip({ run }: { run: AgentRun }) {
-  return (
-    <span className="chip" data-status={run.status}>
-      {STATUS_LABELS[run.status]}
-    </span>
-  );
-}
-
-/** The view-mode switch, plus the count for the current view. */
-export function RunToolbar({
-  title,
-  mode,
-  onModeChange,
-}: {
-  title: string;
-  mode: ViewMode;
-  onModeChange: (mode: ViewMode) => void;
-}) {
-  return (
-    <div className="toolbar">
-      <h1 className="toolbar__title">{title}</h1>
-      <span className="toolbar__grow" />
-      <div className="segmented" role="group" aria-label="View mode">
-        <button
-          type="button"
-          aria-pressed={mode === 'grid'}
-          aria-label="Grid view"
-          onClick={() => onModeChange('grid')}
-          data-testid="mode-grid"
-        >
-          <LayoutGrid size={14} />
-        </button>
-        <button
-          type="button"
-          aria-pressed={mode === 'list'}
-          aria-label="List view"
-          onClick={() => onModeChange('list')}
-          data-testid="mode-list"
-        >
-          <List size={14} />
-        </button>
-      </div>
-    </div>
-  );
-}
+import { EmptyState, StatusChip, type ViewMode } from '../Controls.js';
 
 function RunCard({
   run,
@@ -69,7 +22,7 @@ function RunCard({
       data-testid={`run-${run.id}`}
     >
       <span className="run-card__head">
-        <StatusChip run={run} />
+        <StatusChip status={run.status} label={STATUS_LABELS[run.status]} />
         <span className="run-card__elapsed">{run.elapsed}</span>
       </span>
       <span className="card__meta run-card__meta">
@@ -137,10 +90,7 @@ export function RunCanvas({
   if (runs.length === 0) {
     return (
       <div className="canvas">
-        <div className="empty">
-          <Bot size={24} />
-          <p>No agent runs in this view.</p>
-        </div>
+        <EmptyState icon={Bot} message="No agent runs in this view." />
       </div>
     );
   }

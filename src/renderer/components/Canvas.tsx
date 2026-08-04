@@ -1,54 +1,15 @@
-import { Component, FileText, LayoutGrid, List, Play } from 'lucide-react';
+import { Component, FileText, Play } from 'lucide-react';
 import type { ComponentType } from 'react';
 
-import type { ViewId } from '../../shared/ipc.js';
-import { VIEW_LABELS, type Item } from '../lib/data.js';
+import { type Item } from '../lib/data.js';
 
-export type ViewMode = 'grid' | 'list';
+import { EmptyState, type ViewMode } from './Controls.js';
 
 const KIND_ICONS: Record<Item['kind'], ComponentType<{ size?: number }>> = {
   file: FileText,
   component: Component,
   prototype: Play,
 };
-
-/** The view-mode switch. Grid and list are the two Figma-style content modes. */
-export function Toolbar({
-  view,
-  mode,
-  onModeChange,
-}: {
-  view: ViewId;
-  mode: ViewMode;
-  onModeChange: (mode: ViewMode) => void;
-}) {
-  return (
-    <div className="toolbar">
-      <h1 className="toolbar__title">{VIEW_LABELS[view]}</h1>
-      <span className="toolbar__grow" />
-      <div className="segmented" role="group" aria-label="View mode">
-        <button
-          type="button"
-          aria-pressed={mode === 'grid'}
-          aria-label="Grid view"
-          onClick={() => onModeChange('grid')}
-          data-testid="mode-grid"
-        >
-          <LayoutGrid size={14} />
-        </button>
-        <button
-          type="button"
-          aria-pressed={mode === 'list'}
-          aria-label="List view"
-          onClick={() => onModeChange('list')}
-          data-testid="mode-list"
-        >
-          <List size={14} />
-        </button>
-      </div>
-    </div>
-  );
-}
 
 /** Grid of cards, or a dense list. Selection drives the right inspector. */
 export function Canvas({
@@ -65,10 +26,7 @@ export function Canvas({
   if (items.length === 0) {
     return (
       <div className="canvas">
-        <div className="empty">
-          <FileText size={24} />
-          <p>Nothing here yet.</p>
-        </div>
+        <EmptyState icon={FileText} message="Nothing here yet." />
       </div>
     );
   }

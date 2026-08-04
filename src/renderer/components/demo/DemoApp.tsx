@@ -8,7 +8,7 @@ import {
   usePanelRef,
 } from 'react-resizable-panels';
 
-import { type ViewMode } from '../Canvas.js';
+import { Toolbar, type ViewMode } from '../Controls.js';
 import { type DocumentTab } from '../TabBar.js';
 import { TerminalView } from '../TerminalView.js';
 import { TitleBar } from '../TitleBar.js';
@@ -22,7 +22,7 @@ import {
 import { RUNS } from '../../lib/demo-runs.js';
 
 import { AgentNav } from './AgentNav.js';
-import { RunCanvas, RunToolbar } from './RunCanvas.js';
+import { RunCanvas } from './RunCanvas.js';
 import { RunInspector } from './RunInspector.js';
 
 /**
@@ -193,7 +193,7 @@ export function DemoApp() {
                 ))
             ) : (
               <>
-                <RunToolbar
+                <Toolbar
                   title={viewLabel(view)}
                   mode={mode}
                   onModeChange={setMode}
