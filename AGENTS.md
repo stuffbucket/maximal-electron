@@ -20,6 +20,7 @@ background. If a rule looks arbitrary, the reason is in the linked document.
 | Re-cut a demo | `npm run compose -- <name>` |
 | Package | `npm run package` |
 | Verify a package | `npm run verify:package` |
+| Verify the docs | `npm run verify:docs` |
 | Regenerate icons | `npm run icons` |
 
 Run `npm run lint:fix` after you change code. Do not ask first.

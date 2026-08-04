@@ -24,7 +24,8 @@
     "test:e2e": "playwright test",
     "record": "node scripts/record.mjs",
     "mutate": "stryker run",
-    "compose": "node scripts/compose.mjs"
+    "compose": "node scripts/compose.mjs",
+    "verify:docs": "node scripts/verify-docs.mjs"
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "^0.83.0",
