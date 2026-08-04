@@ -13,22 +13,14 @@
  * This script closes that gap. Run it after `npm run package`.
  */
 
-import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+import { listPackage } from '@electron/asar';
+import { FuseV1Options, getCurrentFuseWire } from '@electron/fuses';
 
-/**
- * `npx`, by the name this platform can actually execute.
- *
- * npm ships `npx.cmd` on Windows. libuv's process spawn appends `.exe` to an
- * extension-less name and does not try `.cmd`, so a bare `npx` fails with
- * ENOENT. That is not a packaging fault, but it failed the Windows job as
- * though it were one.
- */
-const NPX = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const failures = [];
 const check = (ok, message) => {
@@ -67,11 +59,7 @@ if (!existsSync(app)) {
 
 console.log('asar contents');
 
-const listing = execFileSync(
-  NPX,
-  ['--yes', '@electron/asar', 'list', asar],
-  { encoding: 'utf8' },
-).split('\n');
+const listing = listPackage(asar);
 
 const has = (suffix) => listing.some((entry) => entry.endsWith(suffix));
 
@@ -155,25 +143,36 @@ const EXPECTED = {
   OnlyLoadAppFromAsar: true,
 };
 
-let report = '';
+let wire;
 try {
-  report = execFileSync(NPX, ['--yes', '@electron/fuses', 'read', '--app', app], {
-    encoding: 'utf8',
-  });
+  wire = await getCurrentFuseWire(app);
 } catch (error) {
   console.error(`  could not read fuses: ${error.message}`);
   process.exit(1);
 }
 
+/**
+ * The wire stores each fuse as the character code of '0' or '1'.
+ *
+ * An unrecognised value fails the check rather than reading as disabled.
+ * These are the hardening switches, so "I did not understand the answer" must
+ * not look like "the answer was the safe one".
+ */
+const DISABLED = '0'.charCodeAt(0);
+const ENABLED = '1'.charCodeAt(0);
+
 for (const [name, expected] of Object.entries(EXPECTED)) {
-  // The reader prints lines like "RunAsNode is Disabled".
-  const match = new RegExp(`${name}\\s+is\\s+(\\w+)`, 'i').exec(report);
-  if (!match) {
-    check(false, `${name} is reported`);
+  const state = wire[FuseV1Options[name]];
+
+  if (state !== ENABLED && state !== DISABLED) {
+    check(false, `${name} reports a state this script understands`);
     continue;
   }
-  const enabled = /enabled/i.test(match[1]);
-  check(enabled === expected, `${name} is ${expected ? 'Enabled' : 'Disabled'}`);
+
+  check(
+    (state === ENABLED) === expected,
+    `${name} is ${expected ? 'Enabled' : 'Disabled'}`,
+  );
 }
 
 /* --------------------------------------------------------------- result */
