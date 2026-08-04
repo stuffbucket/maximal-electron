@@ -41,6 +41,11 @@ jobs:
       # coverage does not. Scoped to pure-logic modules; see stryker.conf.json.
       - run: npm run mutate
 
+      # Names the documentation claims. No style rules: a prose linter lived
+      # here and could not tell a rule from a description. This asks only
+      # whether a script, a constant, or a link target exists.
+      - run: npm run verify:docs
+
   package:
     name: package (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
