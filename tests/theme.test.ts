@@ -95,4 +95,27 @@ describe('TERMINAL_TOKENS', () => {
       expect(/^#|rgb/.test(token)).toBe(false);
     }
   });
+
+  it('names tokens whose values ghostty-web can actually parse', () => {
+    // The gap in the tripwire above. Proving a token exists says nothing about
+    // the syntax of its value, and `parseColorToHex` in `ghostty-web` accepts
+    // only `#rgb`, `#rrggbb`, and comma-separated `rgb(r, g, b)`. Anything
+    // else returns 0, so the terminal renders black on black rather than
+    // failing.
+    //
+    // This is not hypothetical. `tokens.css` already uses the modern
+    // space-separated form for `--accent-soft`, so a rewrite of these three in
+    // that style, or in `oklch()`, would break the terminal silently.
+    const PARSEABLE = /^(#[0-9a-f]{3}|#[0-9a-f]{6}|rgb\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\))$/i;
+
+    for (const token of Object.values(TERMINAL_TOKENS)) {
+      const values = [...TOKENS_CSS.matchAll(new RegExp(`${token}\\s*:\\s*([^;]+);`, 'g'))]
+        .map((match) => (match[1] ?? '').trim());
+
+      expect(values, `${token} should be defined twice`).toHaveLength(2);
+      for (const value of values) {
+        expect(PARSEABLE.test(value), `${token}: ${value}`).toBe(true);
+      }
+    }
+  });
 });
