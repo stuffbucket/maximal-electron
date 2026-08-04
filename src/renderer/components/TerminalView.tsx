@@ -2,6 +2,7 @@ import { FitAddon, Terminal as GhosttyTerminal, init } from 'ghostty-web';
 import { useEffect, useRef } from 'react';
 
 import { bridge } from '../lib/bridge.js';
+import { currentTerminalTheme } from '../lib/theme.js';
 
 /**
  * A real terminal in the tab, powered by `ghostty-web`.
@@ -17,6 +18,20 @@ import { bridge } from '../lib/bridge.js';
  *
  * The WebAssembly module loads once per renderer. `init()` is idempotent, and
  * this component awaits it before constructing a terminal.
+ *
+ * **The theme is fixed for a session.** The emulator draws to a canvas, so it
+ * inherits nothing from CSS and has to be handed literal colours. Those go to
+ * the WebAssembly terminal at construction, as the default background,
+ * foreground, and palette of every cell. `renderer.setTheme` changes only the
+ * layer that those cells are then painted over, and `options.theme` after
+ * `open()` is a no-op that logs a warning. Rebuilding the WebAssembly terminal
+ * is the supported route, through `reset()`, and it wipes the screen and the
+ * scrollback.
+ *
+ * So a terminal keeps the scheme it was opened in, and a new tab picks up the
+ * current one. Losing a build log to a theme toggle is the worse trade. Revisit
+ * if `ghostty-web` gains a live palette swap; the tokens are already resolved
+ * in one place for it.
  */
 
 /** `init()` is shared, so several tabs opening at once await one load. */
@@ -52,11 +67,7 @@ export function TerminalView({ id, shell }: { id: string; shell?: string }) {
         fontSize: 13,
         fontFamily:
           'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
-        theme: {
-          background: '#101216',
-          foreground: '#e6e8ec',
-          cursor: '#6ea8fe',
-        },
+        theme: currentTerminalTheme(),
       });
 
       const fit = new FitAddon();

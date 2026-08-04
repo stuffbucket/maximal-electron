@@ -10,6 +10,9 @@ export default tseslint.config(
       'dist/**',
       'test-results/**',
       'playwright-report/**',
+      // Agent worktrees are whole copies of this repository. Linting them
+      // reports every finding twice, against files that are not this checkout.
+      '.claude/**',
     ],
   },
   js.configs.recommended,

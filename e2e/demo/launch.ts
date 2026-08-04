@@ -3,6 +3,8 @@ import path from 'node:path';
 import { _electron as electron } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 
+import { setTheme } from '../harness.js';
+
 /**
  * Launch the demo shell.
  *
@@ -75,21 +77,10 @@ export async function launchDemoApp(): Promise<DemoHarness> {
   return { app, window };
 }
 
-/** Set the theme through the preference bridge, the way the shell does. */
-export async function setTheme(
-  page: Page,
-  theme: 'system' | 'light' | 'dark',
-): Promise<void> {
-  await page.evaluate((value) => {
-    // `window` is the Playwright page in this file, so the preload bridge has
-    // to be reached through `globalThis`.
-    const api = (
-      globalThis as unknown as {
-        stuffbucket?: {
-          invoke: (channel: string, payload: unknown) => Promise<unknown>;
-        };
-      }
-    ).stuffbucket;
-    return api?.invoke('prefs:set', { theme: value });
-  }, theme);
-}
+/**
+ * Set the theme through the preference bridge.
+ *
+ * Re-exported so a demo timeline has one import for everything it needs to
+ * drive the shell. The implementation is shared with the production suite.
+ */
+export { setTheme };

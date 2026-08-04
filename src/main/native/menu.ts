@@ -24,7 +24,7 @@ interface MenuCallbacks {
   onOpenPreferences: () => void;
 }
 
-const REPO_URL = 'https://github.com/stuffbucket/electron';
+const REPO_URL = 'https://github.com/stuffbucket/maximal-electron';
 
 function viewItems(callbacks: MenuCallbacks): MenuItemConstructorOptions[] {
   return [

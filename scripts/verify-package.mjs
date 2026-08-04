@@ -13,10 +13,12 @@
  * This script closes that gap. Run it after `npm run package`.
  */
 
-import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { listPackage } from '@electron/asar';
+import { FuseV1Options, getCurrentFuseWire } from '@electron/fuses';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -57,11 +59,20 @@ if (!existsSync(app)) {
 
 console.log('asar contents');
 
-const listing = execFileSync(
-  'npx',
-  ['--yes', '@electron/asar', 'list', asar],
-  { encoding: 'utf8' },
-).split('\n');
+/**
+ * asar entries, with forward slashes on every platform.
+ *
+ * `listPackage` returns paths with the platform separator, so on Windows the
+ * entries read `\.vite\build\main.js`. Every check below is written with `/`,
+ * which is why seven of them failed there the first time this script ever got
+ * far enough on Windows to run: the spawn error had been masking them.
+ *
+ * Only rewritten where the separator is a separator. A backslash is a legal
+ * character in a POSIX filename.
+ */
+const listing = listPackage(asar).map((entry) =>
+  path.sep === '\\' ? entry.replaceAll('\\', '/') : entry,
+);
 
 const has = (suffix) => listing.some((entry) => entry.endsWith(suffix));
 
@@ -97,12 +108,27 @@ check(
 // The prebuilt binary is unpacked beside the asar, because a .node file cannot
 // be loaded from inside one.
 const unpacked = path.join(path.dirname(asar), 'app.asar.unpacked');
-const findUnpacked = (pattern) =>
-  existsSync(unpacked)
-    ? execFileSync('find', [unpacked, '-name', pattern], { encoding: 'utf8' })
-        .split('\n')
-        .filter(Boolean)
-    : [];
+
+/**
+ * Unpacked files whose name matches a simple `*` glob.
+ *
+ * This used to shell out to `find`. On Windows that name resolves to
+ * `System32\find.exe`, which searches for a string inside files and takes
+ * unrelated arguments, so these checks reported a packaging fault that was
+ * really a portability one. Reading the directory needs no subprocess and
+ * behaves the same everywhere.
+ */
+const findUnpacked = (pattern) => {
+  if (!existsSync(unpacked)) return [];
+  const expression = pattern
+    .split('*')
+    .map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))
+    .join('.*');
+  const matches = new RegExp(`^${expression}$`);
+  return readdirSync(unpacked, { recursive: true, encoding: 'utf8' }).filter(
+    (entry) => matches.test(path.basename(entry)),
+  );
+};
 
 check(findUnpacked('*.node').length > 0, 'a native .node binary is unpacked');
 
@@ -111,7 +137,16 @@ check(findUnpacked('*.node').length > 0, 'a native .node binary is unpacked');
 // these inside the archive: the package builds, the app starts, and the model
 // fails to load with an error that reads like a bad model file rather than a
 // packaging fault.
-const llamaLibs = [...findUnpacked('libllama*'), ...findUnpacked('libggml*')];
+//
+// The names are platform specific. Unix builds prefix `lib` and end in
+// `.dylib` or `.so`; Windows builds do neither. Checking only the Unix names
+// reported a missing library on Windows that was present under its own name.
+const LLAMA_LIBRARIES =
+  process.platform === 'win32'
+    ? ['llama*.dll', 'ggml*.dll']
+    : ['libllama*', 'libggml*'];
+
+const llamaLibs = LLAMA_LIBRARIES.flatMap((pattern) => findUnpacked(pattern));
 check(llamaLibs.length > 0, 'llama.cpp shared libraries are unpacked');
 
 /* ---------------------------------------------------------------- fuses */
@@ -130,25 +165,36 @@ const EXPECTED = {
   OnlyLoadAppFromAsar: true,
 };
 
-let report = '';
+let wire;
 try {
-  report = execFileSync('npx', ['--yes', '@electron/fuses', 'read', '--app', app], {
-    encoding: 'utf8',
-  });
+  wire = await getCurrentFuseWire(app);
 } catch (error) {
   console.error(`  could not read fuses: ${error.message}`);
   process.exit(1);
 }
 
+/**
+ * The wire stores each fuse as the character code of '0' or '1'.
+ *
+ * An unrecognised value fails the check rather than reading as disabled.
+ * These are the hardening switches, so "I did not understand the answer" must
+ * not look like "the answer was the safe one".
+ */
+const DISABLED = '0'.charCodeAt(0);
+const ENABLED = '1'.charCodeAt(0);
+
 for (const [name, expected] of Object.entries(EXPECTED)) {
-  // The reader prints lines like "RunAsNode is Disabled".
-  const match = new RegExp(`${name}\\s+is\\s+(\\w+)`, 'i').exec(report);
-  if (!match) {
-    check(false, `${name} is reported`);
+  const state = wire[FuseV1Options[name]];
+
+  if (state !== ENABLED && state !== DISABLED) {
+    check(false, `${name} reports a state this script understands`);
     continue;
   }
-  const enabled = /enabled/i.test(match[1]);
-  check(enabled === expected, `${name} is ${expected ? 'Enabled' : 'Disabled'}`);
+
+  check(
+    (state === ENABLED) === expected,
+    `${name} is ${expected ? 'Enabled' : 'Disabled'}`,
+  );
 }
 
 /* --------------------------------------------------------------- result */

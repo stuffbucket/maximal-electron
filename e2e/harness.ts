@@ -7,21 +7,12 @@ import {
   type Page,
 } from '@playwright/test';
 
+import type { ProviderStatus } from '../src/shared/ipc.js';
+
+import { inspectCapture } from './screenshot.js';
+
 const ROOT = path.resolve(__dirname, '..');
 
-/**
- * Smallest believable reference screenshot, in bytes.
- *
- * A guard against a silent failure that already happened here. Parking the
- * windows with `setOpacity(0)` for a quiet run stopped the compositor giving
- * out content, so every capture came back solid white. The suite stayed green,
- * because nothing asserted on the images.
- *
- * Observed: real captures run from 101 KB to 221 KB, blank ones 20 KB to
- * 37 KB. This sits between, and is a smoke check rather than a pixel
- * assertion.
- */
-const MIN_SCREENSHOT_BYTES = 60_000;
 
 /**
  * Write a reference screenshot.
@@ -45,7 +36,7 @@ const MIN_SCREENSHOT_BYTES = 60_000;
 export async function capture(page: Page, file: string): Promise<boolean> {
   await mkdir(path.dirname(file), { recursive: true });
 
-  let bytes: number | undefined;
+  let image: Buffer | undefined;
 
   try {
     const session = await page.context().newCDPSession(page);
@@ -54,9 +45,7 @@ export async function capture(page: Page, file: string): Promise<boolean> {
         format: 'png',
         fromSurface: false,
       });
-      const data = Buffer.from(shot.data, 'base64');
-      await writeFile(file, data);
-      bytes = data.byteLength;
+      image = Buffer.from(shot.data, 'base64');
     } finally {
       await session.detach().catch(() => undefined);
     }
@@ -64,23 +53,19 @@ export async function capture(page: Page, file: string): Promise<boolean> {
     // Fall through to the ordinary path.
   }
 
-  if (bytes === undefined) {
+  if (image === undefined) {
     try {
-      const data = await page.screenshot({ timeout: 10_000 });
-      await writeFile(file, data);
-      bytes = data.byteLength;
+      image = await page.screenshot({ timeout: 10_000 });
     } catch {
       console.warn(`screenshot skipped, window not composited: ${file}`);
       return false;
     }
   }
 
-  if (bytes < MIN_SCREENSHOT_BYTES) {
-    throw new Error(
-      `${file} is ${bytes} bytes, under the ${MIN_SCREENSHOT_BYTES} floor. ` +
-        'The window is probably not compositing, so the image is blank.',
-    );
-  }
+  await writeFile(file, image);
+
+  const verdict = inspectCapture(image);
+  if (!verdict.ok) throw new Error(`${file}: ${verdict.reason}`);
 
   return true;
 }
@@ -258,4 +243,56 @@ export async function resetShell({ app, window }: Harness): Promise<void> {
   // A known view and view mode, with nothing selected.
   await window.click('[data-testid="nav-library"]');
   await window.click('[data-testid="mode-grid"]');
+}
+
+/**
+ * Set the theme through the preference bridge, the way the shell does.
+ *
+ * It is a persisted preference, so a scenario that changes it has to put it
+ * back. `resetShell` does not, because preferences are not view state.
+ */
+export async function setTheme(
+  page: Page,
+  theme: 'system' | 'light' | 'dark',
+): Promise<void> {
+  await page.evaluate((value) => {
+    // `window` is the Playwright page in this file, so the preload bridge has
+    // to be reached through `globalThis`.
+    const api = (
+      globalThis as unknown as {
+        stuffbucket?: {
+          invoke: (channel: string, payload: unknown) => Promise<unknown>;
+        };
+      }
+    ).stuffbucket;
+    return api?.invoke('prefs:set', { theme: value });
+  }, theme);
+}
+
+/**
+ * The agent backend's state, read from the contract.
+ *
+ * Every agent scenario needs the same decision: is a model actually reachable,
+ * or should this skip? That used to be answered by matching substrings against
+ * the overlay's status line. It could not work. The guards looked for `Waiting`
+ * and `No local model`, and `providerLabel` in `src/renderer/overlay.tsx`
+ * produces neither, so they never fired. On a runner with no backend the
+ * status reads "<model> is not downloaded yet", every guard passed through, and
+ * four scenarios failed on a timeout instead of skipping.
+ *
+ * `ProviderStatus` is already a discriminated union in the IPC contract. Asking
+ * for the state directly cannot drift when the copy is reworded, and the
+ * compiler checks the states.
+ */
+export async function providerState(page: Page): Promise<ProviderStatus['state']> {
+  const status = await page.evaluate(() => {
+    const api = (
+      globalThis as unknown as {
+        stuffbucket?: { invoke: (channel: string) => Promise<unknown> };
+      }
+    ).stuffbucket;
+    return api?.invoke('overlay:provider');
+  });
+
+  return (status as ProviderStatus | undefined)?.state ?? 'unavailable';
 }

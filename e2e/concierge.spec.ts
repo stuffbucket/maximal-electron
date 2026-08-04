@@ -1,6 +1,12 @@
 import { expect, test } from '@playwright/test';
 
-import { closeApp, launchApp, resetShell, type Harness } from './harness.js';
+import {
+  closeApp,
+  launchApp,
+  providerState,
+  resetShell,
+  type Harness,
+} from './harness.js';
 
 /**
  * The concierge loop, end to end.
@@ -41,11 +47,8 @@ test('the overlay agent flips the shell theme', async () => {
     (await app.waitForEvent('window', { timeout: 15_000 }));
   await overlay.waitForSelector('[data-testid="overlay-card"]', { timeout: 15_000 });
 
-  const status = await overlay.locator('[data-testid="overlay-status"]').textContent();
-  test.skip(
-    !status || status.includes('Waiting') || status.includes('No local model'),
-    `No local model backend: ${status ?? 'unknown'}`,
-  );
+  const state = await providerState(overlay);
+  test.skip(state !== 'ready', `No local model backend: ${state}`);
 
   await overlay.fill(
     '[data-testid="overlay-input"]',

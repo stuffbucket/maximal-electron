@@ -8,7 +8,7 @@
   "main": ".vite/build/main.js",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/stuffbucket/electron.git"
+    "url": "git+https://github.com/stuffbucket/maximal-electron.git"
   },
   "scripts": {
     "start": "electron-forge start",
@@ -49,6 +49,7 @@
     "@electron-forge/plugin-fuses": "7.11.2",
     "@electron-forge/plugin-vite": "7.11.2",
     "@electron-forge/shared-types": "7.11.2",
+    "@electron/asar": "^3.4.1",
     "@electron/fuses": "^1.8.0",
     "@eslint/js": "^9.39.0",
     "@playwright/test": "^1.62.0",
