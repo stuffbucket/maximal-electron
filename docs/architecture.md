@@ -94,6 +94,24 @@ Three details are load-bearing.
   its WebAssembly module as a data URL and fetches it at startup, so there is
   no separate asset to serve.
 
+### The terminal and the theme
+
+The emulator draws to a canvas. It is the one surface that cannot inherit
+colours from CSS. `src/renderer/lib/theme.ts` resolves three design tokens to
+literal values, and the terminal starts with those.
+
+**A terminal keeps the scheme it opened in.** Those colours reach the
+WebAssembly terminal at construction. They become the default background,
+foreground, and palette of every cell. `renderer.setTheme` changes only the
+layer those cells cover. Assigning `options.theme` after `open()` does nothing,
+and logs a warning. The supported route is `reset()`, which rebuilds the
+WebAssembly terminal and wipes the screen and the scrollback.
+
+Losing a build log to a theme toggle is the worse trade. So a running terminal
+keeps its colours, and a new tab picks up the current scheme.
+`e2e/shell.spec.ts` asserts both from canvas pixels. The value handed to the
+emulator proves nothing about what reached the screen.
+
 ### Packaging the native module
 
 `@lydell/node-pty` is native, and this is the part that breaks quietly.

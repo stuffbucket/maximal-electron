@@ -259,3 +259,27 @@ export async function resetShell({ app, window }: Harness): Promise<void> {
   await window.click('[data-testid="nav-library"]');
   await window.click('[data-testid="mode-grid"]');
 }
+
+/**
+ * Set the theme through the preference bridge, the way the shell does.
+ *
+ * It is a persisted preference, so a scenario that changes it has to put it
+ * back. `resetShell` does not, because preferences are not view state.
+ */
+export async function setTheme(
+  page: Page,
+  theme: 'system' | 'light' | 'dark',
+): Promise<void> {
+  await page.evaluate((value) => {
+    // `window` is the Playwright page in this file, so the preload bridge has
+    // to be reached through `globalThis`.
+    const api = (
+      globalThis as unknown as {
+        stuffbucket?: {
+          invoke: (channel: string, payload: unknown) => Promise<unknown>;
+        };
+      }
+    ).stuffbucket;
+    return api?.invoke('prefs:set', { theme: value });
+  }, theme);
+}

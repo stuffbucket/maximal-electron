@@ -1,6 +1,6 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator } from '@playwright/test';
 
-import { capture, closeApp, launchApp, resetShell, type Harness } from './harness.js';
+import { capture, closeApp, launchApp, resetShell, setTheme, type Harness } from './harness.js';
 import { createRegistry } from './shuffle.js';
 
 /**
@@ -181,6 +181,60 @@ scenario('a new tab opens a real Ghostty terminal', async () => {
   expect(box).not.toBeNull();
   expect(box!.width).toBeGreaterThan(0);
   expect(box!.height).toBeGreaterThan(0);
+});
+
+scenario('a terminal takes its colours from the design tokens', async () => {
+  const { window } = harness;
+
+  // The emulator draws to a canvas, so it inherits nothing from CSS. It used
+  // to carry the dark palette as three literal hex values, which left the
+  // terminal dark in the light theme and made `docs/architecture.md`'s "no
+  // component contains a hex value" false.
+  //
+  // This samples the canvas rather than the theme object the emulator was
+  // handed. Only a pixel proves the colour reached the screen.
+  //
+  // A terminal keeps the scheme it opened in: the colours are baked into the
+  // WebAssembly terminal at construction, and the only supported way to
+  // rebuild it wipes the scrollback. So this opens a second terminal after
+  // switching, rather than expecting the first to follow.
+  const openTerminal = async () => {
+    await window.click('[data-testid="tab-new"]');
+    const terminal = window.locator('[data-testid="terminal"]').last();
+    const canvas = terminal.locator('canvas').first();
+    await expect(canvas).toBeVisible({ timeout: 20_000 });
+    return canvas;
+  };
+
+  // Mid-width and near the bottom. The prompt sits at the top left and the
+  // scrollbar hugs the right edge, so this stays background.
+  const background = (canvas: Locator) =>
+    canvas.evaluate((node) => {
+      const element = node as HTMLCanvasElement;
+      const context = element.getContext('2d', { willReadFrequently: true });
+      if (!context) return null;
+      const x = Math.floor(element.width / 2);
+      const y = element.height - 6;
+      return Array.from(context.getImageData(x, y, 1, 1).data.slice(0, 3));
+    });
+
+  const dark = await openTerminal();
+  // `--bg-canvas`, dark: #101216.
+  await expect.poll(() => background(dark), { timeout: 20_000 }).toEqual([
+    16, 18, 22,
+  ]);
+
+  try {
+    await setTheme(window, 'light');
+    const light = await openTerminal();
+    // `--bg-canvas`, light: #eef0f4.
+    await expect.poll(() => background(light), { timeout: 20_000 }).toEqual([
+      238, 240, 244,
+    ]);
+  } finally {
+    // A persisted preference, and the order of these scenarios is random.
+    await setTheme(window, 'dark');
+  }
 });
 
 scenario('the terminal runs a command and shows its output', async () => {
