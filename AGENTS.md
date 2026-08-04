@@ -82,6 +82,8 @@ fuse disables. Do not "fix" the tests by turning the fuse back on.
 
 It runs the pi coding agent: `@earendil-works/pi-ai` for the provider, and
 `@earendil-works/pi-agent-core` for the loop and tools. Both at `^0.83.0`.
+They come from `badlogic/pi-mono`. `badlogic/pi` is a different project, a
+vLLM deployment CLI, and is easy to vendor by mistake.
 
 - **Never add an API key.** Discovery finds maximal or Ollama on localhost. A
   key in this repository is a defect.

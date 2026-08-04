@@ -151,10 +151,26 @@ Components reference semantic names only. No component contains a hex value.
 | Embedded model | `native/llama.ts` | Downloads and loads the local weights. |
 | Embedded run | `native/embedded.ts` | The llama.cpp engine, behind the same gate. |
 | Tool approval | `native/approval.ts` | Decides what the agent must ask about. Pure, and mutation tested. |
+| Toolsets | `native/toolsets.ts` | Named groups of tools. Each tool declares its own risk, so the gate cannot go stale. |
 | Schema bridge | `native/grammar.ts` | Translates tool schemas for llama.cpp. Pure, and mutation tested. |
 
 The menu and the tray both route through `sendEvent`, so the React shell stays
 the single owner of view state.
+
+### The overlay window
+
+`windows/overlay.ts` builds a `BrowserWindow` with `type: 'panel'`, held above
+full-screen applications by `setAlwaysOnTop(true, 'screen-saver')`, and placed
+on the display `getDisplayNearestPoint` returns for the cursor. A preference
+holds the accelerator that summons it.
+
+Two behaviours are deliberate.
+
+- **It does not hide on blur.** The window covers the display, so a click
+  outside the card already lands on the scrim. A blur handler on top of that
+  makes the card vanish whenever a notification takes focus.
+- **`showInactive`, then `focus`.** That pair puts the panel on screen and
+  gives it key input without activating this application.
 
 ## Build output
 
