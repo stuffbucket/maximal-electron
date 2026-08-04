@@ -1,8 +1,12 @@
 import { readFileSync } from 'node:fs';
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { TERMINAL_TOKENS, terminalTheme } from '../src/renderer/lib/theme.js';
+import {
+  TERMINAL_TOKENS,
+  currentTerminalTheme,
+  terminalTheme,
+} from '../src/renderer/lib/theme.js';
 
 /**
  * The terminal's theme.
@@ -117,5 +121,53 @@ describe('TERMINAL_TOKENS', () => {
         expect(PARSEABLE.test(value), `${token}: ${value}`).toBe(true);
       }
     }
+  });
+});
+
+describe('currentTerminalTheme', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('resolves the tokens against the document root', () => {
+    // The DOM boundary, stubbed rather than emulated. Mutation testing found
+    // this function uncovered, and the mutants it produced are the two ways
+    // the adapter can be wrong: reading from the wrong element, and losing
+    // the lookup. Both are invisible to a test of `terminalTheme` alone.
+    const root = Symbol('documentElement');
+    const seen: string[] = [];
+    const values: Record<string, string> = {
+      '--bg-canvas': ' #101216 ',
+      '--text-primary': '#e6e8ec',
+      '--accent': '#6ea8fe',
+    };
+
+    let queried: unknown;
+    vi.stubGlobal('document', { documentElement: root });
+    vi.stubGlobal('getComputedStyle', (element: unknown) => {
+      queried = element;
+      return {
+        getPropertyValue: (token: string) => {
+          seen.push(token);
+          return values[token] ?? '';
+        },
+      };
+    });
+
+    expect(currentTerminalTheme()).toEqual({
+      background: '#101216',
+      foreground: '#e6e8ec',
+      cursor: '#6ea8fe',
+    });
+
+    expect(queried).toBe(root);
+    expect(seen).toEqual(Object.values(TERMINAL_TOKENS));
+  });
+
+  it('returns an empty theme when the tokens do not resolve', () => {
+    vi.stubGlobal('document', { documentElement: {} });
+    vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: () => '' }));
+
+    expect(currentTerminalTheme()).toEqual({});
   });
 });

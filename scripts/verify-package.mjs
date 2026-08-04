@@ -59,7 +59,20 @@ if (!existsSync(app)) {
 
 console.log('asar contents');
 
-const listing = listPackage(asar);
+/**
+ * asar entries, with forward slashes on every platform.
+ *
+ * `listPackage` returns paths with the platform separator, so on Windows the
+ * entries read `\.vite\build\main.js`. Every check below is written with `/`,
+ * which is why seven of them failed there the first time this script ever got
+ * far enough on Windows to run: the spawn error had been masking them.
+ *
+ * Only rewritten where the separator is a separator. A backslash is a legal
+ * character in a POSIX filename.
+ */
+const listing = listPackage(asar).map((entry) =>
+  path.sep === '\\' ? entry.replaceAll('\\', '/') : entry,
+);
 
 const has = (suffix) => listing.some((entry) => entry.endsWith(suffix));
 
@@ -124,7 +137,16 @@ check(findUnpacked('*.node').length > 0, 'a native .node binary is unpacked');
 // these inside the archive: the package builds, the app starts, and the model
 // fails to load with an error that reads like a bad model file rather than a
 // packaging fault.
-const llamaLibs = [...findUnpacked('libllama*'), ...findUnpacked('libggml*')];
+//
+// The names are platform specific. Unix builds prefix `lib` and end in
+// `.dylib` or `.so`; Windows builds do neither. Checking only the Unix names
+// reported a missing library on Windows that was present under its own name.
+const LLAMA_LIBRARIES =
+  process.platform === 'win32'
+    ? ['llama*.dll', 'ggml*.dll']
+    : ['libllama*', 'libggml*'];
+
+const llamaLibs = LLAMA_LIBRARIES.flatMap((pattern) => findUnpacked(pattern));
 check(llamaLibs.length > 0, 'llama.cpp shared libraries are unpacked');
 
 /* ---------------------------------------------------------------- fuses */
