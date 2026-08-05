@@ -242,8 +242,9 @@ Recording is **capture then compose**, with a take on disk between them. See
   design. A capture costs 45 seconds. A re-cut costs 6.
 - `SETTLE_SECONDS` is the one exception, and it has to be. Compose cannot
   recover a frame that capture never recorded.
-- `e2e/demo/*.demo.ts` are timelines, not tests. Three configs match three
-  suffixes: `.demo.ts`, `.compose.ts`, `.spec.ts`. Do not merge them.
+- `e2e/demo/*.demo.ts` are timelines, not tests. Four configurations match four
+  suffixes: `.demo.ts` records, `.compose.ts` cuts, `.stills.ts` photographs,
+  `.spec.ts` gates. Do not merge them.
 - **Only `launch.ts` and the timelines know about this application.** Everything
   else in `e2e/demo/` is generic, and a fork keeps it unchanged.
 - **Never lower the pacing constants** to make an edit fit. `MIN_HOLD_SECONDS`
@@ -253,6 +254,20 @@ Recording is **capture then compose**, with a take on disk between them. See
   imports no `electron`, so main and the recorder share it. It is in the
   `stryker.conf.json` mutate list. The application never downloads or installs
   `ffmpeg`. It detects, and it names the command that fixes a miss.
+
+### Three directories say "demo"
+
+They are not the same thing, and the names are a trap.
+
+| Path | What it is |
+| --- | --- |
+| `demo/` | Output. Committed stills, mp4 files, and the `edits/*.json` that cut them. |
+| `e2e/demo/` | The recorder. Generic capture, compose, and encode machinery. |
+| `e2e/fixtures/demo-shell/` | The fixture itself: the fake agent fleet and the components that render it. Its own renderer entry point, excluded from the package. |
+
+The fixture may import from `src/`. The product may not import from `e2e/` —
+ESLint enforces that, because one import the wrong way puts the fixture back
+into the bundle a user installs.
 
 ## Tests run in a random order
 

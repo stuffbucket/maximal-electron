@@ -11,7 +11,7 @@ import { record, sequence, type SequenceDef } from './recorder.js';
  * The product video: a shell that orchestrates coding agents.
  *
  * Everything here is real. The fleet is fixture data, and says so in
- * `src/renderer/lib/demo-runs.ts`, but the terminal runs a real `claude`, and
+ * `e2e/fixtures/demo-shell/runs.ts`, but the terminal runs a real `claude`, and
  * the overlay talks to a real local model through the real approval gate. The
  * closing shot changes the theme of the running application because the agent
  * called `set_theme`, not because the timeline clicked a toggle.

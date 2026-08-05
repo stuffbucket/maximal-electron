@@ -11,12 +11,11 @@ import { setTheme } from '../harness.js';
  * `e2e/harness.ts` deliberately launches the production shell, and it is not
  * this file's to change. The demo needs one extra environment variable, so
  * this mirrors the harness rather than editing it. The same split already
- * exists in `e2e/demo-stills.spec.ts`, for the same reason.
+ * exists in `e2e/demo-stills.stills.ts`, for the same reason.
  *
- * `STUFFBUCKET_DEMO=1` makes the main process load the renderer with
- * `?demo=1`, and `src/renderer/main.tsx` mounts the fleet of fake agent runs
- * instead of the ordinary shell. Nothing else in the application behaves
- * differently.
+ * `STUFFBUCKET_DEMO=1` makes the main process load the fixture's own renderer
+ * bundle, built from `e2e/fixtures/demo-shell/`, instead of the product's.
+ * Nothing else in the application behaves differently.
  *
  * `STUFFBUCKET_E2E=1` keeps the profile out of the developer's real user data
  * directory, and parks the windows out of their way.

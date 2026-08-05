@@ -1,19 +1,19 @@
 import { useCallback, useState, useMemo } from 'react';
 
-import { Toolbar, type ViewMode } from '../Controls.js';
-import { ShellLayout } from '../ShellLayout.js';
-import { type DocumentTab } from '../TabBar.js';
-import { TerminalTabs } from '../TerminalTabs.js';
-import { usePreferences } from '../../lib/bridge.js';
+import { Toolbar, type ViewMode } from '../../../src/renderer/components/Controls.js';
+import { ShellLayout } from '../../../src/renderer/components/ShellLayout.js';
+import { type DocumentTab } from '../../../src/renderer/components/TabBar.js';
+import { TerminalTabs } from '../../../src/renderer/components/TerminalTabs.js';
+import { usePreferences } from '../../../src/renderer/lib/bridge.js';
 import {
   DEFAULT_VIEW,
   runsFor,
   viewLabel,
   type DemoViewId,
-} from '../../lib/demo.js';
-import { RUNS } from '../../lib/demo-runs.js';
-import { useShellTabs } from '../../lib/useShellTabs.js';
-import { useThemePreference } from '../../lib/useThemePreference.js';
+} from './views.js';
+import { RUNS } from './runs.js';
+import { useShellTabs } from '../../../src/renderer/lib/useShellTabs.js';
+import { useThemePreference } from '../../../src/renderer/lib/useThemePreference.js';
 
 import { AgentNav } from './AgentNav.js';
 import { RunCanvas } from './RunCanvas.js';

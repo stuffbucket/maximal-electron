@@ -696,23 +696,20 @@ button {
   user-select: none;
 }
 
-/* ------------------------------------------------------- demo: agent fleet */
+/* ------------------------------------------------------------------ status */
 
 /*
- * Styles for the demo shell (`?demo=1`, see `src/renderer/lib/demo.ts`).
+ * One custom property carries a status colour. Each element that knows its own
+ * status sets it, and every child reads it, so a chip inside a card does not
+ * have to repeat the mapping.
  *
- * Everything here is additive. It reuses `.card`, `.row`, `.grid`, `.list`, and
- * the inspector classes above, and only adds the status colour and the extra
- * columns an agent run needs. No production selector changes.
- *
- * One custom property carries the status colour. Each element that knows its
- * own status sets it, and every child reads it, so a chip inside a card does
- * not have to repeat the mapping.
+ * `TabBar` renders `.dot` and `StatusChip` renders `.chip`, so these belong to
+ * the product even though nothing in the default views sets a status yet. The
+ * fleet fixture's own selectors live in `e2e/fixtures/demo-shell/demo.css`.
  */
 
 .dot[data-status='running'],
 .chip[data-status='running'],
-.run-card[data-status='running'],
 .nav__item[data-status='running'] {
   --status: var(--accent);
   --status-soft: var(--accent-soft);
@@ -720,7 +717,6 @@ button {
 
 .dot[data-status='blocked'],
 .chip[data-status='blocked'],
-.run-card[data-status='blocked'],
 .nav__item[data-status='blocked'] {
   --status: var(--warning);
   --status-soft: var(--warning-soft);
@@ -728,7 +724,6 @@ button {
 
 .dot[data-status='done'],
 .chip[data-status='done'],
-.run-card[data-status='done'],
 .nav__item[data-status='done'] {
   --status: var(--success);
   --status-soft: var(--success-soft);
@@ -736,7 +731,6 @@ button {
 
 .dot[data-status='failed'],
 .chip[data-status='failed'],
-.run-card[data-status='failed'],
 .nav__item[data-status='failed'] {
   --status: var(--danger);
   --status-soft: var(--danger-soft);
@@ -764,131 +758,9 @@ button {
   white-space: nowrap;
 }
 
-.mono-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: 1px var(--space-2);
-  border-radius: var(--radius-chip);
-  background: var(--bg-canvas);
-  border: 1px solid var(--border-subtle);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-
 /* The nav status buckets tint their icon only, so the list stays calm. */
 .nav__item[data-status] svg {
   color: var(--status);
-}
-
-/* ---- grid mode ---- */
-
-.grid--runs {
-  grid-template-columns: repeat(auto-fill, minmax(248px, 1fr));
-}
-
-/*
- * The card pays for the larger type out of its own spacing.
- *
- * A fleet grid that shows seven of seventeen runs is losing to the list view,
- * which shows all of them. Tightening the stack rather than shrinking the text
- * keeps the reading size and buys back the rows.
- */
-.run-card {
-  gap: var(--space-2);
-  padding: var(--space-3);
-}
-
-.run-card__head {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.run-card__elapsed {
-  margin-left: auto;
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.run-card__meta {
-  padding: 0;
-  gap: var(--space-1);
-}
-
-/* The task is the headline, so it wraps to two lines rather than truncating. */
-.run-card__task {
-  white-space: normal;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  min-height: calc(2 * var(--leading-base) * var(--text-base));
-}
-
-.run-card__meta .card__sub {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-}
-
-.run-card__step {
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-.run-card__foot {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  border-top: 1px solid var(--border-subtle);
-  padding-top: var(--space-2);
-}
-
-.run-card__diff {
-  margin-left: auto;
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-}
-
-/* ---- list mode ---- */
-
-.run-row {
-  gap: var(--space-3);
-}
-
-.run-row .row__sub {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: none;
-}
-
-.run-row__project {
-  width: 92px;
-}
-
-.run-row__model {
-  width: 148px;
-  font-family: var(--font-mono);
-}
-
-.run-row__tokens {
-  width: 58px;
-  text-align: right;
-}
-
-.run-row__elapsed {
-  width: 66px;
-  text-align: right;
 }
 
 /* ---- inspector ---- */
@@ -904,134 +776,13 @@ button {
   justify-self: start;
 }
 
-/* The status rows label themselves, so the label takes the room it needs and
-   the count sits at the right edge. The 74px column would wrap them. */
-.run-detail__task {
-  margin: 0;
-  font-size: var(--text-md);
-  font-weight: var(--weight-md);
-  color: var(--text-primary);
-}
-
-.approval {
-  display: grid;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border: 1px solid var(--warning);
-  background: var(--warning-soft);
-  border-radius: var(--radius-card);
-}
-
-.approval__summary {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0;
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  color: var(--text-primary);
-  overflow-wrap: anywhere;
-}
-
-.approval__actions {
-  display: flex;
-  gap: var(--space-2);
-}
-
-.approval__allow,
-.approval__deny {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-1);
-  flex: 1;
-  height: 26px;
-  border-radius: var(--radius-input);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-md);
-}
-
-.approval__allow {
-  background: var(--accent);
-  color: var(--accent-contrast);
-}
-
-.approval__deny {
-  background: var(--bg-raised);
-  border: 1px solid var(--border-strong);
-  color: var(--text-secondary);
-}
-
-.tool-use {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.tool-use .mono-chip {
-  width: 58px;
-}
-
-.tool-use__bar {
-  flex: 1;
-  height: 4px;
-  border-radius: var(--radius-pill);
-  background: var(--bg-active);
-  overflow: hidden;
-}
-
-.tool-use__fill {
-  display: block;
-  height: 100%;
-  background: var(--accent);
-}
+/* ------------------------------------------------------------- reduced motion */
 
 @media (prefers-reduced-motion: reduce) {
   * {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
   }
-}
-
-/* ------------------------------------------------------- waiting on you */
-
-/*
- * The inspector's empty state.
- *
- * It used to repeat the four status counts that the left rail already carries
- * and the status bar summarised again. A count is cheap to repeat and worth
- * nothing repeated; which runs are blocked is the thing a rail of numbers
- * cannot tell you. So this lists them, and each one is a way in.
- */
-.waiting__item {
-  display: grid;
-  gap: var(--space-1);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-card);
-  background: var(--bg-raised);
-  text-align: left;
-  cursor: pointer;
-  transition: border-color var(--duration-fast) var(--ease-out);
-}
-
-.waiting__item:hover {
-  border-color: var(--border-strong);
-}
-
-.waiting__item:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.waiting__title {
-  font-size: var(--text-base);
-  color: var(--text-primary);
-}
-
-.waiting__meta {
-  font-size: var(--text-sm);
-  color: var(--text-muted);
 }
 
 /* ------------------------------------------------------------ scrollbars */

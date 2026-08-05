@@ -2,9 +2,10 @@
  * Demo fixtures: a fleet of coding agents working across a set of projects.
  *
  * This module exists for screenshots and screen recordings. Nothing here is
- * real, and nothing on the production path imports it: `src/renderer/main.tsx`
- * only reaches the demo tree when the window was loaded with `?demo=1`, which
- * the main process adds under `STUFFBUCKET_DEMO=1`.
+ * real, and nothing on the production path can import it: the product is
+ * forbidden from importing out of `e2e/` by an ESLint rule, and this fixture
+ * compiles into a renderer bundle that `forge.config.ts` keeps out of the
+ * package.
  *
  * The rows are written out rather than generated. A screenshot needs the text
  * to read like a real work queue, and a loop over a name list does not.

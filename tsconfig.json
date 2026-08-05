@@ -24,6 +24,7 @@
     "src/**/*.tsx",
     "tests/**/*.ts",
     "e2e/**/*.ts",
+    "e2e/**/*.tsx",
     "*.config.ts",
     "forge.config.ts",
     "forge.env.d.ts"

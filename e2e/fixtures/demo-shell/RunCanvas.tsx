@@ -1,7 +1,7 @@
 import { Bot, GitBranch } from 'lucide-react';
 
-import { STATUS_LABELS, type AgentRun } from '../../lib/demo-runs.js';
-import { Card, EmptyState, Row, StatusChip, type ViewMode } from '../Controls.js';
+import { STATUS_LABELS, type AgentRun } from './runs.js';
+import { Card, EmptyState, Row, StatusChip, type ViewMode } from '../../../src/renderer/components/Controls.js';
 
 function RunCard({
   run,

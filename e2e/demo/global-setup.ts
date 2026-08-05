@@ -1,11 +1,15 @@
 import { detectFfmpeg } from '../../src/main/native/ffmpeg.js';
+import { requireFreshBundles } from '../global-setup.js';
 
 /**
- * Prove the encoder is there before anything launches.
+ * Prove the encoder is there, and the build is current, before anything
+ * launches.
  *
  * A recording spends minutes driving a real application and only reaches the
  * encoder at the very end. Discovering a missing `ffmpeg` there wastes the
- * whole run, so the check happens here instead.
+ * whole run, so the check happens here instead. The same argument applies to a
+ * stale bundle, which wastes the run and then produces a video of the previous
+ * build without saying so.
  *
  * `globalSetup` runs once, in the main process, before any worker spawns.
  * Workers inherit its environment, so pinning the resolved paths makes every
@@ -15,6 +19,8 @@ import { detectFfmpeg } from '../../src/main/native/ffmpeg.js';
  * that fixes it, and says to run the recording again afterwards.
  */
 export default async function globalSetup(): Promise<void> {
+  requireFreshBundles();
+
   const status = await detectFfmpeg();
 
   if (status.state === 'missing') {

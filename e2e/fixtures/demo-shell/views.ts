@@ -1,8 +1,8 @@
 /**
- * Demo mode: the gate, and the views over the fake fleet.
+ * The views over the fake fleet.
  *
- * The rows themselves live in `demo-runs.ts`. This module is the only thing
- * the demo components import for navigation state.
+ * The rows themselves live in `runs.ts`. This module is the only thing the
+ * fixture's components import for navigation state.
  */
 
 import {
@@ -11,18 +11,7 @@ import {
   STATUS_LABELS,
   type AgentRun,
   type RunStatus,
-} from './demo-runs.js';
-
-/**
- * Whether this window is running the demo shell.
- *
- * Read from the query string rather than from an IPC channel, so the contract
- * in `src/shared/ipc.ts` does not grow a presentation flag. See
- * `src/main/windows/main-window.ts`.
- */
-export function isDemoShell(): boolean {
-  return new URLSearchParams(window.location.search).get('demo') === '1';
-}
+} from './runs.js';
 
 /* ---------------------------------------------------------- the left nav */
 

@@ -12,9 +12,9 @@ import {
   NAV_SECTIONS,
   type DemoNavEntry,
   type DemoViewId,
-} from '../../lib/demo.js';
-import type { RunStatus } from '../../lib/demo-runs.js';
-import { NavRail } from '../NavRail.js';
+} from './views.js';
+import type { RunStatus } from './runs.js';
+import { NavRail } from '../../../src/renderer/components/NavRail.js';
 
 /** One icon per status bucket, so the Agents section reads at a glance. */
 const STATUS_ICONS: Record<RunStatus, ComponentType<{ size?: number }>> = {

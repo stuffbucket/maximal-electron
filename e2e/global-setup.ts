@@ -25,8 +25,11 @@ const BUNDLE = path.join(ROOT, '.vite/build/main.js');
  * passed, and the run was read as evidence the change worked. A silent wrong
  * answer is worse than a failure, which is the same reason `capture` rejects a
  * blank screenshot.
+ *
+ * Exported because the recorder and the stills runner drive the same bundles
+ * from their own configurations, and were not guarded at all.
  */
-function requireFreshBundles(): void {
+export function requireFreshBundles(): void {
   let built: number;
   try {
     built = statSync(BUNDLE).mtimeMs;
@@ -37,12 +40,19 @@ function requireFreshBundles(): void {
     );
   }
 
-  const newest = newestMtime(path.join(ROOT, 'src'));
+  // Both trees are compiled into `.vite`: the product from `src`, the capture
+  // fixture from `e2e/fixtures`. An edit to either is not under test until it
+  // has been packaged.
+  const times = [path.join(ROOT, 'src'), path.join(ROOT, 'e2e/fixtures')]
+    .map((directory) => newestMtime(directory))
+    .filter((time) => time !== undefined);
+
+  const newest = times.length > 0 ? Math.max(...times) : undefined;
   if (newest === undefined || newest <= built) return;
 
   const behind = Math.round((newest - built) / 1000);
   throw new Error(
-    `The bundles in .vite are ${String(behind)}s older than src/. ` +
+    `The bundles in .vite are ${String(behind)}s older than the source. ` +
       'Run `npm run package` first, or the suite tests the previous build ' +
       'and a pass proves nothing about your change.',
   );

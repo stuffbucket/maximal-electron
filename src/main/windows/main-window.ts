@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 
 import { BrowserWindow, shell } from 'electron';
@@ -62,19 +63,47 @@ export function createMainWindow(): BrowserWindow {
     }
   });
 
-  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    const url = new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
-    if (isDemo()) url.searchParams.set('demo', '1');
-    void window.loadURL(url.href);
+  if (isDemo()) loadDemoShell(window);
+  else if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    void window.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
     // Development only. The upstream Forge template opens DevTools in packaged
     // builds too, which ships a debugger to users.
     window.webContents.openDevTools({ mode: 'detach' });
   } else {
     void window.loadFile(
       path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
-      isDemo() ? { query: { demo: '1' } } : {},
     );
   }
 
   return window;
+}
+
+/**
+ * Load the capture fixture instead of the product.
+ *
+ * `STUFFBUCKET_DEMO=1` selects it. It is a separate renderer bundle, and
+ * `forge.config.ts` keeps that bundle out of the package, so this is reachable
+ * from a checkout and not from an installed application. Failing loudly here
+ * beats `loadFile` rejecting into a discarded promise, which leaves a blank
+ * window that looks like a hang.
+ */
+function loadDemoShell(window: BrowserWindow): void {
+  if (DEMO_WINDOW_VITE_DEV_SERVER_URL) {
+    void window.loadURL(DEMO_WINDOW_VITE_DEV_SERVER_URL);
+    window.webContents.openDevTools({ mode: 'detach' });
+    return;
+  }
+
+  const page = path.join(
+    __dirname,
+    `../renderer/${DEMO_WINDOW_VITE_NAME}/index.html`,
+  );
+  if (!existsSync(page)) {
+    throw new Error(
+      `STUFFBUCKET_DEMO is set, but the capture fixture is not in this build. ` +
+        `It is excluded from the package on purpose. Run it from a checkout: ` +
+        `npm run package && STUFFBUCKET_DEMO=1 npm start`,
+    );
+  }
+  void window.loadFile(page);
 }

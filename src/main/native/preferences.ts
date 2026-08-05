@@ -76,11 +76,13 @@ export function isE2E(): boolean {
 /**
  * True when the window should mount the demo shell.
  *
- * `STUFFBUCKET_DEMO=1` loads the renderer with `?demo=1`, and the renderer
- * branches on `location.search`. It travels as a query string rather than as
- * an IPC channel on purpose: the contract in `src/shared/ipc.ts` is checked by
- * an exhaustiveness proof and a tripwire test, and a presentation flag does
- * not belong there.
+ * `STUFFBUCKET_DEMO=1` makes `createMainWindow` load the capture fixture's own
+ * renderer bundle instead of the product's. The renderer knows nothing about
+ * it: there is no flag to read and no branch to take, because the two shells
+ * are two entry points.
+ *
+ * The fixture bundle is excluded from the package, so this is reachable from a
+ * checkout and not from an installed application.
  *
  * It also earns a profile of its own. See `src/main/index.ts`.
  */
