@@ -1,4 +1,4 @@
-@import './tokens.css';
+@import './controls.css';
 
 /*
  * The floating overlay.
@@ -50,10 +50,10 @@ body,
   flex-direction: column;
   gap: var(--space-3);
   padding: var(--space-4);
-  border-radius: 14px;
+  border-radius: var(--radius-dialog);
   background: var(--bg-panel);
   border: 1px solid var(--border-strong);
-  box-shadow: 0 24px 64px rgb(0 0 0 / 0.5);
+  box-shadow: var(--elevation-dialog);
   animation: card-in 180ms var(--ease-out);
 }
 
@@ -62,26 +62,23 @@ body,
   resize: none;
   padding: var(--space-3);
   border-radius: var(--radius-input);
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-canvas);
+  border: 1px solid var(--border-input);
+  background: var(--bg-input);
   color: var(--text-primary);
   font: inherit;
   user-select: text;
   cursor: text;
 }
 
+.card__input:hover:not(:disabled) {
+  border-color: var(--border-input-hover);
+}
+
 .card__input::placeholder {
   color: var(--text-muted);
 }
 
-.card__input:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
 
-.card__input:disabled {
-  opacity: var(--opacity-disabled, 0.5);
-}
 
 .card__answer {
   max-height: 40vh;
@@ -159,16 +156,10 @@ body,
   color: var(--text-primary);
   font: inherit;
   font-size: var(--text-sm);
-  cursor: pointer;
 }
 
 .approval__button:hover {
   border-color: var(--accent);
-}
-
-.approval__button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
 }
 
 .approval__button--primary {
@@ -211,7 +202,7 @@ body,
 
 .setup__progress {
   position: relative;
-  height: 22px;
+  height: var(--control-sm);
   border-radius: var(--radius-chip);
   background: var(--bg-active);
   overflow: hidden;

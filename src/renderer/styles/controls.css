@@ -1,0 +1,54 @@
+@import './tokens.css';
+
+/*
+ * Controls, shared across every document.
+ *
+ * There are three renderer documents in this repository — the shell, the
+ * overlay panel, and the capture fixture — and until now they shared only
+ * `tokens.css`. `overlay.css` had no `button` reset and no `:focus-visible`
+ * rule, so a control authored for the shell and rendered in the overlay got
+ * the user-agent's chrome and no focus ring at all.
+ *
+ * What belongs here is anything that has to look the same wherever it lands.
+ * What belongs in `shell.css` is the shell's own furniture: panels, the title
+ * bar, the canvas.
+ *
+ * Import this rather than `tokens.css` directly. It re-exports them.
+ */
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+/*
+ * The focus ring, once.
+ *
+ * Five copies existed, in three geometries: two used a 2px offset, two used
+ * 1px, and only one set a radius. Which ring a control got depended on which
+ * stylesheet happened to style it, which is not a decision anyone made.
+ */
+:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+  border-radius: var(--radius-chip);
+}
+
+/*
+ * Disabled is deliberately not styled here.
+ *
+ * A blanket `[disabled], [aria-disabled=true]` rule was written and removed. It
+ * matched nothing in this repository — a DOM probe of the fixture returned zero
+ * elements — and adding it still moved the canvas layout in captured stills,
+ * reproducibly, in a way no reading of the cascade explains. Rather than ship a
+ * rule that is both unnecessary and not understood, disabled state belongs on
+ * the individual control classes, where the selector is specific enough to
+ * reason about.
+ *
+ * `--opacity-disabled` is the value they should use. It was referenced by the
+ * overlay's textarea with an inline fallback and defined nowhere before this.
+ */

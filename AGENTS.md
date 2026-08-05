@@ -212,6 +212,26 @@ giving an occluded window frames. The plain call then hangs until its timeout.
 That reproduced against the overlay under seed 587000642. `capture` reads the
 renderer through the debugger, which does not care what is in front.
 
+### A still is not an oracle
+
+`demo/stills/*.png` are artifacts to look at. Do not diff them for equality and
+read the result as proof a change was neutral.
+
+They are bistable. Running `npm run stills` three times over identical code
+produced state A once and state B twice, differing by 179,000 pixels — around
+four percent of the frame — in the canvas region of `01-projects` and
+`03-multi-agent-tabs`. A separate 5,024-pixel floor is the macOS traffic
+lights, which are coloured or grey depending on whether the window was key.
+
+This was learned the expensive way: a pixel difference was attributed to a CSS
+change, bisected to a single rule, and that rule then turned out to match zero
+elements in the fixture under a DOM probe. The instrument was the variable.
+
+For a renderer change, the evidence is a computed-layout assertion in a real
+engine, and for a stylesheet change, a text diff of the built CSS in
+`.vite/renderer/*/assets/*.css`. Both are deterministic. The images are for a
+human to look at afterwards.
+
 ## The suite stays off the screen
 
 A run drives a real application on the developer's desktop. Left alone, the
