@@ -9,8 +9,10 @@ import type {
   ProviderStatus,
 } from '../shared/ipc.js';
 
+import { Dialog } from './components/Controls.js';
 import { bridge } from './lib/bridge.js';
 import { useBridgeEvent } from './lib/bridge.js';
+import { escapeAction, outsideAction } from './lib/overlay-keys.js';
 
 /**
  * The floating command card, backed by the pi coding agent.
@@ -154,59 +156,91 @@ function Overlay() {
     });
   }, [prompt, busy]);
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      // A pending prompt owns the keyboard. Enter allows, Escape denies. This
-      // comes before the abort branch, so Escape answers the question in front
-      // of the user rather than killing the run underneath it.
-      if (approval) {
-        if (event.key === 'Enter') {
-          event.preventDefault();
-          decide(true);
-          return;
-        }
-        if (event.key === 'Escape') {
-          event.preventDefault();
-          decide(false);
-        }
-        return;
-      }
+  /**
+   * Enter, when a tool call is waiting.
+   *
+   * A pending prompt owns the keyboard. The textarea's own Enter handler sends
+   * a prompt, so this has to win: it runs on the dialog, above the field, and
+   * stops the event there.
+   */
+  const onKeyDown = useCallback(
+    (event: React.KeyboardEvent) => {
+      if (!approval) return;
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      event.stopPropagation();
+      decide(true);
+    },
+    [approval, decide],
+  );
 
-      if (event.key !== 'Escape') return;
-      // Escape stops a run first, and only dismisses once idle. Otherwise a
-      // long answer would keep streaming into a card nobody can see.
-      if (busy) {
+  /**
+   * Escape, in the order the user means it.
+   *
+   * Answer the question in front of them first, then stop a run, and only
+   * dismiss when there is nothing else to do. Otherwise a long answer keeps
+   * streaming into a card nobody can see.
+   *
+   * `preventDefault` because the dialog never closes itself: this window's
+   * visibility belongs to the main process, and `hide` is an IPC call.
+   */
+  const act = useCallback(
+    (action: string) => {
+      if (action === 'deny') decide(false);
+      else if (action === 'abort') {
         void bridge.invoke('overlay:abort');
         setBusy(false);
-        return;
-      }
-      hide();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [approval, busy, decide, hide]);
+      } else hide();
+    },
+    [decide, hide],
+  );
+
+  const onEscape = useCallback(
+    (event: KeyboardEvent) => {
+      event.preventDefault();
+      act(escapeAction(Boolean(approval), busy));
+    },
+    [act, approval, busy],
+  );
+
+  /**
+   * A click outside the card.
+   *
+   * Dismissing with a question on screen answers it. Leaving the gate open
+   * would park the run until the timeout, and every summon in that window
+   * would report the agent as busy.
+   */
+  const onOutside = useCallback(
+    (event: Event) => {
+      event.preventDefault();
+      for (const action of outsideAction(Boolean(approval))) act(action);
+    },
+    [act, approval],
+  );
 
   const ready = status.state === 'ready';
 
   return (
-    // Clicking the scrim dismisses, the way a modal does. The card stops the
-    // event so a click inside never closes it.
-    <div
-      className="scrim"
-      onMouseDown={() => {
-        // Dismissing with a question on screen answers it. Leaving the gate
-        // open would park the run until the timeout, and every summon in that
-        // window would report the agent as busy.
-        if (approval) decide(false);
-        hide();
-      }}
-      data-testid="overlay-scrim"
+    /*
+     * Always open. This window's visibility is the main process's business —
+     * `hide` is an IPC call — so the dialog is a description of what the window
+     * contains, not a thing that opens and closes.
+     *
+     * It was a plain div with a click handler before: no role, no accessible
+     * name, no focus trap, and Tab walked straight out of the card into
+     * nothing. Radix supplies all four; the three behaviours that were already
+     * right are preserved through its callbacks rather than a window listener.
+     */
+    <Dialog
+      open
+      title="Ask the agent"
+      className="card"
+      overlayClassName="scrim"
+      testId="overlay-card"
+      onKeyDown={onKeyDown}
+      onEscapeKeyDown={onEscape}
+      onPointerDownOutside={onOutside}
     >
-      <div
-        className="card"
-        onMouseDown={(event) => event.stopPropagation()}
-        data-testid="overlay-card"
-      >
         <textarea
           ref={input}
           className="card__input"
@@ -342,8 +376,7 @@ function Overlay() {
                 : 'Enter to send · Esc to dismiss'}
           </span>
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 }
 

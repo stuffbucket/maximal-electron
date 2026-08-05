@@ -35,16 +35,23 @@ body,
 .scrim {
   position: fixed;
   inset: 0;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  /* Wiggle drops the card near the bottom of the focused monitor. */
-  padding-bottom: 18vh;
   background: rgb(0 0 0 / 0.34);
   animation: scrim-in 140ms var(--ease-out);
 }
 
+/*
+ * The card places itself.
+ *
+ * It used to be a flex child of `.scrim`. Radix portals the dialog content as
+ * a sibling of the overlay rather than a descendant, so the scrim can no
+ * longer position it. Same result, stated directly: wiggle drops the card near
+ * the bottom of the focused monitor.
+ */
 .card {
+  position: fixed;
+  bottom: 18vh;
+  left: 50%;
+  transform: translateX(-50%);
   width: min(680px, 82vw);
   display: flex;
   flex-direction: column;
@@ -264,10 +271,16 @@ body,
   }
 }
 
+/* The card is centred by `translateX(-50%)`, so the animation has to carry
+   that through or it jumps sideways on the first frame. */
 @keyframes card-in {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translate(-50%, 10px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
   }
 }
 
