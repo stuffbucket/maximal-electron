@@ -91,6 +91,20 @@ Apple Silicon. `maximal` ships arm64 only for the same reason.
 
 An MSI, built with WiX 5 on a GitHub-hosted `windows-2022` runner.
 
+```
+dotnet tool install --global wix --version 5.0.2
+wix extension add -g WixToolset.Util.wixext/5.0.2
+wix build build/windows/app.wxs -d Version=x.y.z -d SourceDir=<staging> \
+    -arch x64 -ext WixToolset.Util.wixext -out out.msi
+```
+
+These live here rather than in a comment inside `app.wxs`, because an XML
+comment cannot contain a double hyphen and every one of these commands has a
+long option. That is not a style preference: the comment held these commands
+verbatim, `wix build` rejected the file with `WIX0104`, and the first tag ever
+pushed failed on it. `tests/wxs.test.ts` now parses every `.wxs` file, so a
+comment that breaks the XML fails before a release does.
+
 The source is `build/windows/app.wxs`, adapted from `maximal`'s
 `build/windows/maximal.wxs`. That file is the last known good Windows installer
 in this organisation. It installs per user, so there is no prompt for
