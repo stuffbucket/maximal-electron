@@ -20,12 +20,9 @@
   and a taskkill custom action so an upgrade does not hit the "files in use"
   prompt while the running app holds a file lock.
 
-  Built in CI on windows-2022:
-
-    dotnet tool install --global wix --version 5.0.2
-    wix extension add -g WixToolset.Util.wixext/5.0.2
-    wix build build/windows/app.wxs -d Version=x.y.z -d SourceDir=<staging>
-        -arch x64 -ext WixToolset.Util.wixext -out out.msi
+  Built in CI on windows-2022. The commands are in docs/release.md, because an
+  XML comment cannot contain a double hyphen and every one of them has a long
+  option.
 
   Ships UNSIGNED. Authenticode is deferred organisation-wide; see
   docs/signing.md.

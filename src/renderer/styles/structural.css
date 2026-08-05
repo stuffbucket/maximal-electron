@@ -446,3 +446,34 @@
     transition-duration: 0.01ms;
   }
 }
+
+/*
+ * Terminals.
+ *
+ * The emulator draws to a canvas and takes literal colours at construction, so
+ * `--shell-terminal-*` is read by `readTerminalTheme` in JavaScript rather than
+ * by any rule here. Those three are the only properties in this file with no
+ * corresponding declaration.
+ */
+.sb-shell .terminal-host {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.sb-shell .terminal-host[hidden] {
+  display: none;
+}
+
+.sb-shell .terminal {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: var(--shell-space-2, 8px);
+  overflow: hidden;
+  background: var(--shell-terminal-background, var(--shell-canvas));
+}
+
+.sb-shell .terminal canvas {
+  display: block;
+}

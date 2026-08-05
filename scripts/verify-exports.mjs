@@ -27,15 +27,21 @@ for (const dependency of ['react', 'react-dom']) {
   );
 }
 
-const exportTargets = [
-  manifest.exports?.['./host']?.types,
-  manifest.exports?.['./host']?.default,
-  manifest.exports?.['./renderer']?.types,
-  manifest.exports?.['./renderer']?.default,
-  manifest.exports?.['./renderer/styles.css'],
-];
+/*
+ * Read from the manifest rather than listed here.
+ *
+ * A hardcoded list means a new entry in `exports` is unchecked until somebody
+ * remembers to add it, and an export nothing verifies is one that can ship
+ * pointing at a file the build does not produce.
+ */
+const exportTargets = Object.values(manifest.exports ?? {}).flatMap((entry) =>
+  typeof entry === 'string' ? [entry] : Object.values(entry),
+);
 
 console.log('Package export targets');
+// The floor. An empty map would report every check below as passing by
+// checking nothing.
+check(exportTargets.length > 0, 'the manifest declares at least one export');
 for (const target of exportTargets) {
   check(
     typeof target === 'string' && existsSync(path.join(root, target)),
@@ -49,11 +55,15 @@ const expectedExports = [
   'Canvas',
   'IconButton',
   'NavRail',
+  'SHELL_TERMINAL_PROPERTIES',
   'ShellLayout',
   'TabBar',
+  'TerminalTabs',
+  'TerminalView',
   'TitleBar',
   'getTabPanelId',
   'getTabTriggerId',
+  'readTerminalTheme',
 ];
 const actualExports = [
   ...rendererSource.matchAll(/export\s*\{([^}]+)}\s*from/g),
@@ -73,10 +83,21 @@ check(
   'renderer package specifier resolves to the built entry',
 );
 
+/*
+ * `lib/` holds this application's own things — the bridge, the sample data, the
+ * palette — so reaching one from the export means the package carries the
+ * application with it. The exceptions are contracts: types and pure functions a
+ * consumer implements against, with no import of their own.
+ *
+ * An allowlist rather than a dropped rule. `TerminalView` used to be forbidden
+ * outright because it imported `bridge.js`; it now takes a transport as a
+ * value, and this is what keeps it that way — re-adding that import puts
+ * `lib/bridge.js` in the graph and fails here.
+ */
+const contracts = [/(?:^|\/)lib\/terminal-transport(?:\.js)?$/];
 const forbidden = [
   /(?:^|\/)App(?:\.js)?$/,
   /(?:^|\/)lib\//,
-  /Terminal/,
   /(?:^|\/)native\//,
   /demo/i,
   /fixture/i,
@@ -92,7 +113,10 @@ while (pending.length > 0) {
   visited.add(file);
 
   const relative = path.relative(root, file).split(path.sep).join('/');
-  check(!forbidden.some((pattern) => pattern.test(relative)), `${relative} is generic`);
+  const allowed =
+    contracts.some((pattern) => pattern.test(relative)) ||
+    !forbidden.some((pattern) => pattern.test(relative));
+  check(allowed, `${relative} is generic`);
 
   const source = await readFile(file, 'utf8');
   for (const match of source.matchAll(importPattern)) {
@@ -103,10 +127,16 @@ while (pending.length > 0) {
   }
 }
 
+/*
+ * Deliberately without `--ignore-scripts`. `dist/` is built by `prepack` and
+ * not committed, so skipping scripts would test whether a stale build happens
+ * to be on disk rather than what a publish produces.
+ */
 const packed = JSON.parse(
-  execFileSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'], {
+  execFileSync('npm', ['pack', '--dry-run', '--json'], {
     cwd: root,
     encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'inherit'],
   }),
 )[0].files.map((file) => file.path);
 
@@ -136,7 +166,6 @@ for (const target of exportTargets) {
  * to be stale.
  */
 console.log('\nCommitted artifacts');
-
 const git = (...args) => {
   try {
     return execFileSync('git', args, { cwd: root, encoding: 'utf8' });

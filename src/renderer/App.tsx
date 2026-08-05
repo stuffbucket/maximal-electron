@@ -28,6 +28,10 @@ import {
   useShellSettings,
 } from './components/ShellSettings.js';
 import { TerminalTabs } from './components/TerminalTabs.js';
+import {
+  bridgeTerminalTransport,
+  currentTerminalTheme,
+} from './lib/bridge-terminal.js';
 import type { Tab } from './components/TabBar.js';
 import type { Account } from './lib/account.js';
 import { bridge, useBridgeEvent, usePreferences } from './lib/bridge.js';
@@ -191,6 +195,8 @@ export function App() {
         <TerminalTabs
           ids={tabs.filter((tab) => tab.kind === 'terminal').map((tab) => tab.id)}
           activeId={activeTab}
+          transport={bridgeTerminalTransport}
+          theme={currentTerminalTheme()}
         />
       );
     }

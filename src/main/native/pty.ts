@@ -1,7 +1,18 @@
+import { statSync } from 'node:fs';
+
 import { spawn, type IPty } from '@lydell/node-pty';
 import { app } from 'electron';
 
 import type { PtySpawnRequest } from '../../shared/ipc.js';
+import {
+  append,
+  cwdMessage,
+  drain,
+  emptyBuffer,
+  Generations,
+  resolveCwd,
+  type Buffered,
+} from './pty-session.js';
 
 /**
  * Pseudo-terminal sessions, one per document tab.
@@ -18,11 +29,14 @@ import type { PtySpawnRequest } from '../../shared/ipc.js';
 interface Session {
   pty: IPty;
   /** Buffered output, flushed on a timer. See `FLUSH_MS`. */
-  pending: string[];
+  pending: Buffered;
   timer: NodeJS.Timeout | undefined;
+  /** Distinguishes this session from a later one with the same id. */
+  generation: number;
 }
 
 const sessions = new Map<string, Session>();
+const generations = new Generations();
 
 /**
  * Output is batched before it crosses the process boundary.
@@ -56,10 +70,13 @@ export function defaultShell(): string {
 
 function flush(id: string, session: Session): void {
   session.timer = undefined;
-  if (session.pending.length === 0) return;
-  const chunk = session.pending.join('');
-  session.pending.length = 0;
-  emit(id, chunk);
+  const { text, dropped } = drain(session.pending);
+  if (text === '' && dropped === 0) return;
+  const notice =
+    dropped > 0
+      ? `\r\n\x1b[2m[${String(dropped)} characters dropped: output outran the display]\x1b[0m\r\n`
+      : '';
+  emit(id, notice + text);
 }
 
 function schedule(id: string, session: Session): void {
@@ -72,7 +89,25 @@ export function spawnPty(request: PtySpawnRequest): void {
   if (sessions.has(request.id)) return;
 
   const shell = request.shell ?? defaultShell();
-  const cwd = request.cwd ?? app.getPath('home');
+  const home = app.getPath('home');
+  const resolved = resolveCwd(request.cwd, home, (target) => {
+    try {
+      return { isDirectory: statSync(target).isDirectory() };
+    } catch {
+      return undefined;
+    }
+  });
+
+  // A refused directory is reported into the terminal rather than thrown. The
+  // renderer asked for a shell; it gets one, in a place it can see named.
+  const generation = generations.next(request.id);
+  if (!resolved.ok) {
+    const reason = cwdMessage(resolved.reason, request.cwd ?? '');
+    queueMicrotask(() => {
+      emit(request.id, `\r\n\x1b[31m${reason}. Starting in ${home}.\x1b[0m\r\n`);
+    });
+  }
+  const cwd = resolved.ok ? resolved.cwd : home;
 
   const pty = spawn(shell, [], {
     name: 'xterm-256color',
@@ -89,16 +124,19 @@ export function spawnPty(request: PtySpawnRequest): void {
     },
   });
 
-  const session: Session = { pty, pending: [], timer: undefined };
+  const session: Session = { pty, pending: emptyBuffer(), timer: undefined, generation };
   sessions.set(request.id, session);
 
   pty.onData((data) => {
-    session.pending.push(data);
+    append(session.pending, data);
     schedule(request.id, session);
   });
 
   pty.onExit(({ exitCode }) => {
     flush(request.id, session);
+    // A killed session's exit can arrive after the same id was reused. Acting
+    // on it then would delete the live session and silence a running shell.
+    if (!generations.release(request.id, generation)) return;
     sessions.delete(request.id);
     onExit(request.id, exitCode);
   });
@@ -120,6 +158,7 @@ export function killPty(id: string): void {
   const session = sessions.get(id);
   if (!session) return;
   if (session.timer) clearTimeout(session.timer);
+  generations.release(id, session.generation);
   sessions.delete(id);
   try {
     session.pty.kill();

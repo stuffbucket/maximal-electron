@@ -154,6 +154,30 @@ The package built, every test passed, and a user would still have had no
 terminal. `forge.config.ts` now supplies its own `ignore`, and
 `scripts/verify-package.mjs` asserts the module is present.
 
+## The terminal a consumer gets
+
+Three exports, and they are deliberately separate.
+
+| Export | What it is |
+| --- | --- |
+| `./renderer` | `TerminalView` and `TerminalTabs`, plus the `TerminalTransport` contract and `readTerminalTheme`. |
+| `./host/terminal` | `TerminalHost`, the pty manager, for a consumer's main process. |
+| `./renderer/styles.css` | `structural.css`, which carries the terminal rules. |
+
+`TerminalView` takes its transport as a value. It knows nothing about an IPC
+contract, so a consumer wires `TerminalHost` to whatever channels they already
+have and implements the five transport methods against them.
+
+`TerminalHost` is an instance, not module state, so a consumer with two windows
+gets two registries and closing one cannot reap the other's shells. It imports
+no `electron`: the home directory and the default shell are supplied, because
+`app.getPath` is not this module's to call.
+
+Three custom properties have no declaration in any stylesheet and cannot have
+one. The emulator renders to a canvas and takes literal colours at
+construction, so `--shell-terminal-background`, `--shell-terminal-foreground`
+and `--shell-terminal-cursor` are read by `readTerminalTheme` in JavaScript.
+
 ## Design tokens
 
 `src/renderer/styles/tokens.css` follows the scale and the naming in

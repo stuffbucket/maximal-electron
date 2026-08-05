@@ -269,8 +269,47 @@ jobs:
           echo "::error::Timed out waiting for ${DMG}. Check the stuffbucket/macos-builder run. The release stays a draft rather than publishing without a macOS build." >&2
           exit 1
 
+  # What a consumer installs. `stuffbucket/maximal` depends on this shell as a
+  # library and signs its own application, so the tarball is the artifact that
+  # matters to it and the installers below are for the fork-this audience.
+  #
+  # `publish` gates on this job alone. Gating it on the installers made a
+  # package release depend on a credential for a private signing repository,
+  # which is how `v0.0.1` produced a draft nobody could publish.
+  package-tarball:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # `npm pack` runs prepack, which builds `dist`. Nothing is committed.
+      - name: Pack, and assert the exports are in it
+        run: |
+          set -euo pipefail
+          npm run verify:exports
+          npm pack --pack-destination dist-release
+
+      - name: Attach the tarball to the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(dist-release/*.tgz)
+          [[ ${#files[@]} -eq 1 ]] \
+            || { echo "::error::Expected one tarball, found ${#files[@]}"; exit 1; }
+          gh release upload "$TAG" "${files[0]}" --repo "$GITHUB_REPOSITORY" --clobber
+          echo "Attached $(basename "${files[0]}")"
+
   publish:
-    needs: [windows-msi-verify, macos-dmg]
+    needs: package-tarball
     runs-on: ubuntu-latest
     permissions:
       contents: write
