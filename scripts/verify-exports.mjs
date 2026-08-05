@@ -27,15 +27,21 @@ for (const dependency of ['react', 'react-dom']) {
   );
 }
 
-const exportTargets = [
-  manifest.exports?.['./host']?.types,
-  manifest.exports?.['./host']?.default,
-  manifest.exports?.['./renderer']?.types,
-  manifest.exports?.['./renderer']?.default,
-  manifest.exports?.['./renderer/styles.css'],
-];
+/*
+ * Read from the manifest rather than listed here.
+ *
+ * A hardcoded list means a new entry in `exports` is unchecked until somebody
+ * remembers to add it, and an export nothing verifies is one that can ship
+ * pointing at a file the build does not produce.
+ */
+const exportTargets = Object.values(manifest.exports ?? {}).flatMap((entry) =>
+  typeof entry === 'string' ? [entry] : Object.values(entry),
+);
 
 console.log('Package export targets');
+// The floor. An empty map would report every check below as passing by
+// checking nothing.
+check(exportTargets.length > 0, 'the manifest declares at least one export');
 for (const target of exportTargets) {
   check(
     typeof target === 'string' && existsSync(path.join(root, target)),

@@ -15,7 +15,11 @@
       "types": "./dist/renderer/index.d.ts",
       "default": "./dist/renderer/index.js"
     },
-    "./renderer/styles.css": "./dist/renderer/styles.css"
+    "./renderer/styles.css": "./dist/renderer/styles.css",
+    "./host/terminal": {
+      "types": "./dist/host/terminal-host.d.ts",
+      "default": "./dist/host/terminal-host.js"
+    }
   },
   "files": [
     "dist"
