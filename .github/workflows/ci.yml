@@ -96,8 +96,12 @@ jobs:
           cache: npm
       - run: npm ci
 
-      # Produces the .vite bundles the harness drives.
+      # Produces the .vite bundles the harness drives. Not the capture fixture:
+      # no spec reaches it, and this job does not run `verify:package`, which is
+      # the check that fixture exists to satisfy.
       - run: npm run package
+        env:
+          STUFFBUCKET_SKIP_FIXTURE: '1'
       - run: npm run test:e2e
 
       - if: failure()
