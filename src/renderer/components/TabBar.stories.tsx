@@ -52,6 +52,7 @@ function Strip({ tabs, width }: { tabs: Tab[]; width: number }) {
     >
       <span className="titlebar__spacer-mac" />
       <TabBar
+        tabIdBase="story"
         tabs={open}
         active={active}
         onSelect={setActive}
@@ -68,6 +69,7 @@ const meta = {
   title: 'Layout/TabBar',
   component: TabBar,
   args: {
+    tabIdBase: 'story',
     tabs: SHORT,
     active: 'a',
     onSelect: () => undefined,
@@ -75,6 +77,7 @@ const meta = {
     onNew: () => undefined,
   },
   argTypes: {
+    tabIdBase: { table: { disable: true } },
     tabs: { table: { disable: true } },
     icon: { table: { disable: true } },
   },

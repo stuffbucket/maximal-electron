@@ -1,6 +1,6 @@
 import { Fragment, type ReactNode } from 'react';
 
-import { type ViewMode } from './Controls.js';
+export type CanvasViewMode = 'grid' | 'list';
 
 /**
  * A grid of cards or a dense list, over anything with an id.
@@ -25,7 +25,7 @@ export function Canvas<T extends { id: string }>({
   testId = 'canvas',
 }: {
   items: T[];
-  mode: ViewMode;
+  mode: CanvasViewMode;
   selectedId: string | undefined;
   renderCard: (item: T, selected: boolean) => ReactNode;
   renderRow: (item: T, selected: boolean) => ReactNode;

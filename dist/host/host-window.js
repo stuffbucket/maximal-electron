@@ -13,9 +13,14 @@ export function createHostWindow(options) {
     const window = new BrowserWindow({
         width: options.width,
         height: options.height,
+        minWidth: options.minWidth,
+        minHeight: options.minHeight,
         title: options.title,
         show: false,
-        backgroundColor: '#16181d',
+        backgroundColor: options.backgroundColor ?? '#16181d',
+        titleBarStyle: options.titleBarStyle,
+        titleBarOverlay: options.titleBarOverlay,
+        trafficLightPosition: options.trafficLightPosition,
         webPreferences: {
             preload: options.preloadPath,
             contextIsolation: true,

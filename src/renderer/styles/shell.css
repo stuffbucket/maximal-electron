@@ -44,8 +44,12 @@ body {
   overflow: hidden;
 }
 
-.titlebar > .icon-button {
-  align-self: center;
+.titlebar__leading,
+.titlebar__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  -webkit-app-region: no-drag;
 }
 
 .titlebar__spacer-mac {
@@ -123,6 +127,14 @@ body {
 
 .panel--canvas {
   background: var(--bg-canvas);
+}
+
+.tabpanel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
 }
 
 .resize-handle {
@@ -402,6 +414,34 @@ body {
 .tab__close:hover {
   background: var(--bg-active);
   opacity: 1;
+}
+
+.tab__close-keyboard {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.tab__close-keyboard:focus-visible {
+  position: static;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: var(--control-md);
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+  flex: none;
+  align-self: center;
+  border-radius: var(--radius-input);
+  color: var(--text-muted);
 }
 
 .tab__new {

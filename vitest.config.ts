@@ -6,7 +6,7 @@ import { defineConfig } from 'vitest/config';
 // this, Vitest collects them, finds no Vitest tests inside, and fails.
 export default defineConfig({
   test: {
-    include: ['tests/**/*.test.ts'],
+    include: ['tests/**/*.test.{ts,tsx}'],
     exclude: ['node_modules', 'out', '.vite', 'e2e'],
     environment: 'node',
 

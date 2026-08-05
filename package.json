@@ -10,7 +10,12 @@
     "./host": {
       "types": "./dist/host/host-window.d.ts",
       "default": "./dist/host/host-window.js"
-    }
+    },
+    "./renderer": {
+      "types": "./dist/renderer/index.d.ts",
+      "default": "./dist/renderer/index.js"
+    },
+    "./renderer/styles.css": "./dist/renderer/styles.css"
   },
   "files": [
     "dist"
@@ -22,10 +27,13 @@
   "scripts": {
     "start": "electron-forge start",
     "build:host": "tsc -p tsconfig.host.json",
+    "build:renderer": "tsc -p tsconfig.renderer-package.json && node scripts/copy-renderer-css.mjs",
+    "build:package": "npm run build:host && npm run build:renderer",
     "package": "electron-forge package",
     "make": "electron-forge make",
     "icons": "node scripts/gen-icons.mjs",
     "verify:package": "node scripts/verify-package.mjs",
+    "verify:exports": "npm run build:package && node scripts/verify-exports.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
@@ -56,9 +64,11 @@
     "ghostty-web": "^0.4.0",
     "lucide-react": "^1.27.0",
     "node-llama-cpp": "^3.19.1",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
     "react-resizable-panels": "^4.12.2"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0 <20.0.0",
+    "react-dom": ">=18.0.0 <20.0.0"
   },
   "devDependencies": {
     "@electron-forge/cli": "7.11.2",
@@ -83,6 +93,8 @@
     "@vitejs/plugin-react": "^5.2.0",
     "electron": "43.2.0",
     "eslint": "^9.39.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "storybook": "10.5.6",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.65.0",
