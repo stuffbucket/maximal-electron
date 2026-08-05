@@ -21,6 +21,7 @@ export function Canvas<T extends { id: string }>({
   renderRow,
   empty,
   gridModifier,
+  label = 'Items',
   testId = 'canvas',
 }: {
   items: T[];
@@ -31,6 +32,8 @@ export function Canvas<T extends { id: string }>({
   empty: ReactNode;
   /** An extra class on the grid, for a view that needs different columns. */
   gridModifier?: string;
+  /** Names the listbox for a screen reader. */
+  label?: string;
   testId?: string;
 }) {
   if (items.length === 0) {
@@ -41,7 +44,10 @@ export function Canvas<T extends { id: string }>({
 
   return (
     <div className="canvas" data-testid={testId}>
-      <div className={grid} data-testid={`view-${mode}`}>
+      {/* The tiles are `role="option"`, which only means anything inside a
+          listbox. `aria-label` because the list has no visible heading of its
+          own; the toolbar above it is a sibling, not a label. */}
+      <div className={grid} role="listbox" aria-label={label} data-testid={`view-${mode}`}>
         {items.map((item) => {
           const selected = item.id === selectedId;
           const render = mode === 'list' ? renderRow : renderCard;
