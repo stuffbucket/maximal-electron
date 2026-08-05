@@ -7,6 +7,7 @@ import {
 } from 'electron';
 
 import type { ViewId } from '../../shared/ipc.js';
+import { isE2EQuiet } from './preferences.js';
 
 /**
  * The application menu.
@@ -170,5 +171,9 @@ export function focusWindow(window: BrowserWindow | undefined): void {
   if (!window || window.isDestroyed()) return;
   if (window.isMinimized()) window.restore();
   if (!window.isVisible()) window.show();
+  // A quiet run must not take the keyboard out of whatever the developer is
+  // doing. Playwright dispatches input through the debugger, so nothing under
+  // test needs this window to be key.
+  if (isE2EQuiet()) return;
   window.focus();
 }
