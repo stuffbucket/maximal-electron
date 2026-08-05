@@ -1,25 +1,18 @@
-import { PanelLeft, PanelRight, Sparkles } from 'lucide-react';
+import type { ReactNode } from 'react';
 
-import { bridge } from '../lib/bridge.js';
 import { TabBar, type Tab, type TabStripProps } from './TabBar.js';
-import { IconButton } from './Controls.js';
 
 /**
- * The title bar, which also hosts the document tabs.
+ * A draggable title bar that hosts document tabs and caller-owned controls.
  *
- * Tabs live here rather than in a row of their own because that is where Figma
- * puts them: the window chrome strip is the tab strip. It also buys a row of
- * vertical space back for the canvas.
- *
- * macOS keeps its native traffic lights, so the bar reserves a gap for them.
- * Windows and Linux use `titleBarOverlay`, which draws the system controls on
- * top, so the bar keeps its right edge clear instead.
+ * The leading and actions slots deliberately know nothing about Electron IPC or
+ * product features. Their wrappers opt every injected control out of the drag
+ * region, including links and custom interactive elements.
  */
 export function TitleBar<T extends Tab>({
-  leftCollapsed,
-  rightCollapsed,
-  onToggleLeft,
-  onToggleRight,
+  leading,
+  actions,
+  tabIdBase,
   tabs,
   activeTab,
   onSelectTab,
@@ -29,27 +22,21 @@ export function TitleBar<T extends Tab>({
   newTabLabel,
   tabIcon,
 }: {
-  leftCollapsed: boolean;
-  rightCollapsed: boolean;
-  onToggleLeft: () => void;
-  onToggleRight: () => void;
+  leading?: ReactNode;
+  actions?: ReactNode;
 } & TabStripProps<T>) {
-  const isMac = navigator.userAgent.includes('Mac');
+  const isMac =
+    typeof navigator !== 'undefined' && navigator.userAgent.includes('Mac');
 
   return (
     <header className="titlebar" data-testid="titlebar">
       {isMac && <span className="titlebar__spacer-mac" />}
-
-      <IconButton
-        label={leftCollapsed ? 'Show sidebar' : 'Hide sidebar'}
-        onClick={onToggleLeft}
-        active={!leftCollapsed}
-        testId="toggle-left"
-      >
-        <PanelLeft size={15} />
-      </IconButton>
+      {leading !== undefined && (
+        <div className="titlebar__leading">{leading}</div>
+      )}
 
       <TabBar
+        tabIdBase={tabIdBase}
         tabs={tabs}
         active={activeTab}
         onSelect={onSelectTab}
@@ -62,26 +49,9 @@ export function TitleBar<T extends Tab>({
 
       {/* Empty space stays draggable, so the window still moves by its bar. */}
       <span className="titlebar__grow" />
-
-      {/* The overlay also has a global accelerator. This button exists so the
-          feature is discoverable, and so a test can summon it the same way a
-          user does. */}
-      <IconButton
-        label="Ask (summon overlay)"
-        onClick={() => void bridge.invoke('overlay:toggle')}
-        testId="toggle-overlay"
-      >
-        <Sparkles size={15} />
-      </IconButton>
-
-      <IconButton
-        label={rightCollapsed ? 'Show panel' : 'Hide panel'}
-        onClick={onToggleRight}
-        active={!rightCollapsed}
-        testId="toggle-right"
-      >
-        <PanelRight size={15} />
-      </IconButton>
+      {actions !== undefined && (
+        <div className="titlebar__actions">{actions}</div>
+      )}
 
       {/* Windows and Linux reserve room for the titleBarOverlay controls. */}
       {!isMac && <span className="titlebar__spacer-win" />}

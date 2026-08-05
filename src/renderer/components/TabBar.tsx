@@ -24,11 +24,13 @@ export interface Tab {
  * takes it, hands it to `TitleBar`, which hands it to `TabBar`.
  */
 export interface TabStripProps<T extends Tab> {
+  /** Stable namespace shared by the triggers and the consumer's tabpanels. */
+  tabIdBase: string;
   tabs: T[];
   activeTab: string;
   onSelectTab: (id: string) => void;
-  onCloseTab: (id: string) => void;
-  onNewTab: () => void;
+  onCloseTab?: (id: string) => void;
+  onNewTab?: () => void;
   /** Only one tab strip on a page can be the primary one. */
   tabsLabel?: string;
   newTabLabel?: string;
@@ -36,14 +38,29 @@ export interface TabStripProps<T extends Tab> {
   tabIcon?: (tab: T) => ComponentType<{ size?: number }> | undefined;
 }
 
+function safeIdPart(value: string) {
+  return encodeURIComponent(value);
+}
+
+/** The ID applied to a tab trigger for a consumer-rendered panel. */
+export function getTabTriggerId(tabIdBase: string, tabId: string) {
+  return `${tabIdBase}-tab-${safeIdPart(tabId)}`;
+}
+
+/** The ID applied to the panel controlled by a tab trigger. */
+export function getTabPanelId(tabIdBase: string, tabId: string) {
+  return `${tabIdBase}-tabpanel-${safeIdPart(tabId)}`;
+}
+
 /**
- * A tab strip, built on Radix `Tabs` so keyboard navigation, roving focus, and
- * ARIA wiring come for free rather than being hand-rolled.
+ * A tab strip built on Radix `Tabs`, which owns keyboard navigation and roving
+ * focus. Stable public IDs connect each trigger to caller-rendered content.
  *
- * This renders the strip only. The caller renders the active document, because
- * what a tab points at is not something a strip can know.
+ * This renders the strip only. The caller renders the active document with the
+ * ID from `getTabPanelId` and labels it with `getTabTriggerId`.
  */
 export function TabBar<T extends Tab>({
+  tabIdBase,
   tabs,
   active,
   onSelect,
@@ -53,16 +70,19 @@ export function TabBar<T extends Tab>({
   label = 'Open documents',
   newLabel = 'New tab',
 }: {
+  tabIdBase: string;
   tabs: T[];
   active: string;
   onSelect: (id: string) => void;
-  onClose: (id: string) => void;
-  onNew: () => void;
+  onClose?: (id: string) => void;
+  onNew?: () => void;
   /** Optional leading icon per tab. */
   icon?: (tab: T) => ComponentType<{ size?: number }> | undefined;
   label?: string;
   newLabel?: string;
 }) {
+  const activeItem = tabs.find((tab) => tab.id === active);
+
   return (
     <Tabs.Root
       value={active}
@@ -74,18 +94,21 @@ export function TabBar<T extends Tab>({
         {tabs.map((tab) => {
           const Icon = icon?.(tab);
           return (
-            <Tabs.Trigger key={tab.id} value={tab.id} className="tab">
+            <Tabs.Trigger
+              key={tab.id}
+              value={tab.id}
+              className="tab"
+              id={getTabTriggerId(tabIdBase, tab.id)}
+              aria-controls={getTabPanelId(tabIdBase, tab.id)}
+            >
               {Icon && <Icon size={13} />}
               {tab.status && <span className="dot" data-status={tab.status} />}
               <span className="tab__label">{tab.title}</span>
-              {tabs.length > 1 && (
+              {onClose && tabs.length > 1 && (
                 <span
-                  role="button"
-                  tabIndex={-1}
-                  aria-label={`Close ${tab.title}`}
+                  aria-hidden="true"
                   className="tab__close"
                   onPointerDown={(event) => {
-                    // Stop the trigger from activating before the close lands.
                     event.stopPropagation();
                     event.preventDefault();
                     onClose(tab.id);
@@ -97,6 +120,18 @@ export function TabBar<T extends Tab>({
             </Tabs.Trigger>
           );
         })}
+      </Tabs.List>
+      {onClose && tabs.length > 1 && activeItem && (
+        <button
+          type="button"
+          className="tab__close-keyboard"
+          aria-label={`Close ${activeItem.title}`}
+          onClick={() => onClose(activeItem.id)}
+        >
+          <X size={12} />
+        </button>
+      )}
+      {onNew && (
         <button
           type="button"
           className="tab__new"
@@ -106,7 +141,7 @@ export function TabBar<T extends Tab>({
         >
           <Plus size={14} />
         </button>
-      </Tabs.List>
+      )}
     </Tabs.Root>
   );
 }

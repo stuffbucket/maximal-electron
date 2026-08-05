@@ -1,4 +1,4 @@
-import { BrowserWindow, shell } from 'electron';
+import { BrowserWindow, shell, type BrowserWindowConstructorOptions } from 'electron';
 
 export interface HostWindowOptions {
   /** Absolute path to the consumer's sandboxed preload bundle. */
@@ -6,6 +6,12 @@ export interface HostWindowOptions {
   title: string;
   width: number;
   height: number;
+  minWidth?: number;
+  minHeight?: number;
+  backgroundColor?: string;
+  titleBarStyle?: BrowserWindowConstructorOptions['titleBarStyle'];
+  titleBarOverlay?: BrowserWindowConstructorOptions['titleBarOverlay'];
+  trafficLightPosition?: BrowserWindowConstructorOptions['trafficLightPosition'];
   /** Load the renderer (dev-server URL or built index.html) into the window. */
   loadRenderer: (window: BrowserWindow) => void;
 }
@@ -24,9 +30,14 @@ export function createHostWindow(options: HostWindowOptions): BrowserWindow {
   const window = new BrowserWindow({
     width: options.width,
     height: options.height,
+    minWidth: options.minWidth,
+    minHeight: options.minHeight,
     title: options.title,
     show: false,
-    backgroundColor: '#16181d',
+    backgroundColor: options.backgroundColor ?? '#16181d',
+    titleBarStyle: options.titleBarStyle,
+    titleBarOverlay: options.titleBarOverlay,
+    trafficLightPosition: options.trafficLightPosition,
     webPreferences: {
       preload: options.preloadPath,
       contextIsolation: true,

@@ -1,10 +1,16 @@
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, type BrowserWindowConstructorOptions } from 'electron';
 export interface HostWindowOptions {
     /** Absolute path to the consumer's sandboxed preload bundle. */
     preloadPath: string;
     title: string;
     width: number;
     height: number;
+    minWidth?: number;
+    minHeight?: number;
+    backgroundColor?: string;
+    titleBarStyle?: BrowserWindowConstructorOptions['titleBarStyle'];
+    titleBarOverlay?: BrowserWindowConstructorOptions['titleBarOverlay'];
+    trafficLightPosition?: BrowserWindowConstructorOptions['trafficLightPosition'];
     /** Load the renderer (dev-server URL or built index.html) into the window. */
     loadRenderer: (window: BrowserWindow) => void;
 }
