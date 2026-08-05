@@ -6,12 +6,22 @@
   "license": "MIT",
   "author": "stuffbucket",
   "main": ".vite/build/main.js",
+  "exports": {
+    "./host": {
+      "types": "./dist/host/host-window.d.ts",
+      "default": "./dist/host/host-window.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/stuffbucket/maximal-electron.git"
   },
   "scripts": {
     "start": "electron-forge start",
+    "build:host": "tsc -p tsconfig.host.json",
     "package": "electron-forge package",
     "make": "electron-forge make",
     "icons": "node scripts/gen-icons.mjs",
