@@ -76,6 +76,18 @@
   --control-lg: 28px;
 
   /*
+   * ---- Tabs ----
+   *
+   * A tab is a label with a close button, so its minimum is what makes a
+   * two-word title readable rather than what makes one letter fit. The maximum
+   * stops one long title from taking the strip; past it, the label fades.
+   */
+  --tab-min: 112px;
+  --tab-max: 216px;
+  /* How far the fade reaches back from the right edge of a truncated label. */
+  --tab-fade: 24px;
+
+  /*
    * ---- Focus ----
    *
    * One ring. This was written out five times in three different geometries,

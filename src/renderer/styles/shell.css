@@ -244,6 +244,16 @@ body {
   min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
+  /*
+   * Chrome, not content.
+   *
+   * The strip sat at body size and body weight, which made a row of filenames
+   * the loudest thing under the title bar. A notch down, with the tracking
+   * opened slightly to keep small text legible, and the weight reserved for
+   * the active tab: hierarchy from one difference rather than from size.
+   */
+  font-size: var(--text-sm);
+  letter-spacing: 0.005em;
 }
 
 .tabbar::-webkit-scrollbar {
@@ -251,16 +261,57 @@ body {
 }
 
 .tab {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
   padding: 0 var(--space-2) 0 var(--space-3);
-  max-width: 200px;
-  min-width: 96px;
+  min-width: var(--tab-min);
+  max-width: var(--tab-max);
+  /*
+   * A tab is as wide as its title, between the two bounds.
+   *
+   * The basis is the content, not the maximum. Setting it to the maximum made
+   * every tab ask for 216px, so three of them overflowed a strip that had
+   * already sized itself to their content — and all three shrank to 123px and
+   * truncated with the window half empty.
+   *
+   * Shrink stays on, so a crowded strip narrows evenly toward the minimum
+   * before it scrolls.
+   */
+  flex: 0 1 auto;
   color: var(--text-muted);
   white-space: nowrap;
   border-radius: var(--radius-input) var(--radius-input) 0 0;
-  transition: background var(--duration-fast) var(--ease-out);
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+/*
+ * A hairline between tabs, not a border on each.
+ *
+ * A border would double up where two tabs meet and would have to be cancelled
+ * on the first. This draws one line in the gap, and the rules below remove it
+ * either side of the active tab, whose own fill already separates it.
+ */
+.tab + .tab::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1px;
+  height: 16px;
+  background: var(--border-subtle);
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+
+.tab[data-state='active']::before,
+.tab[data-state='active'] + .tab::before,
+.tab:hover::before,
+.tab:hover + .tab::before {
+  opacity: 0;
 }
 
 .tab:hover {
@@ -271,12 +322,36 @@ body {
 .tab[data-state='active'] {
   background: var(--bg-canvas);
   color: var(--text-primary);
+  font-weight: var(--weight-md);
 }
 
+/*
+ * A label that fades where it runs out of room.
+ *
+ * An ellipsis announces the truncation and spends three characters doing it.
+ * A mask shows the same thing using the characters it would have spent, which
+ * is what Figma does and why a strip of long titles still reads.
+ *
+ * The mask is always applied. A label short enough not to reach the fade is
+ * untouched by it, so there is nothing to detect and no measuring to do.
+ */
 .tab__label {
-  overflow: hidden;
-  text-overflow: ellipsis;
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/*
+ * `data-truncated` is set by `TabBar` from a measurement, because CSS cannot
+ * tell a label that reaches the edge from one that runs past it. Applied
+ * unconditionally, the mask ate the last characters of titles that fitted.
+ */
+.tab__label[data-truncated] {
+  mask-image: linear-gradient(
+    to right,
+    #000 calc(100% - var(--tab-fade)),
+    transparent 100%
+  );
 }
 
 .tab__close {
