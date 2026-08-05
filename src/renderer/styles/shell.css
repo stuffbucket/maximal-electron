@@ -333,7 +333,8 @@ body {
  *
  * A border would double up where two tabs meet and would have to be cancelled
  * on the first. This draws one line in the gap, and the rules below remove it
- * either side of the active tab, whose own fill already separates it.
+ * either side of any tab carrying a fill, so the fill is the only edge that
+ * shape has. Chrome does the same thing with its tab separators.
  */
 .tab + .tab::before {
   content: '';
@@ -350,19 +351,74 @@ body {
 .tab[data-state='active']::before,
 .tab[data-state='active'] + .tab::before,
 .tab:hover::before,
-.tab:hover + .tab::before {
+.tab:hover + .tab::before,
+.tab:focus-visible::before,
+.tab:focus-visible + .tab::before {
   opacity: 0;
 }
 
-.tab:hover {
+/*
+ * Hover, and keyboard focus, which looks the same because it means the same:
+ * this is the tab you are pointing at.
+ *
+ * The label carries it. The fill moved one step and the text moved from muted
+ * to secondary — two changes so small that together they read as nothing. Full
+ * strength text is the part that is visible across a room; the fill only has
+ * to say where the shape ends.
+ *
+ * Selection is not implied. Radix activates on Enter, not on arrival, so a
+ * focused tab that is not the active one is a real state and has to stay
+ * distinguishable from it.
+ */
+.tab:hover,
+.tab:focus-visible {
   background: var(--bg-hover);
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 
+/*
+ * The selected tab.
+ *
+ * It had no treatment worth the name: `--bg-canvas` behind it, which is 1.12
+ * against the title bar in the dark scheme, and the same weight bump the hover
+ * did not have. The idea was VS Code's — the active tab takes the colour of the
+ * editor below it, so the two read as one surface — and it does not survive the
+ * move into a title bar. Nothing is below this strip except a nav rail under
+ * half of it and a border under all of it.
+ *
+ * So the fill steps off the strip instead of toward the canvas, and the accent
+ * carries the state. That is VS Code's `tab.activeBorder`, whose whole reason
+ * for existing is that Dark Modern separates active from inactive by 1.08 and
+ * Zed's One Dark by 1.12: neither fill is legible on its own, and neither
+ * theme needs it to be.
+ *
+ * Hover deliberately does not apply here. There is nowhere for the selected
+ * tab to go that is not somewhere another state already means.
+ */
 .tab[data-state='active'] {
-  background: var(--bg-canvas);
+  background: var(--tab-active);
   color: var(--text-primary);
   font-weight: var(--weight-md);
+}
+
+/* Along the bottom, not the top. The tab is rounded at the top and flush at
+   the bottom, so the bottom is the edge it shares with what it opens — and the
+   top edge of this strip is the top edge of the window. */
+.tab[data-state='active']::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: var(--accent);
+}
+
+/* Drawn inside the box. The title bar clips overflow and a tab is full height,
+   so the shared ring's outward offset loses its top and bottom edges. */
+.tab:focus-visible {
+  outline-offset: calc(-1 * var(--focus-ring-width));
+  border-radius: var(--radius-input) var(--radius-input) 0 0;
 }
 
 /*
