@@ -6,19 +6,14 @@
  * which surface, which pairs must be legible, and which tokens have to exist at
  * all. That travels with the shell and is checked in CI.
  *
- * The values are not the shell's. `tokens.css` here is a reference default a
- * consumer replaces, the same way `lib/data.ts` says to replace the sample
- * data, so this takes the file to measure as an argument. A consumer points it
- * at theirs — see `.github/workflows/design-standards.yml`, which is how they
- * do that without copying this script.
+ * Takes the palette as an argument so a fixture can be checked, but the point
+ * is the default: `npm run check:contrast` measures `tokens.css` and CI runs
+ * it, so the shipped palette stays legible.
  *
- *   node scripts/check-contrast.mjs [tokens.css] [options]
+ *   node scripts/check-contrast.mjs [tokens.css] [--selectors <list>]
  *
- *     --selectors <list>   Comma-separated CSS selectors to read, in cascade
- *                          order. Later ones override earlier, which is how a
- *                          light theme layered on a dark base resolves.
- *                          Default: ":root,:root[data-theme='light']"
- *     --report-only        Print everything, exit 0.
+ * `--selectors` is comma separated and read in cascade order, later overriding
+ * earlier, which is how a light theme layered on a dark base resolves.
  *
  * Three sections, because they need three different fixes: a token that is not
  * defined, a token defined in a form this cannot read, and a pair that reads
@@ -42,7 +37,6 @@ const show = (target) => {
 /* ------------------------------------------------------------- arguments */
 
 const argv = process.argv.slice(2);
-const flag = (name) => argv.includes(name);
 const value = (name, fallback) => {
   const at = argv.indexOf(name);
   return at === -1 ? fallback : (argv[at + 1] ?? fallback);
@@ -61,7 +55,6 @@ const selectors = value('--selectors', ":root,:root[data-theme='light']")
   .split(',')
   .map((entry) => entry.trim())
   .filter(Boolean);
-const reportOnly = flag('--report-only');
 
 /* ----------------------------------------------------------------- parse */
 
@@ -153,8 +146,4 @@ for (const [selector, properties] of layers) {
   console.log('');
 }
 
-if (failed && reportOnly) {
-  console.log('Reported only. Drop --report-only to make this fail.');
-}
-
-process.exit(failed && !reportOnly ? 1 : 0);
+process.exit(failed ? 1 : 0);

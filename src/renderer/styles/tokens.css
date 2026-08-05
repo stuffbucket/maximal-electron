@@ -109,11 +109,20 @@
   --border-strong: #363d48;
   --text-primary: #e6e8ec;
   --text-secondary: #a0a8b4;
-  --text-muted: #6f7783;
+  --text-muted: #8f97a2;
   --accent: #6ea8fe;
   --accent-contrast: #0d1117;
   --accent-soft: rgb(110 168 254 / 0.16);
   --danger: #f47174;
+  /*
+   * A solid danger surface, distinct from the colour danger *text* uses.
+   *
+   * One token could not do both. `--danger` has to be light enough to read as
+   * error text on a dark panel, and a white label on that same light red is
+   * 2.81 against a requirement of 4.5. The two roles pull opposite ways, so
+   * they are two tokens.
+   */
+  --danger-fill: #b83143;
   --success: #5fd08a;
   /* Blocking, but not an error. The overlay's approval prompt is the only
      current user, and it is deliberately not the same red as a failure. */
@@ -164,11 +173,12 @@
   --border-strong: #ccd2da;
   --text-primary: #12141a;
   --text-secondary: #545c68;
-  --text-muted: #838b97;
-  --accent: #2d6ff7;
+  --text-muted: #656d78;
+  --accent: #2563eb;
   --accent-contrast: #ffffff;
-  --accent-soft: rgb(45 111 247 / 0.1);
+  --accent-soft: rgb(37 99 235 / 0.1);
   --danger: #d3373b;
+  --danger-fill: #c0272b;
   --success: #17864a;
   --warning: #a9691b;
   --success-soft: rgb(23 134 74 / 0.12);

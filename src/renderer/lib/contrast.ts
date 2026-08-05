@@ -14,8 +14,14 @@
  * by whatever a consumer runs against theirs.
  *
  * WCAG 2.2 contrast, from the relative-luminance definition in the
- * specification. Only opaque colours: a token defined as `rgb(r g b / a)`
- * composites against whatever is behind it, which this cannot know.
+ * specification.
+ *
+ * Only opaque colours. A token defined as `rgb(r g b / a)` composites against
+ * whatever is behind it, which this cannot know, so the soft tints are outside
+ * the contract — including the surface a selected row or the current nav item
+ * actually sits on. Those are real surfaces text is drawn on, and this will
+ * never see them; `npm run storybook:check` runs axe over rendered pixels and
+ * does. The two checks are not redundant.
  */
 
 /** The ratio normal text must reach. Large text may use `AA_LARGE`. */
@@ -54,7 +60,7 @@ export const CONTRAST_PAIRS: ContrastPair[] = [
   { foreground: '--text-muted', background: '--bg-canvas', where: 'empty state', minimum: AA_NORMAL },
   { foreground: '--accent', background: '--bg-app', where: 'current nav item', minimum: AA_NORMAL },
   { foreground: '--accent-contrast', background: '--accent', where: 'primary button label', minimum: AA_NORMAL },
-  { foreground: '--text-on-solid', background: '--danger', where: 'danger button label', minimum: AA_NORMAL },
+  { foreground: '--text-on-solid', background: '--danger-fill', where: 'danger button label', minimum: AA_NORMAL },
   { foreground: '--text-invalid', background: '--bg-app', where: 'field error', minimum: AA_NORMAL },
   { foreground: '--text-muted', background: '--bg-panel', where: 'menu item, overlay hint', minimum: AA_NORMAL },
 ];
@@ -91,6 +97,7 @@ export const REQUIRED_TOKENS: string[] = [
   '--control-md',
   '--control-sm',
   '--danger',
+  '--danger-fill',
   '--danger-soft',
   '--duration-fast',
   '--ease-out',
