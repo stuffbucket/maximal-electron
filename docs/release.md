@@ -51,14 +51,43 @@ that has not shipped.
 
 ## The shape
 
-Push a tag. Six jobs run. Every asset lands on a **draft** release, and one
+Push a tag. Seven jobs run. Every asset lands on a **draft** release, and one
 job flips it to published at the end.
 
 ```
-tag-check ──> release (draft) ──┬─> windows-msi ──> windows-msi-verify ──┐
-                                │                                        ├─> publish
-                                └─> macos-dmg ───────────────────────────┘
+tag-check ──> release (draft) ──┬─> package-tarball ──> publish
+                                ├─> windows-msi ──> windows-msi-verify
+                                └─> macos-dmg
 ```
+
+**`publish` gates on the tarball alone.** The installers run on every tag and
+do not hold the release.
+
+That is deliberate, and it is a change. `publish` used to need the dmg and the
+verified MSI, on the reasoning that a release should not go out without a macOS
+artifact. That reasoning holds for someone installing this application, and it
+is wrong for the thing this repository now mostly is. `stuffbucket/maximal`
+depends on the shell as a **library** and signs its own application, so the
+tarball is the artifact it consumes and the dmg is one it never sees. Gating on
+the dmg made a package release depend on a credential for a private signing
+repository, and `v0.0.1` proved it: a draft nobody could publish.
+
+## What a consumer installs
+
+`package-tarball` runs `npm pack`, which runs `prepack`, which builds `dist`.
+Nothing is committed. It runs `verify:exports` first, so a tarball missing an
+export target fails before it is attached rather than after somebody installs
+it.
+
+The asset is `stuffbucket-electron-<version>.tgz`. A consumer installs it from
+the release:
+
+```
+npm install https://github.com/stuffbucket/maximal-electron/releases/download/v0.0.1/stuffbucket-electron-0.0.1.tgz
+```
+
+No registry and no publish token. The cost is that npm cannot resolve a version
+range, so a consumer pins a URL and updates it deliberately.
 
 ## Why a draft
 
@@ -68,8 +97,10 @@ release is still mutable.
 
 This is the same reason `stuffbucket/maximal` uses this shape.
 
-A consequence worth stating: if the macOS build fails, the release stays a
-draft. It does not publish without a macOS artifact.
+A consequence worth stating: if the macOS build fails, the release still
+publishes, carrying the tarball and no dmg. That is the trade made above. A
+consumer of the library is unaffected; somebody looking for an installer finds
+none, and the failed job says why.
 
 ## macOS
 
