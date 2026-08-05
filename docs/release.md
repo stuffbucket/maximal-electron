@@ -14,8 +14,10 @@ A release branch is an integration branch, not a stabilisation branch. It is
 cut from `main` when the release opens, and features target it rather than
 `main`. That is why the arrow points into `main` rather than out of it.
 
-Two trains run at a time. A third would mean deciding where work goes before
-anyone knows, which is the failure this shape exists to avoid.
+Two trains run at a time, at `n+1` and `n+2` from the shipped version. Cutting
+one opens the next, so there is always somewhere to put work that is not the
+current release, and nobody has to decide where a change goes before anyone
+knows. A third train would be that decision made too early.
 
 | Train    | What belongs on it                                                     |
 | -------- | ---------------------------------------------------------------------- |
@@ -27,13 +29,25 @@ The test for which train a change belongs on is whether
 `stuffbucket/maximal` has to change to benefit from it. If it does, the change
 is about the seam and belongs on the later train.
 
+Every issue and every pull request carries a milestone. One without a milestone
+has not been triaged, and that is the thing to fix before working on it.
+
 Each train has a milestone and a **draft** release. A draft release names a tag
 that does not exist yet; GitHub creates it on publish. So the draft is a
 statement of intent, and publishing it is what cuts the release. Nothing is
 tagged early, and nothing is tagged on a branch other than `main`.
 
-Bump `package.json` on the release branch, not on `main`, so that `main` never
-claims a version that has not shipped.
+Bump the patch version in `package.json` on the release branch when the train
+reaches a stable state, not on `main`, so that `main` never claims a version
+that has not shipped.
+
+## Cutting one
+
+1. Fold the release branch into `main`.
+2. Push the tag on `main`. The build below runs and fills the draft.
+3. Publish the draft. That is the release.
+4. Open the next train: a `v0.0.(n+2)` milestone, branch, and draft release, so
+   two are open again.
 
 ## The shape
 
