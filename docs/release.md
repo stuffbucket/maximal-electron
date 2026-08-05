@@ -1,5 +1,40 @@
 # Release
 
+## Trains
+
+Work is marshalled on a release branch and folded into `main` when the release
+is cut. The tag goes on `main` at that point, and it is what starts the build
+described below.
+
+```
+feature branch ──> release/0.0.1 ──> main ──> tag v0.0.1 ──> the build
+```
+
+A release branch is an integration branch, not a stabilisation branch. It is
+cut from `main` when the release opens, and features target it rather than
+`main`. That is why the arrow points into `main` rather than out of it.
+
+Two trains run at a time. A third would mean deciding where work goes before
+anyone knows, which is the failure this shape exists to avoid.
+
+| Train    | What belongs on it                                                     |
+| -------- | ---------------------------------------------------------------------- |
+| `v0.0.1` | The shell's own behaviour: accessibility, interface state, its defects. |
+| `v0.0.2` | The seam a consumer depends on: the host entrypoint, the export, the    |
+|          | preload bridge, client integration, theming from an external source.    |
+
+The test for which train a change belongs on is whether
+`stuffbucket/maximal` has to change to benefit from it. If it does, the change
+is about the seam and belongs on the later train.
+
+Each train has a milestone and a **draft** release. A draft release names a tag
+that does not exist yet; GitHub creates it on publish. So the draft is a
+statement of intent, and publishing it is what cuts the release. Nothing is
+tagged early, and nothing is tagged on a branch other than `main`.
+
+Bump `package.json` on the release branch, not on `main`, so that `main` never
+claims a version that has not shipped.
+
 ## The shape
 
 Push a tag. Six jobs run. Every asset lands on a **draft** release, and one
