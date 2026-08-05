@@ -8,7 +8,7 @@ most templates leave out:
 1. How does this build and ship on macOS and Windows, with real signing?
 2. How does an agent work in this repository without breaking it?
 
-Screenshot of the shell: `test-results/shell.png`, after `npm run test:e2e`.
+Screenshot of the shell: `test-results/shell.png`, after `npm run stills`.
 
 ## What is here
 
