@@ -94,6 +94,15 @@ check(
   'capture fixture is not packed',
 );
 
+// Stories live beside the components they cover, inside `src/`. Nothing
+// imports them, so Vite should never reach one from an entry point. This is
+// the check on that: co-location is convenient right up until a story ends up
+// in the application a user installs.
+check(
+  !listing.some((entry) => entry.includes('.stories.')),
+  'stories are not packed',
+);
+
 /* ------------------------------------------------- native module (pty) */
 
 console.log('\nnative modules');

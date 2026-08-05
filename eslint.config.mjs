@@ -10,6 +10,8 @@ export default tseslint.config(
       'dist/**',
       'test-results/**',
       'playwright-report/**',
+      // Storybook's build output. Minified vendor code, not this repository's.
+      'storybook-static/**',
       // Agent worktrees are whole copies of this repository. Linting them
       // reports every finding twice, against files that are not this checkout.
       '.claude/**',
