@@ -19,6 +19,13 @@ import type { StorybookConfig } from '@storybook/react-vite';
  */
 const config: StorybookConfig = {
   stories: ['../src/renderer/**/*.stories.tsx'],
+  addons: [
+    // A docs page per component, generated from the args and the docstring.
+    '@storybook/addon-docs',
+    // axe, per story. These primitives exist to get roles, names and focus
+    // right, so a check that says when they are not is the point of the tool.
+    '@storybook/addon-a11y',
+  ],
   framework: {
     name: '@storybook/react-vite',
     options: {},
