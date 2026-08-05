@@ -421,6 +421,15 @@ was tried could not tell a rule from a description.
 
 ## Release
 
+- Work is marshalled on a `release/x.y.z` branch and folded into `main` when
+  the release is cut. Target the release branch, not `main`. The tag goes on
+  `main` at the fold, and the tag is what starts the build.
+- Two trains run at a time, each with a milestone and a draft release. `v0.0.1`
+  is the shell's own behaviour; `v0.0.2` is the seam a consumer depends on. If
+  `stuffbucket/maximal` has to change to benefit from a change, it belongs on
+  the later train.
+- Bump `package.json` on the release branch, so `main` never claims a version
+  that has not shipped.
 - Never add an asset to a published release. GitHub immutable releases reject
   it with HTTP 422. Everything attaches to the draft.
 - This repository holds no Apple credential, and it must stay that way. macOS
