@@ -84,11 +84,21 @@ export interface MenuItem {
 /** A dropdown menu. The trigger is the caller's; the popup is not. */
 export function Menu({
   trigger,
+  header,
   items,
   align = 'start',
   testId,
 }: {
   trigger: ReactNode;
+  /**
+   * Non-interactive content above the items.
+   *
+   * A `DropdownMenu.Label`, so roving focus steps over it rather than into it.
+   * The profile menu is why: a menu that says who is signed in has to say it
+   * inside the popup, and a disabled item reads as an action that is
+   * unavailable rather than as a caption.
+   */
+  header?: ReactNode;
   items: MenuItem[];
   align?: 'start' | 'center' | 'end';
   testId?: string;
@@ -98,6 +108,9 @@ export function Menu({
       <DropdownMenu.Trigger asChild>{trigger}</DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content className="menu" align={align} sideOffset={6} data-testid={testId}>
+          {header !== undefined && (
+            <DropdownMenu.Label className="menu__header">{header}</DropdownMenu.Label>
+          )}
           {items.map((item) => {
             const Icon = item.icon;
             return (

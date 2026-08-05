@@ -48,7 +48,7 @@ A three-panel layout, in the shape Figma uses.
 
 | Region | Component | Behaviour |
 | --- | --- | --- |
-| Title bar | `TitleBar` | Draggable. Hosts the document tabs. |
+| Title bar | `TitleBar` | Draggable. Hosts the document tabs and the profile control. |
 | Left | `LeftNav` | Collapses to an icon rail. Sections collapse on their own. |
 | Centre | `Toolbar`, `Canvas` | Grid or list. Selection drives the inspector. |
 | Right | `Inspector` | Properties when something is selected, settings when not. |
@@ -65,9 +65,37 @@ Libraries do the work that is easy to get wrong:
 Tabs live in the title bar rather than in a row of their own. That is where
 Figma puts them, and it returns a row of vertical space to the canvas.
 
+## The account, and the settings behind it
+
+`Profile` is the account control in the title bar. It knows a display name, a
+handle, an avatar and a plan, and it knows nothing else: `Account` is a value
+the consumer already holds, and sign-in and sign-out are callbacks the consumer
+already implements. The shell has no idea what an identity provider is. This is
+the rule `lib/data.ts` states for content and `tokens.css` states for the
+palette.
+
+Its menu reaches five settings surfaces, which are the shell's own and are
+therefore named by the shell. Where each one opens is a decision:
+
+| Surface | Where | Why |
+| --- | --- | --- |
+| Model cards | Tab | A catalogue that grows with the provider. Read, not operated. |
+| Logs and diagnostics | Tab | Kept open while the fault being reported is reproduced. |
+| Usage | Tab | The widest surface here, and the one left open while work runs. |
+| API keys | Dialog | One bounded task, and the only surface that puts a secret on screen. A modal takes it away again. |
+| Apps | Dialog | A short list of switches with one decision each. |
+
+Every surface takes its content as props. `ShellSettings.tsx` is the reference
+application's wiring of them, and `lib/sample-settings.ts` is the sample
+content it passes. Both are the parts a consumer replaces.
+
+The functionality is ported from the parked Tauri shell in
+`stuffbucket/maximal-client`; none of its markup or its stylesheet is.
+
 ## Terminals
 
-A tab is either the library grid or a terminal. The `+` button opens a terminal.
+A tab holds the library grid, a settings surface, or a terminal. The `+`
+button opens a terminal.
 
 `ghostty-web` supplies the terminal. It is Ghostty's own virtual terminal
 implementation compiled to WebAssembly, with the xterm.js API on top. Coder

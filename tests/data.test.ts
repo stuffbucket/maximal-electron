@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ViewId } from '../src/shared/ipc.js';
-import { NAV_SECTIONS, VIEW_LABELS, itemsFor } from '../src/renderer/lib/data.js';
+import {
+  NAV_SECTIONS,
+  SAMPLE_ACCOUNT,
+  VIEW_LABELS,
+  itemsFor,
+} from '../src/renderer/lib/data.js';
 
 /**
  * Sample data.
@@ -17,6 +22,19 @@ import { NAV_SECTIONS, VIEW_LABELS, itemsFor } from '../src/renderer/lib/data.js
  */
 
 const VIEWS: ViewId[] = ['library', 'recents', 'drafts', 'shared', 'trash'];
+
+describe('SAMPLE_ACCOUNT', () => {
+  it('is a whole identity, so the profile menu has every line to draw', () => {
+    // Pinned rather than probed: a name without a handle or a plan would leave
+    // two of the menu header's three rows untested by every story that uses it.
+    expect(SAMPLE_ACCOUNT).toEqual({
+      id: 'sample-account',
+      displayName: 'Avery Chen',
+      handle: 'avery@example.com',
+      plan: 'Pro',
+    });
+  });
+});
 
 describe('itemsFor', () => {
   it('returns the documented count for each view', () => {
