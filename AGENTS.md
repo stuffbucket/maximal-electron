@@ -257,6 +257,22 @@ because `src/renderer/lib/bridge.ts` reads it at module scope. A stub inside
 application window: `html, body { height: 100%; overflow: hidden }` clips a long
 story at the fold.
 
+Conventions, which are the ones in Storybook's own docs:
+
+- One story per state, not one page listing everything. `Primary`, `Disabled`,
+  `Sizes` — not `All`.
+- `component` on the meta points at the real component, and `args` drive it, so
+  the Controls panel and the generated docs page have something to work with.
+  Reach for `render` only when the output is not the component with args
+  applied.
+- `play` for behaviour a screenshot cannot show. The dialog's focus trap and
+  the menu's arrow keys are asserted there rather than in a script that lives
+  for one run.
+- `tags: ['autodocs']` is global, so every component gets a docs page from its
+  args and its docstring.
+- `@storybook/addon-a11y` runs axe per story. It found the contrast failures in
+  issue #28 within a minute of being installed.
+
 Nothing imports a story, so Vite never reaches one from an entry point.
 `npm run verify:package` asserts that rather than assuming it.
 

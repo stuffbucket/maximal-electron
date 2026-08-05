@@ -1,3 +1,5 @@
+import * as Tooltip from '@radix-ui/react-tooltip';
+import { createElement } from 'react';
 import type { Decorator, Preview } from '@storybook/react-vite';
 
 // The product's own stylesheet, which pulls in controls.css and tokens.css.
@@ -23,8 +25,19 @@ const withTheme: Decorator = (Story, context) => {
   return Story();
 };
 
+/**
+ * `IconButton` wraps its child in a Radix `Tooltip.Root`, which needs a
+ * provider above it. `ShellLayout` supplies one in the application; a story
+ * has no shell, and without this the button renders nothing rather than
+ * throwing. Global, because forgetting it per story is exactly the trap.
+ */
+const withTooltips: Decorator = (Story) =>
+  createElement(Tooltip.Provider, { delayDuration: 200, children: Story() });
+
 const preview: Preview = {
-  decorators: [withTheme],
+  decorators: [withTooltips, withTheme],
+  // A docs page for every component, from its args and its docstring.
+  tags: ['autodocs'],
   initialGlobals: { theme: 'dark' },
   globalTypes: {
     theme: {
