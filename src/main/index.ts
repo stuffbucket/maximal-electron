@@ -6,6 +6,7 @@ import { BrowserWindow, app, globalShortcut } from 'electron';
 
 import { registerIpcHandlers, sendEvent } from './ipc.js';
 import { focusWindow, installApplicationMenu } from './native/menu.js';
+import { applyDockIcon } from './native/app-icon.js';
 import { clearBadge } from './native/notifications.js';
 import { isAgentBusy, shutdownAgent } from './native/agent.js';
 import {
@@ -161,6 +162,11 @@ async function runUpdateCheck(): Promise<void> {
 
 function bootstrap(): void {
   const prefs = getPreferences();
+
+  // An unpackaged run shows Electron's own dock icon until this call. A
+  // packaged build already carries the bundle icon; this keeps the two the
+  // same when `STUFFBUCKET_ICON_DIR` overrides it.
+  applyDockIcon();
 
   registerIpcHandlers();
 

@@ -53,13 +53,6 @@ export function getTabPanelId(tabIdBase: string, tabId: string) {
 }
 
 /**
- * A tab strip built on Radix `Tabs`, which owns keyboard navigation and roving
- * focus. Stable public IDs connect each trigger to caller-rendered content.
- *
- * This renders the strip only. The caller renders the active document with the
- * ID from `getTabPanelId` and labels it with `getTabTriggerId`.
- */
-/**
  * Whether a label is wider than the room it has.
  *
  * The fade has to be measured, not assumed. A mask applied unconditionally
@@ -133,7 +126,41 @@ export function TabBar<T extends Tab>({
   label?: string;
   newLabel?: string;
 }) {
-  const activeItem = tabs.find((tab) => tab.id === active);
+  const activeIndex = tabs.findIndex((tab) => tab.id === active);
+  const activeItem = tabs[activeIndex];
+  // Closing the last tab is refused, so every close affordance hangs off this
+  // rather than repeating the condition.
+  const closeTab = tabs.length > 1 ? onClose : undefined;
+
+  /*
+   * Which trigger to focus once the caller has dropped a tab.
+   *
+   * Closing unmounts the element that held focus, and focus then falls to the
+   * document body, which costs the user the strip's single tab stop. The
+   * neighbour is chosen before the close and claimed after the list changes,
+   * because the neighbour cannot be identified once the tab is gone.
+   */
+  const focusAfterClose = useRef<string | null>(null);
+
+  useEffect(() => {
+    const id = focusAfterClose.current;
+    if (id === null) return;
+    focusAfterClose.current = null;
+    document.getElementById(getTabTriggerId(tabIdBase, id))?.focus();
+  }, [tabs, tabIdBase]);
+
+  /*
+   * Only for a close the keyboard started. A pointer close leaves focus where
+   * it was, because the pointer never took it: the marker cancels its own
+   * `pointerdown`, and pulling focus into the strip would take it from
+   * whatever the closed tab was sitting beside, such as a live terminal.
+   */
+  const closeAndRefocus = (index: number) => {
+    const tab = tabs[index];
+    if (!closeTab || !tab) return;
+    focusAfterClose.current = (tabs[index + 1] ?? tabs[index - 1])?.id ?? null;
+    closeTab(tab.id);
+  };
 
   return (
     <Tabs.Root
@@ -143,7 +170,7 @@ export function TabBar<T extends Tab>({
       activationMode="manual"
     >
       <Tabs.List className="tabbar" aria-label={label}>
-        {tabs.map((tab) => {
+        {tabs.map((tab, index) => {
           const Icon = icon?.(tab);
           return (
             <Tabs.Trigger
@@ -151,19 +178,35 @@ export function TabBar<T extends Tab>({
               value={tab.id}
               className="tab"
               id={getTabTriggerId(tabIdBase, tab.id)}
-              aria-controls={getTabPanelId(tabIdBase, tab.id)}
+              /*
+               * The caller renders one panel, for the active tab. Naming a
+               * panel that no tab is showing points `aria-controls` at an ID
+               * that is not in the document.
+               */
+              aria-controls={
+                tab.id === active ? getTabPanelId(tabIdBase, tab.id) : undefined
+              }
+              aria-keyshortcuts={closeTab ? 'Delete' : undefined}
+              onKeyDown={(event) => {
+                if (!closeTab) return;
+                // The key macOS prints as "delete" sends Backspace, so both
+                // close. Neither has a default action worth keeping on a tab.
+                if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+                event.preventDefault();
+                closeAndRefocus(index);
+              }}
             >
               {Icon && <Icon size={13} />}
               {tab.status && <span className="dot" data-status={tab.status} />}
               <TabLabel title={tab.title} />
-              {onClose && tabs.length > 1 && (
+              {closeTab && (
                 <span
                   aria-hidden="true"
                   className="tab__close"
                   onPointerDown={(event) => {
                     event.stopPropagation();
                     event.preventDefault();
-                    onClose(tab.id);
+                    closeTab(tab.id);
                   }}
                 >
                   <X size={12} />
@@ -173,12 +216,12 @@ export function TabBar<T extends Tab>({
           );
         })}
       </Tabs.List>
-      {onClose && tabs.length > 1 && activeItem && (
+      {closeTab && activeItem && (
         <button
           type="button"
           className="tab__close-keyboard"
           aria-label={`Close ${activeItem.title}`}
-          onClick={() => onClose(activeItem.id)}
+          onClick={() => closeAndRefocus(activeIndex)}
         >
           <X size={12} />
         </button>

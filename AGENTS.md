@@ -47,6 +47,10 @@ Each of these is load-bearing. Do not relax one to make a change fit.
 - **Never widen the `shell:open-external` allow-list** beyond `http`, `https`,
   and `mailto`. `setWindowOpenHandler` denies, and `will-navigate` blocks
   cross-origin navigation. Both send the URL to the real browser instead.
+- **Never let a channel take a filesystem path from the renderer.** That is an
+  arbitrary file read and a path traversal surface. The application icon is the
+  worked example: it is configuration the host owns, through
+  `STUFFBUCKET_ICON_DIR`, not a request the renderer makes.
 - **Never lower the mutation threshold.** `npm run mutate` breaks below 100.
 - **Never turn a fuse back on to make a test pass.**
   `EnableNodeCliInspectArguments: false` is why the end-to-end tests drive the
@@ -133,3 +137,12 @@ request: the macOS build must be redone.
 external list, the `packagerConfig.ignore` filter in `forge.config.ts`, and
 `scripts/verify-package.mjs`. Miss one and the package builds, the tests pass,
 and the feature is absent for a user.
+
+**Icons** are a third instance of the same duplication. `STUFFBUCKET_ICON_DIR`
+names the directory, defaults to `build/icons`, and is the seam a consumer
+swaps. `forge.config.ts` and `scripts/verify-package.mjs` each hold a copy of
+the run-time file names; change both in one commit. Resolution lives in
+`src/main/native/icons.ts`, which imports no `electron` and is on the mutate
+list — keep it that way, and leave `nativeImage` to `app-icon.ts`. A macOS
+development run shows Electron's own dock icon until `app.dock.setIcon` runs.
+That is not a defect, and packaging does not change it.
