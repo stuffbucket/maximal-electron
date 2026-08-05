@@ -5,39 +5,22 @@ import { BrowserWindow, screen } from 'electron';
 import { isE2EQuiet, quietBounds } from '../native/preferences.js';
 
 /**
- * The floating command overlay, in the model `stuffbucket/wiggle` uses.
+ * The floating command overlay, in the model `stuffbucket/wiggle` uses: a small
+ * native surface, everything visual in CSS.
  *
- * Wiggle summons a full-screen transparent non-activating `NSPanel`, dims the
- * screen in CSS, and centres a card near the bottom of the focused monitor.
- * The native surface stays small; everything visual is CSS. This is the
- * Electron translation of that.
+ * Two constraints, both easy to get wrong:
  *
- * Two things matter and are easy to get wrong:
+ * - **Do not steal focus from the application underneath.** On macOS `type:
+ *   'panel'` is an `NSPanel`, which takes key input without activating this
+ *   application. `showInactive` then `focus` is what gives a card the user can
+ *   type into while the app behind keeps its activation state.
+ * - **Follow the cursor, not the primary display.**
  *
- * - **Do not steal focus from the application underneath.** On macOS a window
- *   with `type: 'panel'` is an `NSPanel`, which can take key input without
- *   activating this application. `showInactive` then `focus` gives a card the
- *   user can type into while the app behind keeps its own activation state.
- * - **Follow the cursor, not the primary display.** The overlay must appear on
- *   the monitor the user is looking at.
+ * Windows and Linux have no `NSPanel` and get an always-on-top tool window.
+ * `docs/roadmap.md` has the second phase.
  *
- * Windows and Linux have no `NSPanel`. They get an always-on-top tool window,
- * which is close enough to be useful and is documented as a second phase in
- * `docs/roadmap.md`.
- *
- * ## Under test
- *
- * Everything that makes this window good at being an overlay makes it hostile
- * to the machine running the suite. It sits above full screen applications,
- * follows the user across spaces, covers the whole display, and takes key
- * input. A run then flashes over whatever the user is doing and pulls focus
- * out of their editor, once per scenario.
- *
- * None of that is needed to test it. Playwright dispatches input through the
- * debugger rather than the window server, and `capture` in `e2e/harness.ts`
- * reads the renderer rather than the screen. So under `STUFFBUCKET_E2E` the
- * window still shows, still reports visible, and still lays out exactly as it
- * does in production, but it stays out of the user's way.
+ * Under `STUFFBUCKET_E2E` this window stays out of the user's way without
+ * changing how it lays out. See `docs/testing.md`.
  */
 
 /** Quiet the overlay under test. See the note above. */
