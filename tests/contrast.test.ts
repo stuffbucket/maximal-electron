@@ -1,5 +1,3 @@
-import { readFileSync, readdirSync } from 'node:fs';
-
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -13,6 +11,7 @@ import {
   missingTokens,
   parseHex,
 } from '../src/renderer/lib/contrast.js';
+import { isPackageToken, readTokens, stylesheets } from './stylesheets.js';
 
 /**
  * The contrast contract.
@@ -150,20 +149,17 @@ const RUNTIME_ONLY = ['--status', '--status-soft'];
 
 /** Every `var(--…)` the shell's own stylesheets read. */
 function referencedTokens(): string[] {
-  const dir = new URL('../src/renderer/styles/', import.meta.url);
   const found = new Set<string>();
 
-  for (const name of readdirSync(dir)) {
-    if (!name.endsWith('.css')) continue;
-    // `structural.css` is the public package's stylesheet and deliberately
-    // defines no palette: it reads a separate `--shell-*` namespace that a
-    // consumer supplies and README.md documents. A different contract, so not
-    // this one's tokens.
-    if (name === 'structural.css') continue;
-    const css = readFileSync(new URL(name, dir), 'utf8');
-    for (const match of css.matchAll(/var\((--[a-z0-9-]+)/gi)) {
-      const token = match[1];
-      if (token && !RUNTIME_ONLY.includes(token)) found.add(token);
+  for (const [, css] of stylesheets()) {
+    for (const token of readTokens(css)) {
+      // The `--shell-*` namespace is the public package's contract: a consumer
+      // supplies those, README.md documents them, and
+      // `tests/package-styles.test.ts` checks them. This used to skip
+      // `structural.css` by name, which holds only while there is one file on
+      // each side. The namespace is the distinction, so classify the token.
+      if (isPackageToken(token)) continue;
+      if (!RUNTIME_ONLY.includes(token)) found.add(token);
     }
   }
 
