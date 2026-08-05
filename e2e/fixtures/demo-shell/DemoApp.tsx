@@ -4,6 +4,10 @@ import { Toolbar, type ViewMode } from '../../../src/renderer/components/Control
 import { ShellLayout } from '../../../src/renderer/components/ShellLayout.js';
 import { type Tab } from '../../../src/renderer/components/TabBar.js';
 import { TerminalTabs } from '../../../src/renderer/components/TerminalTabs.js';
+import {
+  bridgeTerminalTransport,
+  currentTerminalTheme,
+} from '../../../src/renderer/lib/bridge-terminal.js';
 import { usePreferences } from '../../../src/renderer/lib/bridge.js';
 import {
   DEFAULT_VIEW,
@@ -119,6 +123,8 @@ export function DemoApp() {
             ids={tabs.filter((tab) => tab.kind === 'terminal').map((tab) => tab.id)}
             activeId={activeTab}
             shell={DEMO_SHELL}
+            transport={bridgeTerminalTransport}
+            theme={currentTerminalTheme()}
           />
         ) : (
           <>
