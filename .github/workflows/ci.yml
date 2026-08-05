@@ -1,4 +1,9 @@
-# Blocking CI. Runs on pull requests and pushes to main.
+# Blocking CI. Runs on pull requests, and on pushes to main and a release
+# branch.
+#
+# A release branch accumulates merges and is only folded into main at the cut.
+# Without it here, the state that is about to become a release is the one state
+# nothing has run against.
 #
 # The split between this and the release workflow follows openai/codex:
 # a fast blocking gate here, and the expensive platform matrix at release time.
@@ -10,7 +15,7 @@ name: ci
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, 'release/**']
 
 concurrency:
   group: ci-${{ github.ref }}
