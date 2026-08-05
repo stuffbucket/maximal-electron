@@ -1,7 +1,12 @@
 import { Check, X } from 'lucide-react';
 
 import { RUNS, STATUS_LABELS, type AgentRun } from './runs.js';
-import { Field, InspectorPanel, StatusChip } from '../../../src/renderer/components/Controls.js';
+import {
+  Button,
+  Field,
+  InspectorPanel,
+  StatusChip,
+} from '../../../src/renderer/components/Controls.js';
 
 /**
  * What the inspector shows when nothing is selected.
@@ -73,12 +78,12 @@ export function RunInspector({
                   {run.pendingSummary ?? run.step}
                 </p>
                 <div className="approval__actions">
-                  <button type="button" className="approval__allow">
+                  <Button variant="primary" size="sm">
                     <Check size={13} /> Allow
-                  </button>
-                  <button type="button" className="approval__deny">
+                  </Button>
+                  <Button size="sm">
                     <X size={13} /> Deny
-                  </button>
+                  </Button>
                 </div>
               </section>
             )}

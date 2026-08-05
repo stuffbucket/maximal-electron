@@ -42,6 +42,7 @@ export interface PanelSize {
 
 const LEFT: PanelSize = { default: '18', min: '12', max: '30', collapsed: '4' };
 const RIGHT: PanelSize = { default: '22', min: '16', max: '36', collapsed: '0' };
+const BOTTOM: PanelSize = { default: '30', min: '10', max: '70', collapsed: '0' };
 
 export function ShellLayout<T extends Tab>({
   layoutId,
@@ -53,33 +54,58 @@ export function ShellLayout<T extends Tab>({
   tabsLabel,
   newTabLabel,
   tabIcon,
+  top,
   left,
   main,
+  bottom,
   right,
   status,
   leftSize = LEFT,
   rightSize = RIGHT,
+  bottomSize = BOTTOM,
 }: {
   /** Namespaces the persisted panel sizes. Two shells must not share one. */
   layoutId: string;
+  /**
+   * Full width, under the title bar and over the panels. For anything that
+   * addresses the whole window rather than one panel: an offline banner, an
+   * update prompt, a failed-save notice.
+   */
+  top?: ReactNode;
   left: (collapsed: boolean) => ReactNode;
   main: ReactNode;
+  /**
+   * Under `main`, in the same column, behind a draggable divider. For a
+   * secondary view of what `main` shows: logs, output, a console. Absent by
+   * default, and when absent the centre column is a plain panel rather than a
+   * group of one.
+   */
+  bottom?: ReactNode;
   right: (collapse: () => void) => ReactNode;
   status: ReactNode;
   leftSize?: PanelSize;
   rightSize?: PanelSize;
+  bottomSize?: PanelSize;
 } & TabStripProps<T>) {
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
 
   const leftPanel = usePanelRef();
   const rightPanel = usePanelRef();
+  const bottomPanel = usePanelRef();
 
   // Persists panel sizes to `localStorage`, so a reload restores the layout
   // with no storage code here.
   const layout = useDefaultLayout({
     id: layoutId,
     panelIds: ['left', 'main', 'right'],
+  });
+
+  // A second, independent layout for the centre column's split. Only created
+  // when there is something to split.
+  const columnLayout = useDefaultLayout({
+    id: `${layoutId}-column`,
+    panelIds: ['main', 'bottom'],
   });
 
   const togglePanel = useCallback(
@@ -112,6 +138,8 @@ export function ShellLayout<T extends Tab>({
           tabIcon={tabIcon}
         />
 
+        {top}
+
         <Group
           orientation="horizontal"
           className="panels"
@@ -137,7 +165,33 @@ export function ShellLayout<T extends Tab>({
           <Separator className="resize-handle" />
 
           <Panel id="main" minSize="30" className="panel panel--canvas">
-            {main}
+            {bottom === undefined ? (
+              main
+            ) : (
+              <Group
+                orientation="vertical"
+                className="column"
+                defaultLayout={columnLayout.defaultLayout}
+                onLayoutChanged={columnLayout.onLayoutChanged}
+              >
+                <Panel id="main" minSize="20" className="panel panel--canvas">
+                  {main}
+                </Panel>
+                <Separator className="resize-handle resize-handle--horizontal" />
+                <Panel
+                  id="bottom"
+                  panelRef={bottomPanel}
+                  defaultSize={bottomSize.default}
+                  minSize={bottomSize.min}
+                  maxSize={bottomSize.max}
+                  collapsible
+                  collapsedSize={bottomSize.collapsed}
+                  className="panel panel--drawer"
+                >
+                  {bottom}
+                </Panel>
+              </Group>
+            )}
             <footer className="statusbar">
               {status}
               <span className="statusbar__grow" />
