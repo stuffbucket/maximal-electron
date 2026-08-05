@@ -179,6 +179,11 @@
   --border-input: #ccd2da;
   --border-input-hover: #aab3be;
 
+  /* A half-black shadow is a grey smudge on a white page. The dark palette's
+     value reads as depth; this one has to be much softer to read as the same
+     thing. Storybook's light story is where that became obvious. */
+  --elevation-dialog: 0 24px 64px rgb(0 0 0 / 0.18);
+
   --border-invalid: #d3373b;
   --text-invalid: #d3373b;
 

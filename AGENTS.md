@@ -19,6 +19,7 @@ background. If a rule looks arbitrary, the reason is in the linked document.
 | Record a demo | `npm run package && npm run record` |
 | Re-cut a demo | `npm run compose -- <name>` |
 | Capture reference images | `npm run package && npm run stills` |
+| Look at a component | `npm run storybook` |
 | Package | `npm run package` |
 | Verify a package | `npm run verify:package` |
 | Verify the docs | `npm run verify:docs` |
@@ -231,6 +232,33 @@ For a renderer change, the evidence is a computed-layout assertion in a real
 engine, and for a stylesheet change, a text diff of the built CSS in
 `.vite/renderer/*/assets/*.css`. Both are deterministic. The images are for a
 human to look at afterwards.
+
+### Storybook is where you look at a control
+
+`npm run storybook`. Stories sit beside their components as `*.stories.tsx`.
+
+It is a developer tool: CI does not build it, for the same reason CI does not
+capture stills. The cost is that a story broken by a refactor rots until
+somebody opens it.
+
+Two things it is good for that nothing else here was. A component in every
+state at once, without driving the application into each one. And the light
+palette, which previously only appeared by launching the shell and toggling a
+preference — the toolbar switch sets `data-theme` exactly as
+`useThemePreference` does. It earned itself immediately: `--elevation-dialog`
+was a single half-black shadow for both schemes, which reads as depth in the
+dark palette and as a grey smudge on a white page.
+
+`.storybook/preview-head.html` stubs `window.stuffbucket` as a classic script,
+because `src/renderer/lib/bridge.ts` reads it at module scope. A stub inside
+`preview.ts` would be a race against import hoisting.
+
+`.storybook/preview.css` undoes the part of `shell.css` that assumes an
+application window: `html, body { height: 100%; overflow: hidden }` clips a long
+story at the fold.
+
+Nothing imports a story, so Vite never reaches one from an entry point.
+`npm run verify:package` asserts that rather than assuming it.
 
 ## The suite stays off the screen
 

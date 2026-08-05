@@ -20,3 +20,6 @@ demo/takes/
 
 # Another agent tool writes its session database here.
 .opencode/
+
+# Storybook build output. A developer tool, never shipped.
+storybook-static/

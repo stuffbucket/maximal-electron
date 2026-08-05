@@ -1,0 +1,30 @@
+import type { StorybookConfig } from '@storybook/react-vite';
+
+/**
+ * Storybook, as the place to look at a control.
+ *
+ * This repository has three renderer documents and a capture fixture, and none
+ * of them is a good place to see a single component in every state. The
+ * alternative considered was a bespoke gallery page built as a fourth renderer
+ * entry; this is the same idea with a controls panel, a theme toggle, and no
+ * code to maintain.
+ *
+ * It is a developer tool. CI does not build it, for the same reason CI does not
+ * capture stills: a tool for looking at things should not gate a pull request.
+ * The cost is that a story broken by a refactor rots until someone opens it.
+ *
+ * Stories sit beside the components they cover. Nothing imports them, so Vite
+ * never reaches them from an entry point and they do not reach the bundle.
+ * `scripts/verify-package.mjs` asserts that rather than assuming it.
+ */
+const config: StorybookConfig = {
+  stories: ['../src/renderer/**/*.stories.tsx'],
+  framework: {
+    name: '@storybook/react-vite',
+    options: {},
+  },
+  // No usage data leaves this machine.
+  core: { disableTelemetry: true },
+};
+
+export default config;
