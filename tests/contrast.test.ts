@@ -1,12 +1,16 @@
+import { readFileSync, readdirSync } from 'node:fs';
+
 import { describe, expect, it } from 'vitest';
 
 import {
   AA_NORMAL,
   CONTRAST_PAIRS,
   checkPalette,
+  REQUIRED_TOKENS,
   contrastRatio,
   luminance,
   meets,
+  missingTokens,
   parseHex,
 } from '../src/renderer/lib/contrast.js';
 
@@ -138,39 +142,162 @@ describe('CONTRAST_PAIRS', () => {
   });
 });
 
+/**
+ * Set at run time by the `[data-status]` rules rather than supplied by a
+ * palette. Requiring them would fail every consumer.
+ */
+const RUNTIME_ONLY = ['--status', '--status-soft'];
+
+/** Every `var(--…)` the shell's own stylesheets read. */
+function referencedTokens(): string[] {
+  const dir = new URL('../src/renderer/styles/', import.meta.url);
+  const found = new Set<string>();
+
+  for (const name of readdirSync(dir)) {
+    if (!name.endsWith('.css')) continue;
+    const css = readFileSync(new URL(name, dir), 'utf8');
+    for (const match of css.matchAll(/var\((--[a-z0-9-]+)/gi)) {
+      const token = match[1];
+      if (token && !RUNTIME_ONLY.includes(token)) found.add(token);
+    }
+  }
+
+  return [...found].sort();
+}
+
+describe('REQUIRED_TOKENS', () => {
+  it('is exactly what the stylesheets read', () => {
+    /*
+     * The tripwire, and the reason this list is not just data.
+     *
+     * A component that starts using a token nobody has to define ships a rule
+     * that resolves to nothing for a consumer — a transparent background or an
+     * inherited colour, never an error. A token dropped from the stylesheets
+     * and left here demands something of a consumer for no reason.
+     *
+     * Read from the files rather than pinned as a literal, so the list cannot
+     * be right today and wrong after the next component.
+     */
+    expect([...REQUIRED_TOKENS].sort()).toEqual(referencedTokens());
+  });
+
+
+  it('names every token the pair list refers to', () => {
+    // A pair naming a token nobody has to define is a pair that will always
+    // be skipped, which is worse than not listing it.
+    for (const pair of CONTRAST_PAIRS) {
+      expect(REQUIRED_TOKENS, pair.foreground).toContain(pair.foreground);
+      expect(REQUIRED_TOKENS, pair.background).toContain(pair.background);
+    }
+  });
+
+  it('lists no token twice', () => {
+    expect(new Set(REQUIRED_TOKENS).size).toBe(REQUIRED_TOKENS.length);
+  });
+
+  it('omits the run-time status properties', () => {
+    // `--status` and `--status-soft` are set by the `[data-status]` rules, not
+    // supplied by a palette. Requiring them would fail every consumer.
+    expect(REQUIRED_TOKENS).not.toContain('--status');
+    expect(REQUIRED_TOKENS).not.toContain('--status-soft');
+  });
+});
+
+describe('missingTokens', () => {
+  it('names what a palette does not define', () => {
+    expect(missingTokens({})).toEqual(REQUIRED_TOKENS);
+  });
+
+  it('is empty when everything is present', () => {
+    const complete = Object.fromEntries(
+      REQUIRED_TOKENS.map((token) => [token, '#000000']),
+    );
+    expect(missingTokens(complete)).toEqual([]);
+  });
+
+  it('counts a token as present whatever its value', () => {
+    // A palette may define a colour this cannot parse. That is a skipped pair,
+    // not a missing token, and the two need different fixes.
+    const complete = Object.fromEntries(
+      REQUIRED_TOKENS.map((token) => [token, 'oklch(0.7 0.1 250)']),
+    );
+    expect(missingTokens(complete)).toEqual([]);
+  });
+});
+
 describe('checkPalette', () => {
+  const full = (overrides: Record<string, string>): Record<string, string> => ({
+    ...Object.fromEntries(REQUIRED_TOKENS.map((token) => [token, '#000000'])),
+    ...overrides,
+  });
+
   it('judges each pair against its own threshold', () => {
-    const results = checkPalette({ '--text-primary': '#ffffff', '--bg-app': '#000000' });
-    const pair = results.find((result) => result.foreground === '--text-primary');
+    const report = checkPalette(full({ '--text-primary': '#ffffff', '--bg-app': '#000000' }));
+    const pair = report.checked.find(
+      (result) => result.foreground === '--text-primary' && result.background === '--bg-app',
+    );
     expect(pair?.passes).toBe(true);
     expect(pair?.ratio).toBeCloseTo(21, 6);
   });
 
   it('fails a pair that does not clear its threshold', () => {
-    const results = checkPalette({ '--text-primary': '#777777', '--bg-app': '#888888' });
-    expect(results.every((result) => result.passes)).toBe(false);
+    const report = checkPalette(full({ '--text-primary': '#777777', '--bg-app': '#888888' }));
+    expect(report.checked.every((result) => result.passes)).toBe(false);
   });
 
-  it('skips a pair whose colours it cannot read, rather than failing it', () => {
-    // A consumer's palette may define a token in a form this cannot parse, or
-    // not at all. Reporting that as a contrast violation would be a guess, and
-    // a check that reports guesses is a check nobody runs.
-    expect(checkPalette({})).toEqual([]);
-    // A token present but unreadable, and a token absent, are both skipped.
-    expect(checkPalette({ '--text-primary': '#fff' })).toEqual([]);
-    expect(checkPalette({ '--text-primary': 'oklch(0.7 0.1 250)', '--bg-app': '#000' })).toEqual(
-      [],
+  it('reports a pair it cannot read rather than dropping it', () => {
+    // The failure this exists to prevent: an earlier version returned only the
+    // pairs it judged, so a palette in `oklch()` produced an empty list and
+    // read as success. A green run that checked nothing.
+    const report = checkPalette(full({ '--text-primary': 'oklch(0.7 0.1 250)' }));
+    expect(report.skipped.length).toBeGreaterThan(0);
+    expect(report.skipped.every((pair) => pair.unreadable.includes('--text-primary'))).toBe(
+      true,
     );
   });
 
+  it('names which side of a pair it could not read', () => {
+    const report = checkPalette(full({ '--bg-app': 'color-mix(in srgb, red, blue)' }));
+    const pair = report.skipped.find((entry) => entry.background === '--bg-app');
+    expect(pair?.unreadable).toEqual(['--bg-app']);
+  });
+
+  it('blames only the foreground when only the foreground is unreadable', () => {
+    // The mirror of the case above. Without both, a version that always blames
+    // both sides passes: every assertion about one side still holds.
+    const report = checkPalette(full({ '--text-invalid': 'oklch(0.6 0.2 20)' }));
+    const pair = report.skipped.find((entry) => entry.foreground === '--text-invalid');
+    expect(pair?.unreadable).toEqual(['--text-invalid']);
+  });
+
+  it('names both sides when neither reads', () => {
+    const report = checkPalette({});
+    expect(report.checked).toEqual([]);
+    expect(report.skipped).toHaveLength(CONTRAST_PAIRS.length);
+    expect(report.skipped[0]?.unreadable).toHaveLength(2);
+  });
+
+  it('carries the missing tokens through', () => {
+    expect(checkPalette({}).missing).toEqual(REQUIRED_TOKENS);
+    expect(checkPalette(full({})).missing).toEqual([]);
+  });
+
+  it('accounts for every pair, either checked or skipped', () => {
+    // The invariant that makes a summary trustworthy: nothing vanishes.
+    const report = checkPalette(full({ '--text-primary': 'oklch(0.7 0.1 250)' }));
+    expect(report.checked.length + report.skipped.length).toBe(CONTRAST_PAIRS.length);
+  });
+
   it('reads the threshold from the pair, not from a constant', () => {
-    const results = checkPalette({ '--text-primary': '#ffffff', '--bg-app': '#000000' });
-    expect(results[0]?.minimum).toBe(AA_NORMAL);
+    const report = checkPalette(full({}));
+    expect(report.checked[0]?.minimum).toBe(AA_NORMAL);
   });
 
   it('carries `where` through, so a failure names something findable', () => {
-    const results = checkPalette({ '--text-muted': '#6f7783', '--bg-app': '#16181d' });
-    const pair = results.find((result) => result.foreground === '--text-muted');
+    const report = checkPalette(full({ '--text-muted': '#6f7783', '--bg-app': '#16181d' }));
+    const pair = report.checked.find(
+      (result) => result.foreground === '--text-muted' && result.background === '--bg-app',
+    );
     expect(pair?.where).toContain('nav heading');
     expect(pair?.passes).toBe(false);
   });

@@ -95,3 +95,14 @@ jobs:
             playwright-report/
             reports/
           if-no-files-found: ignore
+
+  # The shell running its own standard against its own reference palette. That
+  # palette does not currently meet it — eleven pairs across the two schemes,
+  # issue #28 — so this reports rather than fails. Drop `report-only` when the
+  # palette is fixed, and this becomes the thing that keeps it fixed.
+  design:
+    uses: ./.github/workflows/design-standards.yml
+    with:
+      tokens: src/renderer/styles/tokens.css
+      report-only: true
+      ref: ${{ github.sha }}

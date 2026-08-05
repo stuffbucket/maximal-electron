@@ -135,6 +135,49 @@ application rather than a menu-bar utility.
 
 Components reference semantic names only. No component contains a hex value.
 
+### The contract, and who it binds
+
+The values are a default. A consumer supplies their own palette, so what the
+shell publishes is not the colours but the standard:
+
+- **`REQUIRED_TOKENS`** — every token the stylesheets read. A palette that omits
+  one leaves a rule resolving to nothing, which renders as a transparent
+  background rather than as an error.
+- **`CONTRAST_PAIRS`** — which token is drawn on which surface, and therefore
+  which pairs must be legible. That is a claim about the shell's own markup, so
+  it holds whoever supplies the colours.
+
+Both are in `src/renderer/lib/contrast.ts`, which ships and is mutation-tested.
+`npm run check:contrast` measures a palette against them.
+
+A consumer runs the same check on their own palette by referencing the
+workflow rather than copying the script:
+
+```yaml
+jobs:
+  design:
+    uses: stuffbucket/maximal-electron/.github/workflows/design-standards.yml@main
+    with:
+      tokens: shell/src/ui/styles/tokens.css
+```
+
+`selectors` sets which blocks are read, in cascade order, and defaults to
+`:root,:root[data-theme='light']`. `report-only` prints without failing, which
+is how adoption is staged.
+
+The check reports three things separately, because they need three different
+fixes: a token that is not defined, a token defined in a form it cannot read —
+`oklch()`, `color-mix()`, anything but `#rgb` or `#rrggbb` — and a pair that
+reads fine and does not contrast. An unreadable pair is never counted as a
+pass; an earlier version dropped them, so a palette written in `oklch()`
+produced an empty result and read as success.
+
+This repository runs that workflow against its own palette, which is what makes
+the default a tested claim rather than an assertion. It currently reports
+rather than fails: eleven pairs across the two schemes do not meet the
+contract, and fixing them changes the read of the whole shell. See
+[issue #28](https://github.com/stuffbucket/maximal-electron/issues/28).
+
 ## Native integration
 
 | Feature | Module | Note |

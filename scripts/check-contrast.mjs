@@ -1,20 +1,28 @@
 #!/usr/bin/env node
 /**
- * Does this repository's reference palette meet the shell's own contract?
+ * Does a palette meet the shell's design contract?
  *
- * Local, not CI, and the distinction matters. `src/renderer/lib/contrast.ts`
- * holds the maths and the list of pairs the shell draws — that is the shell's,
- * and it is tested in CI. The hex values in `tokens.css` are a default a
+ * The shell's part is `src/renderer/lib/contrast.ts`: which token is drawn on
+ * which surface, which pairs must be legible, and which tokens have to exist at
+ * all. That travels with the shell and is checked in CI.
+ *
+ * The values are not the shell's. `tokens.css` here is a reference default a
  * consumer replaces, the same way `lib/data.ts` says to replace the sample
- * data. Gating CI on them would be gating on sample content.
+ * data, so this takes the file to measure as an argument. A consumer points it
+ * at theirs — see `.github/workflows/design-standards.yml`, which is how they
+ * do that without copying this script.
  *
- * A consumer runs the same check against their own palette by importing
- * `checkPalette` and handing it their tokens.
+ *   node scripts/check-contrast.mjs [tokens.css] [options]
  *
- * Both schemes are checked. The light palette inherits from the dark one, so
- * a token defined once applies to both and a token redefined under
- * `[data-theme='light']` overrides it — which is exactly how the cascade
- * resolves at run time.
+ *     --selectors <list>   Comma-separated CSS selectors to read, in cascade
+ *                          order. Later ones override earlier, which is how a
+ *                          light theme layered on a dark base resolves.
+ *                          Default: ":root,:root[data-theme='light']"
+ *     --report-only        Print everything, exit 0.
+ *
+ * Three sections, because they need three different fixes: a token that is not
+ * defined, a token defined in a form this cannot read, and a pair that reads
+ * fine and does not contrast.
  */
 
 import { readFileSync } from 'node:fs';
@@ -24,57 +32,129 @@ import { fileURLToPath } from 'node:url';
 import { checkPalette } from '../src/renderer/lib/contrast.ts';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const CSS = readFileSync(path.join(ROOT, 'src/renderer/styles/tokens.css'), 'utf8');
 
-/** Every custom property in a block, in source order. */
-function propertiesIn(block) {
+/** A path worth printing: relative inside the repo, absolute outside it. */
+const show = (target) => {
+  const relative = path.relative(ROOT, target);
+  return relative.startsWith('..') ? target : relative;
+};
+
+/* ------------------------------------------------------------- arguments */
+
+const argv = process.argv.slice(2);
+const flag = (name) => argv.includes(name);
+const value = (name, fallback) => {
+  const at = argv.indexOf(name);
+  return at === -1 ? fallback : (argv[at + 1] ?? fallback);
+};
+
+const positional = argv.filter(
+  (item, index) =>
+    !item.startsWith('--') && (index === 0 || argv[index - 1] !== '--selectors'),
+);
+
+const file = path.resolve(
+  ROOT,
+  positional[0] ?? 'src/renderer/styles/tokens.css',
+);
+const selectors = value('--selectors', ":root,:root[data-theme='light']")
+  .split(',')
+  .map((entry) => entry.trim())
+  .filter(Boolean);
+const reportOnly = flag('--report-only');
+
+/* ----------------------------------------------------------------- parse */
+
+let css;
+try {
+  css = readFileSync(file, 'utf8');
+} catch {
+  console.error(` FAIL  no such file: ${show(file)}`);
+  process.exit(1);
+}
+
+/**
+ * Every custom property declared in the first block matching a selector.
+ *
+ * Deliberately simple. A palette is a flat list of declarations, and a CSS
+ * parser would be a dependency this does not need. A selector that is not
+ * present is reported rather than silently contributing nothing.
+ */
+function propertiesFor(selector) {
+  const at = css.indexOf(selector);
+  if (at === -1) return undefined;
+
+  const open = css.indexOf('{', at);
+  const close = css.indexOf('\n}', open);
+  if (open === -1 || close === -1) return undefined;
+
   const found = {};
-  for (const match of block.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/gi)) {
+  for (const match of css.slice(open, close).matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/gi)) {
     found[match[1]] = (match[2] ?? '').trim();
   }
   return found;
 }
 
-function blockFor(selector) {
-  const start = CSS.indexOf(selector);
-  if (start === -1) throw new Error(`No ${selector} block in tokens.css`);
-  const open = CSS.indexOf('{', start);
-  const close = CSS.indexOf('\n}', open);
-  return CSS.slice(open, close);
+const layers = [];
+for (const selector of selectors) {
+  const properties = propertiesFor(selector);
+  if (properties === undefined) {
+    console.error(` FAIL  no ${selector} block in ${show(file)}`);
+    process.exit(1);
+  }
+  layers.push([selector, properties]);
 }
 
-const dark = propertiesIn(blockFor(':root {'));
-const light = { ...dark, ...propertiesIn(blockFor(":root[data-theme='light']")) };
+/* --------------------------------------------------------------- report */
+
+console.log(`${show(file)} — ${String(layers.length)} scheme(s)\n`);
 
 let failed = false;
+let palette = {};
 
-for (const [scheme, palette] of [
-  ['dark', dark],
-  ['light', light],
-]) {
-  const results = checkPalette(palette);
-  const bad = results.filter((result) => !result.passes);
+for (const [selector, properties] of layers) {
+  // Later selectors override earlier ones, as the cascade does at run time.
+  palette = { ...palette, ...properties };
+  const report = checkPalette(palette);
+  const bad = report.checked.filter((result) => !result.passes);
 
-  console.log(`\n${scheme} — ${String(results.length)} pairs checked`);
-
-  if (bad.length === 0) {
-    console.log('  ok   every pair clears its threshold');
-    continue;
-  }
-
-  failed = true;
-  for (const result of bad) {
-    console.log(
-      ` FAIL  ${result.foreground} on ${result.background}` +
-        `\n         ${result.ratio.toFixed(2)} against ${String(result.minimum)} — ${result.where}`,
-    );
-  }
-}
-
-if (failed) {
   console.log(
-    '\nThe reference palette does not meet the shell\'s contract. See issue #28.',
+    `${selector} — ${String(report.checked.length)} pairs checked, ` +
+      `${String(report.skipped.length)} skipped, ` +
+      `${String(report.missing.length)} tokens missing`,
   );
+
+  if (report.missing.length > 0) {
+    failed = true;
+    console.log('   missing — the shell reads these and this palette does not define them');
+    for (const token of report.missing) console.log(`     ${token}`);
+  }
+
+  if (report.skipped.length > 0) {
+    failed = true;
+    console.log('   unreadable — defined, but not as #rgb or #rrggbb, so no verdict');
+    for (const pair of report.skipped) {
+      console.log(`     ${pair.unreadable.join(', ')}  (${pair.where})`);
+    }
+  }
+
+  if (bad.length > 0) {
+    failed = true;
+    console.log('   contrast — legible tokens that do not contrast enough');
+    for (const result of bad) {
+      console.log(
+        `     ${result.foreground} on ${result.background}` +
+          `  ${result.ratio.toFixed(2)} < ${String(result.minimum)}  — ${result.where}`,
+      );
+    }
+  }
+
+  if (!failed) console.log('   ok');
+  console.log('');
 }
 
-process.exit(failed ? 1 : 0);
+if (failed && reportOnly) {
+  console.log('Reported only. Drop --report-only to make this fail.');
+}
+
+process.exit(failed && !reportOnly ? 1 : 0);

@@ -59,6 +59,87 @@ export const CONTRAST_PAIRS: ContrastPair[] = [
   { foreground: '--text-muted', background: '--bg-panel', where: 'menu item, overlay hint', minimum: AA_NORMAL },
 ];
 
+/**
+ * Every token the shell's own stylesheets read.
+ *
+ * A palette that omits one of these leaves a rule resolving to nothing, which
+ * renders as a transparent background or an inherited colour rather than as an
+ * error. `checkPalette` cannot catch it: a pair whose tokens are absent is
+ * skipped, so a consumer who never defines `--bg-input` would otherwise pass.
+ *
+ * Extracted from `var(--…)` in `src/renderer/styles/*.css`. `--status` and
+ * `--status-soft` are deliberately absent: those are set at run time by the
+ * `[data-status]` rules, not supplied by a palette.
+ */
+export const REQUIRED_TOKENS: string[] = [
+  '--accent',
+  '--accent-contrast',
+  '--accent-soft',
+  '--bg-active',
+  '--bg-app',
+  '--bg-canvas',
+  '--bg-hover',
+  '--bg-input',
+  '--bg-panel',
+  '--bg-raised',
+  '--border-input',
+  '--border-input-hover',
+  '--border-invalid',
+  '--border-strong',
+  '--border-subtle',
+  '--control-lg',
+  '--control-md',
+  '--control-sm',
+  '--danger',
+  '--danger-soft',
+  '--duration-fast',
+  '--ease-out',
+  '--elevation-dialog',
+  '--elevation-popover',
+  '--focus-ring-color',
+  '--focus-ring-offset',
+  '--focus-ring-width',
+  '--font-body',
+  '--font-mono',
+  '--leading-base',
+  '--opacity-disabled',
+  '--radius-card',
+  '--radius-chip',
+  '--radius-dialog',
+  '--radius-input',
+  '--radius-pill',
+  '--size-row',
+  '--size-tabbar',
+  '--size-titlebar',
+  '--space-1',
+  '--space-2',
+  '--space-3',
+  '--space-4',
+  '--space-5',
+  '--success',
+  '--success-soft',
+  '--text-base',
+  '--text-invalid',
+  '--text-md',
+  '--text-muted',
+  '--text-on-solid',
+  '--text-primary',
+  '--text-secondary',
+  '--text-sm',
+  '--text-xs',
+  '--tracking-caps',
+  '--warning',
+  '--warning-soft',
+  '--weight-base',
+  '--weight-lg',
+  '--weight-md',
+];
+
+/** The tokens the shell needs that a palette does not define. */
+export function missingTokens(palette: Record<string, string>): string[] {
+  return REQUIRED_TOKENS.filter((token) => palette[token] === undefined);
+}
+
 /** An opaque colour, 0-255 per channel. */
 export interface Rgb {
   r: number;
@@ -128,29 +209,57 @@ export function meets(ratio: number, minimum: number): boolean {
   return ratio >= minimum;
 }
 
+/** A pair that could not be judged, and why. */
+export interface SkippedPair extends ContrastPair {
+  /** The tokens that were absent or in a form `parseHex` does not read. */
+  unreadable: string[];
+}
+
+export interface PaletteReport {
+  checked: PairResult[];
+  /** Pairs no verdict could be reached on. Not a pass. */
+  skipped: SkippedPair[];
+  /** Tokens the shell reads that the palette does not define. */
+  missing: string[];
+}
+
 /**
  * Check a palette against the pairs above.
  *
- * `palette` maps a token name to its value. A pair whose colours are missing
- * or translucent is skipped rather than failed: this cannot know what a
- * consumer meant by a token it does not recognise, and reporting a guess as a
- * violation would make the check worth ignoring.
+ * `palette` maps a token name to its value. A pair whose colours are absent or
+ * in a form this cannot read — `oklch()`, `color-mix()`, `rgb(r g b / a)` —
+ * gets no verdict, because guessing what a consumer meant would make the check
+ * worth ignoring.
+ *
+ * What it must not do is drop those quietly. An earlier version returned only
+ * the pairs it judged, so a palette written in `oklch()` produced an empty
+ * result and read as success: a green run that checked nothing. `skipped` and
+ * `missing` are why this returns a report rather than a list.
  */
-export function checkPalette(palette: Record<string, string>): PairResult[] {
-  const results: PairResult[] = [];
+export function checkPalette(palette: Record<string, string>): PaletteReport {
+  const checked: PairResult[] = [];
+  const skipped: SkippedPair[] = [];
 
   for (const pair of CONTRAST_PAIRS) {
+    // Read explicitly rather than through `?? ''`: an absent token and one
+    // written as `''` are both unreadable, so the fallback was a branch no
+    // test could tell apart from the real thing.
     const front = palette[pair.foreground];
     const back = palette[pair.background];
-    if (front === undefined || back === undefined) continue;
+    const foreground = front === undefined ? undefined : parseHex(front);
+    const background = back === undefined ? undefined : parseHex(back);
 
-    const foreground = parseHex(front);
-    const background = parseHex(back);
-    if (!foreground || !background) continue;
+    if (!foreground || !background) {
+      const unreadable: string[] = [];
+      if (!foreground) unreadable.push(pair.foreground);
+      if (!background) unreadable.push(pair.background);
+      skipped.push({ ...pair, unreadable });
+      continue;
+    }
 
     const ratio = contrastRatio(foreground, background);
-    results.push({ ...pair, ratio, passes: meets(ratio, pair.minimum) });
+    checked.push({ ...pair, ratio, passes: meets(ratio, pair.minimum) });
   }
 
-  return results;
+  return { checked, skipped, missing: missingTokens(palette) };
 }

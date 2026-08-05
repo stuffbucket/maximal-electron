@@ -1,0 +1,113 @@
+# Design standards, run against a consumer's palette.
+#
+# The shell's design tokens are a reference default — a consumer supplies their
+# own — so what travels is the standard, not the values: which token is drawn on
+# which surface, which pairs must be legible, and which tokens have to exist.
+# That contract lives in `src/renderer/lib/contrast.ts` and is tested here.
+#
+# A consumer references this workflow rather than copying the script:
+#
+#   jobs:
+#     design:
+#       uses: stuffbucket/maximal-electron/.github/workflows/design-standards.yml@main
+#       with:
+#         tokens: shell/src/ui/styles/tokens.css
+#
+# Their palette is then judged against this shell's own markup, and a change to
+# the contract reaches them without anyone copying anything.
+
+name: design standards
+
+on:
+  workflow_call:
+    inputs:
+      tokens:
+        description: Path to the palette, relative to the calling repository.
+        required: true
+        type: string
+      selectors:
+        description: >
+          CSS selectors to read, comma separated, in cascade order. Later ones
+          override earlier, which is how a light theme layered on a dark base
+          resolves.
+        required: false
+        type: string
+        default: ":root,:root[data-theme='light']"
+      report-only:
+        description: Print the report and pass anyway. For staging adoption.
+        required: false
+        type: boolean
+        default: false
+      ref:
+        description: Which revision of the standards to apply.
+        required: false
+        type: string
+        default: main
+
+permissions:
+  contents: read
+
+jobs:
+  tokens:
+    name: design tokens
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the calling repository
+        uses: actions/checkout@v6
+        with:
+          path: caller
+
+      - name: Check out the standards
+        uses: actions/checkout@v6
+        with:
+          repository: stuffbucket/maximal-electron
+          ref: ${{ inputs.ref }}
+          path: standards
+
+      # Node 22 matches `ci.yml`. The check uses `--experimental-strip-types`
+      # to import the contract directly, which that version supports.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: standards/package-lock.json
+
+      # The contract is a pure module with no runtime dependencies, but the
+      # script imports it through the repository, so the install is what makes
+      # the checkout runnable. `--ignore-scripts` skips building the native
+      # modules a palette check never touches.
+      - name: Install the standards
+        working-directory: standards
+        run: npm ci --ignore-scripts
+
+      - name: Check the palette
+        id: check
+        working-directory: standards
+        run: |
+          set +e
+          node --no-warnings=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types \
+            scripts/check-contrast.mjs \
+            "$GITHUB_WORKSPACE/caller/${{ inputs.tokens }}" \
+            --selectors "${{ inputs.selectors }}" \
+            ${{ inputs.report-only && '--report-only' || '' }} \
+            | tee report.txt
+          echo "status=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      # The report belongs in the summary, not only in a log nobody opens.
+      - name: Summarise
+        if: always()
+        working-directory: standards
+        run: |
+          {
+            echo '### Design tokens'
+            echo
+            echo '`${{ inputs.tokens }}` against the shell'"'"'s contract.'
+            echo
+            echo '```'
+            cat report.txt 2>/dev/null || echo 'The check produced no report.'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail if the palette does not meet the contract
+        if: steps.check.outputs.status != '0'
+        run: exit 1
