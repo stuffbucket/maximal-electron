@@ -21,6 +21,7 @@ background. If a rule looks arbitrary, the reason is in the linked document.
 | Capture reference images | `npm run package && npm run stills` |
 | Look at a component | `npm run storybook` |
 | Check every story | `npm run storybook:check` |
+| Check the palette | `npm run check:contrast` |
 | Package | `npm run package` |
 | Verify a package | `npm run verify:package` |
 | Verify the docs | `npm run verify:docs` |

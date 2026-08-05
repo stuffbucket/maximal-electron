@@ -14,7 +14,8 @@
     "src/main/native/grammar.ts",
     "src/main/native/ffmpeg.ts",
     "src/renderer/lib/overlay-keys.ts",
-    "src/renderer/lib/resolve-bridge.ts"
+    "src/renderer/lib/resolve-bridge.ts",
+    "src/renderer/lib/contrast.ts"
   ],
   "reporters": [
     "progress",
