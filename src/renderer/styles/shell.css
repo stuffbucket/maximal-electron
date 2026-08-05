@@ -93,7 +93,7 @@ body {
 }
 
 .icon-button--danger:hover {
-  background: var(--danger);
+  background: var(--danger-fill);
   color: var(--text-on-solid);
 }
 

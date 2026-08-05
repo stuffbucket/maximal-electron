@@ -135,6 +135,17 @@ application rather than a menu-bar utility.
 
 Components reference semantic names only. No component contains a hex value.
 
+### Contrast
+
+`src/renderer/lib/contrast.ts` records which token is drawn on which surface,
+and therefore which pairs must be legible, plus every token the stylesheets
+read. `npm run check:contrast` measures the palette against it, and CI runs it.
+
+Three failures are reported separately, because they need different fixes: a
+token that is not defined, a token defined in a form the check cannot read —
+anything but `#rgb` or `#rrggbb` — and a pair that reads fine and does not
+contrast. An unreadable pair is never counted as a pass.
+
 ## Native integration
 
 | Feature | Module | Note |

@@ -160,12 +160,12 @@ button {
 }
 
 .btn--danger {
-  background: var(--danger);
-  border-color: var(--danger);
+  background: var(--danger-fill);
+  border-color: var(--danger-fill);
   color: var(--text-on-solid);
 }
 .btn--danger:hover:not(:disabled) {
-  background: var(--danger);
+  background: var(--danger-fill);
   filter: brightness(1.08);
 }
 

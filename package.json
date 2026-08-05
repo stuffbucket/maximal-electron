@@ -39,7 +39,8 @@
     "stills": "node scripts/stills.mjs",
     "storybook": "storybook dev -p 6006 --no-open",
     "storybook:build": "storybook build",
-    "storybook:check": "node scripts/storybook-check.mjs"
+    "storybook:check": "node scripts/storybook-check.mjs",
+    "check:contrast": "node --no-warnings=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/check-contrast.mjs"
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "^0.83.0",

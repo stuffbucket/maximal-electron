@@ -46,6 +46,9 @@ jobs:
       # whether a script, a constant, or a link target exists.
       - run: npm run verify:docs
 
+      # The shipped palette stays legible. See src/renderer/lib/contrast.ts.
+      - run: npm run check:contrast
+
   package:
     name: package (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -95,3 +98,4 @@ jobs:
             playwright-report/
             reports/
           if-no-files-found: ignore
+
