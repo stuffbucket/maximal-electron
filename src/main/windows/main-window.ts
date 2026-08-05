@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import { BrowserWindow, shell } from 'electron';
 
+import { windowIcon } from '../native/app-icon.js';
 import { isDemo } from '../native/preferences.js';
 
 /**
@@ -22,6 +23,9 @@ export function createMainWindow(): BrowserWindow {
     minHeight: 560,
     show: false,
     backgroundColor: '#16181d',
+    // Windows and Linux draw the taskbar and window icon from the window.
+    // macOS uses the bundle, so `windowIcon` returns nothing there.
+    icon: windowIcon(),
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
     // Windows and Linux draw the system controls over our toolbar.
     ...(process.platform === 'darwin'

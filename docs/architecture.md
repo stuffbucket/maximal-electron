@@ -153,6 +153,7 @@ contrast. An unreadable pair is never counted as a pass.
 | Splash | `windows/splash.ts` | Self-contained HTML. A timer closes it, so a missed signal cannot strand it. |
 | Application menu | `native/menu.ts` | Sends typed events. It never mutates renderer state directly. |
 | Menu bar or tray | `native/tray.ts` | Optional, driven by a preference. macOS needs a `Template` image. |
+| Icons | `native/icons.ts`, `native/app-icon.ts` | One directory, named by `STUFFBUCKET_ICON_DIR`. Resolution is pure and mutation tested. |
 | Notifications | `native/notifications.ts` | Also owns the dock bounce. |
 | Dock badge | `native/notifications.ts` | The renderer reports a count; the main process decides whether to show it. |
 | Preferences | `native/preferences.ts` | One JSON file under `userData`. |
@@ -182,6 +183,34 @@ Two behaviours are deliberate.
   makes the card vanish whenever a notification takes focus.
 - **`showInactive`, then `focus`.** That pair puts the panel on screen and
   gives it key input without activating this application.
+
+### The application icon
+
+Two halves, and they answer different questions.
+
+**Build time** is what a user sees after installing. `forge.config.ts` sets
+`packagerConfig.icon` from `STUFFBUCKET_ICON_DIR`, which defaults to
+`build/icons`. macOS reads the bundle, Windows reads the executable.
+
+**Run time** is what the developer sees, and what the tray needs. The main
+process loads `icon.png` for the dock and for the `BrowserWindow` icon, and the
+tray images for the menu bar. Those files ship beside `app.asar` rather than
+inside it, because they are read as files.
+
+`src/main/native/icons.ts` decides which directory that is, and imports no
+Electron, so the decision is unit and mutation tested.
+`src/main/native/app-icon.ts` is the thin part that touches `nativeImage`.
+
+**A development run on macOS shows Electron's dock icon.** Packaging cannot
+change that, because there is no bundle. `app.dock.setIcon` is the only way to
+see a different one before a build, and `bootstrap` calls it. So a stock icon
+during `npm start` on a build predating this is not a defect.
+
+**There is no channel.** A renderer that can name a file and have the main
+process load it as an image has an arbitrary file read and a path traversal
+surface, and the icon is a decision belonging to whoever launched the
+application rather than to a document. The seam is the environment and the
+`createHostWindow` options, both of which the host owns.
 
 ## Build output
 

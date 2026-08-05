@@ -8,6 +8,14 @@ export interface HostWindowOptions {
     minWidth?: number;
     minHeight?: number;
     backgroundColor?: string;
+    /**
+     * Window and taskbar icon on Windows and Linux.
+     *
+     * macOS ignores it and uses the bundle icon, so a consumer targeting macOS
+     * sets the icon at package time and, for an unpackaged run, calls
+     * `app.dock.setIcon`.
+     */
+    icon?: BrowserWindowConstructorOptions['icon'];
     titleBarStyle?: BrowserWindowConstructorOptions['titleBarStyle'];
     titleBarOverlay?: BrowserWindowConstructorOptions['titleBarOverlay'];
     trafficLightPosition?: BrowserWindowConstructorOptions['trafficLightPosition'];
