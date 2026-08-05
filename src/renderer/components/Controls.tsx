@@ -1,5 +1,5 @@
 import * as Tooltip from '@radix-ui/react-tooltip';
-import { LayoutGrid, List } from 'lucide-react';
+import { LayoutGrid, List, PanelRight } from 'lucide-react';
 import type { ComponentType, ReactNode } from 'react';
 
 /**
@@ -181,6 +181,37 @@ export function StatusChip({ status, label }: { status: string; label: string })
     <span className="chip" data-status={status}>
       {label}
     </span>
+  );
+}
+
+/**
+ * The chrome of a right-hand panel: a title, and the button that collapses it.
+ *
+ * The two inspectors in this repository had this header written out by hand,
+ * identically, down to the `titlebar__grow` spacer and the 15px icon. What goes
+ * inside the body is the caller's; the frame is not.
+ */
+export function InspectorPanel({
+  title,
+  onCollapse,
+  children,
+}: {
+  title: string;
+  onCollapse: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="inspector" data-testid="inspector">
+      <header className="inspector__header">
+        <h2 className="inspector__title">{title}</h2>
+        <span className="titlebar__grow" />
+        <IconButton label="Collapse panel" onClick={onCollapse}>
+          <PanelRight size={15} />
+        </IconButton>
+      </header>
+
+      <div className="inspector__body">{children}</div>
+    </div>
   );
 }
 

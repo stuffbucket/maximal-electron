@@ -1,7 +1,7 @@
-import { Check, PanelRight, X } from 'lucide-react';
+import { Check, X } from 'lucide-react';
 
 import { RUNS, STATUS_LABELS, type AgentRun } from '../../lib/demo-runs.js';
-import { Field, IconButton, StatusChip } from '../Controls.js';
+import { Field, InspectorPanel, StatusChip } from '../Controls.js';
 
 /**
  * What the inspector shows when nothing is selected.
@@ -56,17 +56,8 @@ export function RunInspector({
   onSelect: (id: string) => void;
 }) {
   return (
-    <div className="inspector" data-testid="inspector">
-      <header className="inspector__header">
-        <h2 className="inspector__title">{run ? 'Agent run' : 'Fleet'}</h2>
-        <span className="titlebar__grow" />
-        <IconButton label="Collapse panel" onClick={onCollapse}>
-          <PanelRight size={15} />
-        </IconButton>
-      </header>
-
-      <div className="inspector__body">
-        {run ? (
+    <InspectorPanel title={run ? 'Agent run' : 'Fleet'} onCollapse={onCollapse}>
+      {run ? (
           <>
             <section className="inspector__section">
               <StatusChip status={run.status} label={STATUS_LABELS[run.status]} />
@@ -124,7 +115,6 @@ export function RunInspector({
             <WaitingOnYou onSelect={onSelect} />
           </>
         )}
-      </div>
-    </div>
+    </InspectorPanel>
   );
 }

@@ -42,7 +42,7 @@ export interface DemoNavEntry {
 export interface DemoNavSection {
   id: string;
   label: string;
-  entries: DemoNavEntry[];
+  items: DemoNavEntry[];
 }
 
 function countBy(status: RunStatus): number {
@@ -53,7 +53,7 @@ export const NAV_SECTIONS: DemoNavSection[] = [
   {
     id: 'projects',
     label: 'Projects',
-    entries: PROJECTS.map((project) => ({
+    items: PROJECTS.map((project) => ({
       id: `project:${project}`,
       label: project,
       count: RUNS.filter((run) => run.project === project).length,
@@ -62,7 +62,7 @@ export const NAV_SECTIONS: DemoNavSection[] = [
   {
     id: 'agents',
     label: 'Agents',
-    entries: [
+    items: [
       { id: 'all', label: 'All runs', count: RUNS.length },
       ...(['running', 'blocked', 'done', 'failed'] as RunStatus[]).map(
         (status) => ({
@@ -90,7 +90,7 @@ export function runsFor(view: DemoViewId): AgentRun[] {
 
 export function viewLabel(view: DemoViewId): string {
   for (const section of NAV_SECTIONS) {
-    for (const entry of section.entries) {
+    for (const entry of section.items) {
       if (entry.id === view) return entry.label;
     }
   }

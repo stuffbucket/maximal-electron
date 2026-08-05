@@ -1,12 +1,4 @@
-import * as Tooltip from '@radix-ui/react-tooltip';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Group,
-  Panel,
-  Separator,
-  useDefaultLayout,
-  usePanelRef,
-} from 'react-resizable-panels';
 
 import type { AppVersions, UpdateStatus, ViewId } from '../shared/ipc.js';
 
@@ -14,22 +6,19 @@ import { Canvas } from './components/Canvas.js';
 import { Toolbar, type ViewMode } from './components/Controls.js';
 import { Inspector } from './components/Inspector.js';
 import { LeftNav } from './components/LeftNav.js';
-import { type DocumentTab } from './components/TabBar.js';
-import { TerminalView } from './components/TerminalView.js';
-import { TitleBar } from './components/TitleBar.js';
+import { ShellLayout } from './components/ShellLayout.js';
+import { TerminalTabs } from './components/TerminalTabs.js';
 import { bridge, useBridgeEvent, usePreferences } from './lib/bridge.js';
 import { VIEW_LABELS, itemsFor } from './lib/data.js';
+import { useShellTabs } from './lib/useShellTabs.js';
+import { useThemePreference } from './lib/useThemePreference.js';
 
 /**
  * The application shell.
  *
- * A Figma-style three-panel layout, driven by `react-resizable-panels` v4: a
- * collapsible left navigation, a tabbed document area, and a collapsible right
- * inspector. The panel library owns width and collapse; this component owns
- * view state.
- *
- * `useDefaultLayout` persists panel sizes to `localStorage`, so a reload
- * restores the user's layout with no storage code here.
+ * `ShellLayout` owns the three panels and their collapse behaviour. This
+ * component owns view state: which navigation entry is current, what the canvas
+ * shows, and what the inspector is inspecting.
  */
 export function App() {
   const [view, setView] = useState<ViewId>('library');
@@ -39,21 +28,8 @@ export function App() {
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ state: 'idle' });
   const [prefs, setPrefs] = usePreferences();
 
-  const [tabs, setTabs] = useState<DocumentTab[]>([
-    { id: 'tab-1', title: 'Library', kind: 'library' },
-  ]);
-  const [activeTab, setActiveTab] = useState('tab-1');
-
-  const [leftCollapsed, setLeftCollapsed] = useState(false);
-  const [rightCollapsed, setRightCollapsed] = useState(false);
-
-  const leftPanel = usePanelRef();
-  const rightPanel = usePanelRef();
-
-  const layout = useDefaultLayout({
-    id: 'stuffbucket-shell',
-    panelIds: ['left', 'main', 'right'],
-  });
+  const { tabs, setTabs, activeTab, setActiveTab, openTab, closeTab } =
+    useShellTabs([{ id: 'tab-1', title: 'Library', kind: 'library' }]);
 
   const items = useMemo(() => itemsFor(view), [view]);
   const selected = items.find((item) => item.id === selectedId);
@@ -71,25 +47,7 @@ export function App() {
     void bridge.invoke('dock:set-badge', { count: items.length });
   }, [items.length]);
 
-  // The theme preference selects the token set.
-  useEffect(() => {
-    if (!prefs) return;
-    const root = document.documentElement;
-    if (prefs.theme === 'system') root.removeAttribute('data-theme');
-    else root.setAttribute('data-theme', prefs.theme);
-  }, [prefs]);
-
-  /* -------------------------------------------------------------- panels */
-
-  const togglePanel = useCallback(
-    (panel: 'left' | 'right') => {
-      const handle = panel === 'left' ? leftPanel.current : rightPanel.current;
-      if (!handle) return;
-      if (handle.isCollapsed()) handle.expand();
-      else handle.collapse();
-    },
-    [leftPanel, rightPanel],
-  );
+  useThemePreference(prefs);
 
   /* ------------------------------------------------------- view switching */
 
@@ -107,42 +65,13 @@ export function App() {
         ),
       );
     },
-    [activeTab],
+    [activeTab, setTabs],
   );
 
   /* -------------------------------------------------------------- events */
 
   useBridgeEvent('menu:navigate', ({ view: next }) => goToView(next));
-  useBridgeEvent('menu:toggle-panel', ({ panel }) => togglePanel(panel));
   useBridgeEvent('update:status', setUpdateStatus);
-
-  /* ---------------------------------------------------------------- tabs */
-
-  /**
-   * The `+` button opens a terminal. Terminal tabs are the working surface;
-   * the library tab is the file browser they were opened from.
-   */
-  const openTab = useCallback(() => {
-    setTabs((prev) => {
-      const count = prev.filter((tab) => tab.kind === 'terminal').length + 1;
-      const id = `term-${String(count)}`;
-      setActiveTab(id);
-      return [...prev, { id, title: `Terminal ${String(count)}`, kind: 'terminal' }];
-    });
-  }, []);
-
-  const closeTab = useCallback(
-    (id: string) => {
-      setTabs((prev) => {
-        const next = prev.filter((tab) => tab.id !== id);
-        if (next.length === 0) return prev;
-        const last = next[next.length - 1];
-        if (id === activeTab && last) setActiveTab(last.id);
-        return next;
-      });
-    },
-    [activeTab],
-  );
 
   const checkUpdates = useCallback(() => {
     setUpdateStatus({ state: 'checking' });
@@ -152,107 +81,43 @@ export function App() {
   /* -------------------------------------------------------------- render */
 
   return (
-    <Tooltip.Provider delayDuration={400}>
-      <div className="app">
-        <TitleBar
-          leftCollapsed={leftCollapsed}
-          rightCollapsed={rightCollapsed}
-          onToggleLeft={() => togglePanel('left')}
-          onToggleRight={() => togglePanel('right')}
-          tabs={tabs}
-          activeTab={activeTab}
-          onSelectTab={setActiveTab}
-          onCloseTab={closeTab}
-          onNewTab={openTab}
-        />
-
-        <Group
-          orientation="horizontal"
-          className="panels"
-          defaultLayout={layout.defaultLayout}
-          onLayoutChanged={layout.onLayoutChanged}
-        >
-          <Panel
-            id="left"
-            panelRef={leftPanel}
-            defaultSize="18"
-            minSize="12"
-            maxSize="30"
-            collapsible
-            collapsedSize="4"
-            onResize={() =>
-              setLeftCollapsed(leftPanel.current?.isCollapsed() ?? false)
-            }
-            className="panel"
-          >
-            <LeftNav view={view} collapsed={leftCollapsed} onSelect={goToView} />
-          </Panel>
-
-          <Separator className="resize-handle" />
-
-          <Panel id="main" minSize="30" className="panel panel--canvas">
-            {current?.kind === 'terminal' ? (
-              // Keep every terminal mounted and hide the inactive ones. A
-              // remount would kill the shell and lose scrollback.
-              tabs
-                .filter((tab) => tab.kind === 'terminal')
-                .map((tab) => (
-                  <div
-                    key={tab.id}
-                    className="terminal-host"
-                    hidden={tab.id !== activeTab}
-                  >
-                    <TerminalView id={tab.id} />
-                  </div>
-                ))
-            ) : (
-              <>
-                <Toolbar
-                  title={VIEW_LABELS[view]}
-                  mode={mode}
-                  onModeChange={setMode}
-                />
-                <Canvas
-                  items={items}
-                  mode={mode}
-                  selectedId={selectedId}
-                  onSelect={setSelectedId}
-                />
-              </>
-            )}
-            <footer className="statusbar">
-              <span>{selected ? selected.name : 'No selection'}</span>
-              <span className="statusbar__grow" />
-            </footer>
-          </Panel>
-
-          <Separator className="resize-handle" />
-
-          <Panel
-            id="right"
-            panelRef={rightPanel}
-            defaultSize="22"
-            minSize="16"
-            maxSize="36"
-            collapsible
-            collapsedSize="0"
-            onResize={() =>
-              setRightCollapsed(rightPanel.current?.isCollapsed() ?? false)
-            }
-            className="panel"
-          >
-            <Inspector
-              item={selected}
-              versions={versions}
-              prefs={prefs}
-              onPrefChange={setPrefs}
-              updateStatus={updateStatus}
-              onCheckUpdates={checkUpdates}
-              onCollapse={() => togglePanel('right')}
+    <ShellLayout
+      layoutId="stuffbucket-shell"
+      tabs={tabs}
+      activeTab={activeTab}
+      onSelectTab={setActiveTab}
+      onCloseTab={closeTab}
+      onNewTab={openTab}
+      status={<span>{selected ? selected.name : 'No selection'}</span>}
+      nav={(collapsed) => (
+        <LeftNav view={view} collapsed={collapsed} onSelect={goToView} />
+      )}
+      main={
+        current?.kind === 'terminal' ? (
+          <TerminalTabs tabs={tabs} activeTab={activeTab} />
+        ) : (
+          <>
+            <Toolbar title={VIEW_LABELS[view]} mode={mode} onModeChange={setMode} />
+            <Canvas
+              items={items}
+              mode={mode}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
             />
-          </Panel>
-        </Group>
-      </div>
-    </Tooltip.Provider>
+          </>
+        )
+      }
+      inspector={(collapse) => (
+        <Inspector
+          item={selected}
+          versions={versions}
+          prefs={prefs}
+          onPrefChange={setPrefs}
+          updateStatus={updateStatus}
+          onCheckUpdates={checkUpdates}
+          onCollapse={collapse}
+        />
+      )}
+    />
   );
 }

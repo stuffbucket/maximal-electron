@@ -1,18 +1,10 @@
-import * as Tooltip from '@radix-ui/react-tooltip';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Group,
-  Panel,
-  Separator,
-  useDefaultLayout,
-  usePanelRef,
-} from 'react-resizable-panels';
+import { useCallback, useState, useMemo } from 'react';
 
 import { Toolbar, type ViewMode } from '../Controls.js';
+import { ShellLayout } from '../ShellLayout.js';
 import { type DocumentTab } from '../TabBar.js';
-import { TerminalView } from '../TerminalView.js';
-import { TitleBar } from '../TitleBar.js';
-import { useBridgeEvent, usePreferences } from '../../lib/bridge.js';
+import { TerminalTabs } from '../TerminalTabs.js';
+import { usePreferences } from '../../lib/bridge.js';
 import {
   DEFAULT_VIEW,
   runsFor,
@@ -20,6 +12,8 @@ import {
   type DemoViewId,
 } from '../../lib/demo.js';
 import { RUNS } from '../../lib/demo-runs.js';
+import { useShellTabs } from '../../lib/useShellTabs.js';
+import { useThemePreference } from '../../lib/useThemePreference.js';
 
 import { AgentNav } from './AgentNav.js';
 import { RunCanvas } from './RunCanvas.js';
@@ -33,8 +27,11 @@ import { RunInspector } from './RunInspector.js';
  * `App` keeps its own data path untouched, and this one is free to be a
  * screenshot fixture.
  *
- * The chrome is shared: `TitleBar`, `TabBar`, `TerminalView`, `Controls`, and
- * every class name in `shell.css` come from the real shell.
+ * The chrome is shared, and shared by import rather than by copy: `ShellLayout`
+ * is the same three-panel frame the application uses, and `TitleBar`,
+ * `TerminalTabs`, `NavRail`, `Controls`, and every class name in `shell.css`
+ * come from the real shell. That makes this the first consumer of those
+ * primitives, which is the same relationship a dependent project will have.
  */
 
 /** Concurrent agent sessions, as they would sit in the tab strip. */
@@ -69,42 +66,14 @@ export function DemoApp() {
   const [selectedId, setSelectedId] = useState<string>();
   const [prefs] = usePreferences();
 
-  const [tabs, setTabs] = useState<DocumentTab[]>(SESSION_TABS);
-  const [activeTab, setActiveTab] = useState(SESSION_TABS[0]?.id ?? 'run-101');
-
-  const [leftCollapsed, setLeftCollapsed] = useState(false);
-  const [rightCollapsed, setRightCollapsed] = useState(false);
-
-  const leftPanel = usePanelRef();
-  const rightPanel = usePanelRef();
-
-  const layout = useDefaultLayout({
-    id: 'stuffbucket-demo',
-    panelIds: ['left', 'main', 'right'],
-  });
+  const { tabs, activeTab, setActiveTab, openTab, closeTab } =
+    useShellTabs(SESSION_TABS);
 
   const runs = useMemo(() => runsFor(view), [view]);
   const selected = RUNS.find((run) => run.id === selectedId);
   const current = tabs.find((tab) => tab.id === activeTab);
 
-  useEffect(() => {
-    if (!prefs) return;
-    const root = document.documentElement;
-    if (prefs.theme === 'system') root.removeAttribute('data-theme');
-    else root.setAttribute('data-theme', prefs.theme);
-  }, [prefs]);
-
-  const togglePanel = useCallback(
-    (panel: 'left' | 'right') => {
-      const handle = panel === 'left' ? leftPanel.current : rightPanel.current;
-      if (!handle) return;
-      if (handle.isCollapsed()) handle.expand();
-      else handle.collapse();
-    },
-    [leftPanel, rightPanel],
-  );
-
-  useBridgeEvent('menu:toggle-panel', ({ panel }) => togglePanel(panel));
+  useThemePreference(prefs);
 
   /** Activating a session tab selects the run it is following. */
   const selectTab = useCallback(
@@ -112,129 +81,44 @@ export function DemoApp() {
       setActiveTab(id);
       if (RUNS.some((run) => run.id === id)) setSelectedId(id);
     },
-    [],
-  );
-
-  const openTab = useCallback(() => {
-    setTabs((prev) => {
-      const count = prev.filter((tab) => tab.kind === 'terminal').length + 1;
-      const id = `term-${String(count)}`;
-      setActiveTab(id);
-      return [...prev, { id, title: `Terminal ${String(count)}`, kind: 'terminal' }];
-    });
-  }, []);
-
-  const closeTab = useCallback(
-    (id: string) => {
-      setTabs((prev) => {
-        const next = prev.filter((tab) => tab.id !== id);
-        if (next.length === 0) return prev;
-        const last = next[next.length - 1];
-        if (id === activeTab && last) setActiveTab(last.id);
-        return next;
-      });
-    },
-    [activeTab],
+    [setActiveTab],
   );
 
   return (
-    <Tooltip.Provider delayDuration={400}>
-      <div className="app">
-        <TitleBar
-          leftCollapsed={leftCollapsed}
-          rightCollapsed={rightCollapsed}
-          onToggleLeft={() => togglePanel('left')}
-          onToggleRight={() => togglePanel('right')}
-          tabs={tabs}
-          activeTab={activeTab}
-          onSelectTab={selectTab}
-          onCloseTab={closeTab}
-          onNewTab={openTab}
-        />
-
-        <Group
-          orientation="horizontal"
-          className="panels"
-          defaultLayout={layout.defaultLayout}
-          onLayoutChanged={layout.onLayoutChanged}
-        >
-          <Panel
-            id="left"
-            panelRef={leftPanel}
-            defaultSize="18"
-            minSize="12"
-            maxSize="30"
-            collapsible
-            collapsedSize="4"
-            onResize={() =>
-              setLeftCollapsed(leftPanel.current?.isCollapsed() ?? false)
-            }
-            className="panel"
-          >
-            <AgentNav view={view} collapsed={leftCollapsed} onSelect={setView} />
-          </Panel>
-
-          <Separator className="resize-handle" />
-
-          <Panel id="main" minSize="30" className="panel panel--canvas">
-            {current?.kind === 'terminal' ? (
-              // Same rule as the production shell: hide an inactive terminal
-              // rather than unmounting it, or the shell dies with the tab.
-              tabs
-                .filter((tab) => tab.kind === 'terminal')
-                .map((tab) => (
-                  <div
-                    key={tab.id}
-                    className="terminal-host"
-                    hidden={tab.id !== activeTab}
-                  >
-                    <TerminalView id={tab.id} shell={DEMO_SHELL} />
-                  </div>
-                ))
-            ) : (
-              <>
-                <Toolbar
-                  title={viewLabel(view)}
-                  mode={mode}
-                  onModeChange={setMode}
-                />
-                <RunCanvas
-                  runs={runs}
-                  mode={mode}
-                  selectedId={selectedId}
-                  onSelect={setSelectedId}
-                />
-              </>
-            )}
-            <footer className="statusbar">
-              <span>{selected ? selected.branch : 'No run selected'}</span>
-              <span className="statusbar__grow" />
-            </footer>
-          </Panel>
-
-          <Separator className="resize-handle" />
-
-          <Panel
-            id="right"
-            panelRef={rightPanel}
-            defaultSize="24"
-            minSize="16"
-            maxSize="36"
-            collapsible
-            collapsedSize="0"
-            onResize={() =>
-              setRightCollapsed(rightPanel.current?.isCollapsed() ?? false)
-            }
-            className="panel"
-          >
-            <RunInspector
-              run={selected}
-              onCollapse={() => togglePanel('right')}
+    <ShellLayout
+      layoutId="stuffbucket-demo"
+      tabs={tabs}
+      activeTab={activeTab}
+      onSelectTab={selectTab}
+      onCloseTab={closeTab}
+      onNewTab={openTab}
+      inspectorSize="24"
+      status={<span>{selected ? selected.branch : 'No run selected'}</span>}
+      nav={(collapsed) => (
+        <AgentNav view={view} collapsed={collapsed} onSelect={setView} />
+      )}
+      main={
+        current?.kind === 'terminal' ? (
+          <TerminalTabs tabs={tabs} activeTab={activeTab} shell={DEMO_SHELL} />
+        ) : (
+          <>
+            <Toolbar title={viewLabel(view)} mode={mode} onModeChange={setMode} />
+            <RunCanvas
+              runs={runs}
+              mode={mode}
+              selectedId={selectedId}
               onSelect={setSelectedId}
             />
-          </Panel>
-        </Group>
-      </div>
-    </Tooltip.Provider>
+          </>
+        )
+      }
+      inspector={(collapse) => (
+        <RunInspector
+          run={selected}
+          onCollapse={collapse}
+          onSelect={setSelectedId}
+        />
+      )}
+    />
   );
 }

@@ -1,5 +1,3 @@
-import { PanelRight } from 'lucide-react';
-
 import type {
   AgentApproval,
   AppVersions,
@@ -9,7 +7,7 @@ import type {
 import { bridge } from '../lib/bridge.js';
 import type { Item } from '../lib/data.js';
 
-import { Field, IconButton, Switch } from './Controls.js';
+import { Field, InspectorPanel, Switch } from './Controls.js';
 
 function updateLabel(status: UpdateStatus): string {
   switch (status.state) {
@@ -53,17 +51,8 @@ export function Inspector({
   onCollapse: () => void;
 }) {
   return (
-    <div className="inspector" data-testid="inspector">
-      <header className="inspector__header">
-        <h2 className="inspector__title">{item ? 'Properties' : 'Settings'}</h2>
-        <span className="titlebar__grow" />
-        <IconButton label="Collapse panel" onClick={onCollapse}>
-          <PanelRight size={15} />
-        </IconButton>
-      </header>
-
-      <div className="inspector__body">
-        {item ? (
+    <InspectorPanel title={item ? 'Properties' : 'Settings'} onCollapse={onCollapse}>
+      {item ? (
           <section>
             <Field label="Name" value={item.name} />
             <Field label="Kind" value={item.kind} />
@@ -177,7 +166,6 @@ export function Inspector({
             <Field label="Packaged" value={String(versions.packaged)} />
           </section>
         )}
-      </div>
-    </div>
+    </InspectorPanel>
   );
 }
