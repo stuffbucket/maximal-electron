@@ -294,6 +294,8 @@ jobs:
         run: |
           set -euo pipefail
           npm run verify:exports
+          # npm pack does not create the destination, and fails with ENOENT.
+          mkdir -p dist-release
           npm pack --pack-destination dist-release
 
       - name: Attach the tarball to the draft
