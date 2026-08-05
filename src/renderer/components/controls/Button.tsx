@@ -1,5 +1,5 @@
 import * as Tooltip from '@radix-ui/react-tooltip';
-import type { ReactNode } from 'react';
+import type { ComponentPropsWithRef, ReactNode } from 'react';
 
 /**
  * Buttons.
@@ -14,35 +14,43 @@ import type { ReactNode } from 'react';
 export type ButtonVariant = 'default' | 'primary' | 'danger';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
+/**
+ * Anything not named here is forwarded to the `<button>`, including `ref`.
+ *
+ * That is not tidiness. Radix's `asChild` clones its child and hands it props
+ * and a ref, so a button that accepts only its own props silently drops them:
+ * `Menu` rendered a trigger that did nothing at all, and the story that would
+ * have caught it was itself passing for the wrong reason. A primitive that
+ * cannot be composed is not a primitive.
+ */
 export function Button({
   children,
-  onClick,
   variant = 'default',
   size = 'md',
-  disabled,
   block,
   type = 'button',
   testId,
+  className,
+  ...rest
 }: {
   children: ReactNode;
-  onClick?: () => void;
   variant?: ButtonVariant;
   size?: ButtonSize;
-  disabled?: boolean;
   /** Fill the width of the container. */
   block?: boolean;
-  type?: 'button' | 'submit';
   testId?: string;
-}) {
+} & Omit<ComponentPropsWithRef<'button'>, 'type'> & {
+    type?: 'button' | 'submit';
+  }) {
   const classes = ['btn', `btn--${variant}`, `btn--${size}`];
   if (block) classes.push('btn--block');
+  if (className) classes.push(className);
 
   return (
     <button
+      {...rest}
       type={type === 'submit' ? 'submit' : 'button'}
       className={classes.join(' ')}
-      onClick={onClick}
-      disabled={disabled}
       data-testid={testId}
     >
       {children}
@@ -59,30 +67,26 @@ export function Button({
  */
 export function IconButton({
   label,
-  onClick,
   children,
   active,
   danger,
-  disabled,
   testId,
+  ...rest
 }: {
   label: string;
-  onClick: () => void;
   children: ReactNode;
   active?: boolean;
   danger?: boolean;
-  disabled?: boolean;
   testId?: string;
-}) {
+} & ComponentPropsWithRef<'button'>) {
   return (
     <Tooltip.Root>
       <Tooltip.Trigger asChild>
         <button
+          {...rest}
           type="button"
           className={`icon-button${danger ? ' icon-button--danger' : ''}`}
-          onClick={onClick}
           aria-label={label}
-          disabled={disabled}
           data-active={active ? 'true' : undefined}
           data-testid={testId}
         >

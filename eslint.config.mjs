@@ -32,6 +32,18 @@ export default tseslint.config(
     rules: { 'no-console': 'off' },
   },
   {
+    // Runs browser code inside `page.evaluate`, so it needs both sets.
+    files: ['scripts/storybook-check.mjs'],
+    languageOptions: {
+      globals: {
+        document: 'readonly',
+        fetch: 'readonly',
+        setTimeout: 'readonly',
+        window: 'readonly',
+      },
+    },
+  },
+  {
     // `.tsx` was missing here, so none of these rules had ever applied to a
     // renderer component.
     files: ['**/*.ts', '**/*.tsx'],

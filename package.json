@@ -38,7 +38,8 @@
     "verify:docs": "node scripts/verify-docs.mjs",
     "stills": "node scripts/stills.mjs",
     "storybook": "storybook dev -p 6006 --no-open",
-    "storybook:build": "storybook build"
+    "storybook:build": "storybook build",
+    "storybook:check": "node scripts/storybook-check.mjs"
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "^0.83.0",

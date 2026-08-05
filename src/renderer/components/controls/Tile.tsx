@@ -4,10 +4,18 @@ import type { ReactNode } from 'react';
  * A selectable tile.
  *
  * A canvas draws four of these: a card and a row in the application, a card and
- * a row in the capture fixture. All four are a button carrying `aria-selected`,
- * and all four had that written out by hand. A tile that forgets `type` submits
- * a form, and one that forgets `aria-selected` tells a screen reader nothing,
- * so the semantics belong in one place.
+ * a row in the capture fixture. All four had their semantics written out by
+ * hand, and all four got them wrong the same way.
+ *
+ * `role="option"` rather than a plain button. `aria-selected` is not a
+ * permitted attribute on `role="button"` — axe reports it as critical — so the
+ * tiles were announcing nothing about selection despite carrying the
+ * attribute. That was the exact claim this component's own comment used to
+ * make about hand-written tiles.
+ *
+ * An option has to live in a listbox to mean anything, which `Canvas` now
+ * supplies. The attribute is unchanged, so `.card[aria-selected='true']` in
+ * the stylesheet still does what it did.
  *
  * `modifier` adds the view's own class beside the base one. `status` sets
  * `data-status`, which the stylesheet colours from.
@@ -32,6 +40,7 @@ function Selectable({
   return (
     <button
       type="button"
+      role="option"
       className={modifier ? `${base} ${modifier}` : base}
       aria-selected={selected}
       onClick={onSelect}

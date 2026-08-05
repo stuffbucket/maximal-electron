@@ -20,6 +20,7 @@ background. If a rule looks arbitrary, the reason is in the linked document.
 | Re-cut a demo | `npm run compose -- <name>` |
 | Capture reference images | `npm run package && npm run stills` |
 | Look at a component | `npm run storybook` |
+| Check every story | `npm run storybook:check` |
 | Package | `npm run package` |
 | Verify a package | `npm run verify:package` |
 | Verify the docs | `npm run verify:docs` |
@@ -272,6 +273,16 @@ Conventions, which are the ones in Storybook's own docs:
   args and its docstring.
 - `@storybook/addon-a11y` runs axe per story. It found the contrast failures in
   issue #28 within a minute of being installed.
+- `npm run storybook:check` drives every story headlessly: render errors, `play`
+  failures, and axe. Also a developer tool, also not in CI — but a `play`
+  function nobody runs is the same problem as an end-to-end test that needs a
+  model, so there is one command for it.
+- Page-level axe rules are off for stories (`landmark-one-main`,
+  `page-has-heading-one`, `region`). A story is a component, not a page, and a
+  panel that is never green is a panel nobody reads.
+- Render a component inside the context it requires. A `Card` outside a
+  listbox reports `aria-required-parent`, which is the story's fault and not
+  the product's.
 
 Nothing imports a story, so Vite never reaches one from an entry point.
 `npm run verify:package` asserts that rather than assuming it.

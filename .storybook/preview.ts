@@ -54,6 +54,22 @@ const preview: Preview = {
     },
   },
   parameters: {
+    a11y: {
+      /*
+       * A story is a component, not a page. `landmark-one-main`,
+       * `page-has-heading-one` and `region` all ask for document structure the
+       * shell supplies and an isolated control cannot. Leaving them on trains
+       * everyone to ignore the panel, which costs the rules that do apply —
+       * `color-contrast` found a real defect the day this was installed.
+       */
+      config: {
+        rules: [
+          { id: 'landmark-one-main', enabled: false },
+          { id: 'page-has-heading-one', enabled: false },
+          { id: 'region', enabled: false },
+        ],
+      },
+    },
     layout: 'padded',
     controls: { expanded: true },
     backgrounds: { disable: true },
