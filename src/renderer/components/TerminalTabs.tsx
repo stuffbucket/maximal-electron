@@ -1,5 +1,4 @@
 import { TerminalView } from './TerminalView.js';
-import type { DocumentTab } from './TabBar.js';
 
 /**
  * Every open terminal, with the inactive ones hidden.
@@ -10,24 +9,23 @@ import type { DocumentTab } from './TabBar.js';
  * hosts a terminal.
  */
 export function TerminalTabs({
-  tabs,
-  activeTab,
+  ids,
+  activeId,
   shell,
 }: {
-  tabs: DocumentTab[];
-  activeTab: string;
+  /** Which sessions are open. Which tabs those are is the caller's taxonomy. */
+  ids: string[];
+  activeId: string;
   /** Overrides the login shell. A capture fixture passes an impersonal one. */
   shell?: string;
 }) {
   return (
     <>
-      {tabs
-        .filter((tab) => tab.kind === 'terminal')
-        .map((tab) => (
-          <div key={tab.id} className="terminal-host" hidden={tab.id !== activeTab}>
-            <TerminalView id={tab.id} shell={shell} />
-          </div>
-        ))}
+      {ids.map((id) => (
+        <div key={id} className="terminal-host" hidden={id !== activeId}>
+          <TerminalView id={id} shell={shell} />
+        </div>
+      ))}
     </>
   );
 }

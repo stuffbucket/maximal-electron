@@ -1,74 +1,51 @@
-import { Component, FileText, Play } from 'lucide-react';
-import type { ComponentType } from 'react';
+import { Fragment, type ReactNode } from 'react';
 
-import { type Item } from '../lib/data.js';
+import { type ViewMode } from './Controls.js';
 
-import { Card, EmptyState, Row, type ViewMode } from './Controls.js';
-
-const KIND_ICONS: Record<Item['kind'], ComponentType<{ size?: number }>> = {
-  file: FileText,
-  component: Component,
-  prototype: Play,
-};
-
-/** Grid of cards, or a dense list. Selection drives the right inspector. */
-export function Canvas({
+/**
+ * A grid of cards or a dense list, over anything with an id.
+ *
+ * This used to import `Item` from `lib/data.ts` — a module whose own docstring
+ * says to replace it with a real data source — and hardcode an icon map of
+ * `file | component | prototype`. A consumer could not use the canvas without
+ * adopting the sample data's shape.
+ *
+ * The frame is the part worth sharing: the empty branch, the scroll container,
+ * the grid-or-list switch. What a card looks like is the caller's.
+ */
+export function Canvas<T extends { id: string }>({
   items,
   mode,
   selectedId,
-  onSelect,
+  renderCard,
+  renderRow,
+  empty,
+  gridModifier,
+  testId = 'canvas',
 }: {
-  items: Item[];
+  items: T[];
   mode: ViewMode;
   selectedId: string | undefined;
-  onSelect: (id: string) => void;
+  renderCard: (item: T, selected: boolean) => ReactNode;
+  renderRow: (item: T, selected: boolean) => ReactNode;
+  empty: ReactNode;
+  /** An extra class on the grid, for a view that needs different columns. */
+  gridModifier?: string;
+  testId?: string;
 }) {
   if (items.length === 0) {
-    return (
-      <div className="canvas">
-        <EmptyState icon={FileText} message="Nothing here yet." />
-      </div>
-    );
+    return <div className="canvas">{empty}</div>;
   }
 
+  const grid = mode === 'grid' ? `grid${gridModifier ? ` ${gridModifier}` : ''}` : 'list';
+
   return (
-    <div className="canvas" data-testid="canvas">
-      <div className={mode === 'grid' ? 'grid' : 'list'} data-testid={`view-${mode}`}>
+    <div className="canvas" data-testid={testId}>
+      <div className={grid} data-testid={`view-${mode}`}>
         {items.map((item) => {
-          const Icon = KIND_ICONS[item.kind];
           const selected = item.id === selectedId;
-
-          if (mode === 'list') {
-            return (
-              <Row
-                key={item.id}
-                selected={selected}
-                onSelect={() => onSelect(item.id)}
-              >
-                <Icon size={14} />
-                <span className="row__name">{item.name}</span>
-                <span className="row__sub">{item.author}</span>
-                <span className="row__sub">{item.updated}</span>
-                <span className="row__sub">{item.size}</span>
-              </Row>
-            );
-          }
-
-          return (
-            <Card
-              key={item.id}
-              selected={selected}
-              onSelect={() => onSelect(item.id)}
-            >
-              <span className="card__thumb">
-                <Icon size={28} />
-              </span>
-              <span className="card__meta">
-                <span className="card__name">{item.name}</span>
-                <span className="card__sub">Edited {item.updated}</span>
-              </span>
-            </Card>
-          );
+          const render = mode === 'list' ? renderRow : renderCard;
+          return <Fragment key={item.id}>{render(item, selected)}</Fragment>;
         })}
       </div>
     </div>

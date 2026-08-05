@@ -11,7 +11,7 @@ import {
 import { useBridgeEvent } from '../lib/bridge.js';
 
 import { TitleBar } from './TitleBar.js';
-import type { DocumentTab } from './TabBar.js';
+import type { Tab, TabStripProps } from './TabBar.js';
 
 /**
  * The three-panel shell.
@@ -26,36 +26,49 @@ import type { DocumentTab } from './TabBar.js';
  * reason a copy ever gets made here: there was nothing to import. A consumer of
  * this repository wanting the same layout would have made a third.
  *
- * `nav` and `inspector` are render props rather than nodes, because both need
- * state this component owns and should not have to receive twice.
+ * The slots are named for where they are, not for what the application happens
+ * to put in them. `left` and `right` are render props rather than nodes because
+ * both need state this component owns: the left one needs to know it is
+ * collapsed, the right one needs a way to collapse itself.
  */
-export function ShellLayout({
+
+/** A side panel's geometry. Sizes are strings in v4, not numbers. */
+export interface PanelSize {
+  default: string;
+  min: string;
+  max: string;
+  collapsed: string;
+}
+
+const LEFT: PanelSize = { default: '18', min: '12', max: '30', collapsed: '4' };
+const RIGHT: PanelSize = { default: '22', min: '16', max: '36', collapsed: '0' };
+
+export function ShellLayout<T extends Tab>({
   layoutId,
   tabs,
   activeTab,
   onSelectTab,
   onCloseTab,
   onNewTab,
-  nav,
+  tabsLabel,
+  newTabLabel,
+  tabIcon,
+  left,
   main,
-  inspector,
+  right,
   status,
-  inspectorSize = '22',
+  leftSize = LEFT,
+  rightSize = RIGHT,
 }: {
   /** Namespaces the persisted panel sizes. Two shells must not share one. */
   layoutId: string;
-  tabs: DocumentTab[];
-  activeTab: string;
-  onSelectTab: (id: string) => void;
-  onCloseTab: (id: string) => void;
-  onNewTab: () => void;
-  nav: (collapsed: boolean) => ReactNode;
+  left: (collapsed: boolean) => ReactNode;
   main: ReactNode;
-  inspector: (collapse: () => void) => ReactNode;
+  right: (collapse: () => void) => ReactNode;
   status: ReactNode;
-  /** Panel sizes are strings in v4, not numbers. */
-  inspectorSize?: string;
-}) {
+  leftSize?: PanelSize;
+  rightSize?: PanelSize;
+} & TabStripProps<T>) {
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
 
@@ -94,6 +107,9 @@ export function ShellLayout({
           onSelectTab={onSelectTab}
           onCloseTab={onCloseTab}
           onNewTab={onNewTab}
+          tabsLabel={tabsLabel}
+          newTabLabel={newTabLabel}
+          tabIcon={tabIcon}
         />
 
         <Group
@@ -105,17 +121,17 @@ export function ShellLayout({
           <Panel
             id="left"
             panelRef={leftPanel}
-            defaultSize="18"
-            minSize="12"
-            maxSize="30"
+            defaultSize={leftSize.default}
+            minSize={leftSize.min}
+            maxSize={leftSize.max}
             collapsible
-            collapsedSize="4"
+            collapsedSize={leftSize.collapsed}
             onResize={() =>
               setLeftCollapsed(leftPanel.current?.isCollapsed() ?? false)
             }
             className="panel"
           >
-            {nav(leftCollapsed)}
+            {left(leftCollapsed)}
           </Panel>
 
           <Separator className="resize-handle" />
@@ -133,17 +149,17 @@ export function ShellLayout({
           <Panel
             id="right"
             panelRef={rightPanel}
-            defaultSize={inspectorSize}
-            minSize="16"
-            maxSize="36"
+            defaultSize={rightSize.default}
+            minSize={rightSize.min}
+            maxSize={rightSize.max}
             collapsible
-            collapsedSize="0"
+            collapsedSize={rightSize.collapsed}
             onResize={() =>
               setRightCollapsed(rightPanel.current?.isCollapsed() ?? false)
             }
             className="panel"
           >
-            {inspector(() => togglePanel('right'))}
+            {right(() => togglePanel('right'))}
           </Panel>
         </Group>
       </div>

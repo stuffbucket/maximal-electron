@@ -1,7 +1,22 @@
 import { Bot, GitBranch } from 'lucide-react';
 
 import { STATUS_LABELS, type AgentRun } from './runs.js';
-import { Card, EmptyState, Row, StatusChip, type ViewMode } from '../../../src/renderer/components/Controls.js';
+import { Canvas } from '../../../src/renderer/components/Canvas.js';
+import {
+  Card,
+  EmptyState,
+  Row,
+  StatusChip,
+  type ViewMode,
+} from '../../../src/renderer/components/Controls.js';
+
+/**
+ * The fleet canvas.
+ *
+ * This used to be a copy of `Canvas`: the same empty branch, the same scroll
+ * container, the same grid-or-list switch, with different tiles inside. Now it
+ * is the tiles, which is all it ever was.
+ */
 
 function RunCard({
   run,
@@ -67,13 +82,6 @@ function RunRow({
   );
 }
 
-/**
- * The demo canvas: agent runs as cards, or as a dense queue.
- *
- * It reuses the production `.card`, `.row`, `.grid`, and `.list` classes, so
- * the two modes keep the same geometry the real shell has. The run-specific
- * classes only add the status colour and the extra columns.
- */
 export function RunCanvas({
   runs,
   mode,
@@ -85,35 +93,19 @@ export function RunCanvas({
   selectedId: string | undefined;
   onSelect: (id: string) => void;
 }) {
-  if (runs.length === 0) {
-    return (
-      <div className="canvas">
-        <EmptyState icon={Bot} message="No agent runs in this view." />
-      </div>
-    );
-  }
-
   return (
-    <div className="canvas" data-testid="canvas">
-      <div className={mode === 'grid' ? 'grid grid--runs' : 'list'} data-testid={`view-${mode}`}>
-        {runs.map((run) =>
-          mode === 'list' ? (
-            <RunRow
-              key={run.id}
-              run={run}
-              selected={run.id === selectedId}
-              onSelect={() => onSelect(run.id)}
-            />
-          ) : (
-            <RunCard
-              key={run.id}
-              run={run}
-              selected={run.id === selectedId}
-              onSelect={() => onSelect(run.id)}
-            />
-          ),
-        )}
-      </div>
-    </div>
+    <Canvas
+      items={runs}
+      mode={mode}
+      selectedId={selectedId}
+      gridModifier="grid--runs"
+      empty={<EmptyState icon={Bot} message="No agent runs in this view." />}
+      renderCard={(run, selected) => (
+        <RunCard run={run} selected={selected} onSelect={() => onSelect(run.id)} />
+      )}
+      renderRow={(run, selected) => (
+        <RunRow run={run} selected={selected} onSelect={() => onSelect(run.id)} />
+      )}
+    />
   );
 }
