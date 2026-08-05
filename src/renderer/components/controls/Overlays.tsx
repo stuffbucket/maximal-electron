@@ -23,6 +23,7 @@ export function Dialog({
   overlayClassName = 'dialog__scrim',
   modal = true,
   onEscapeKeyDown,
+  onKeyDown,
   onPointerDownOutside,
   onOpenAutoFocus,
   testId,
@@ -38,6 +39,8 @@ export function Dialog({
   overlayClassName?: string;
   modal?: boolean;
   onEscapeKeyDown?: (event: KeyboardEvent) => void;
+  /** On the content, so it sees a key before the fields inside it do. */
+  onKeyDown?: (event: React.KeyboardEvent) => void;
   onPointerDownOutside?: (event: Event) => void;
   onOpenAutoFocus?: (event: Event) => void;
   testId?: string;
@@ -50,6 +53,7 @@ export function Dialog({
           className={className}
           data-testid={testId}
           onEscapeKeyDown={onEscapeKeyDown}
+          onKeyDown={onKeyDown}
           onPointerDownOutside={onPointerDownOutside}
           onOpenAutoFocus={onOpenAutoFocus}
         >

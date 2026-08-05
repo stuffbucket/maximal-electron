@@ -294,6 +294,49 @@ scenario('the terminal runs a command and shows its output', async () => {
 
 /* ---------------------------------------------------------------- overlay */
 
+scenario('the overlay card is a real dialog', async () => {
+  const { app, window } = harness;
+
+  await window.click('[data-testid="toggle-overlay"]');
+  const overlay =
+    app.windows().find((page) => page.url().includes('overlay')) ??
+    (await app.waitForEvent('window', { timeout: 15_000 }));
+  const card = overlay.locator('[data-testid="overlay-card"]');
+  await expect(card).toBeVisible({ timeout: 15_000 });
+
+  /*
+   * This card was a div with a click handler: no role, no accessible name, and
+   * Tab walked straight out of it. The three keyboard rules that were already
+   * right are covered by scenarios below, but those need a running local
+   * model, so they skip here and in CI. These four do not need one, and they
+   * are what the migration onto a dialog was for.
+   */
+  await expect(card).toHaveAttribute('role', 'dialog');
+  await expect(card).toHaveAttribute('aria-labelledby', /.+/);
+
+  // Radix marks the rest of the document inert rather than setting
+  // `aria-modal`, which is the better-supported of the two.
+  const modality = await overlay.evaluate(() => {
+    const content = document.querySelector('[data-testid="overlay-card"]');
+    const siblings = [...document.body.children].filter(
+      (element) => !element.contains(content),
+    );
+    return {
+      focusInside: content?.contains(document.activeElement) ?? false,
+      siblingsHidden: siblings.every(
+        (element) => element.getAttribute('aria-hidden') === 'true',
+      ),
+    };
+  });
+
+  expect(modality.focusInside, 'focus should start inside the card').toBe(true);
+  expect(modality.siblingsHidden, 'the rest of the document should be inert').toBe(
+    true,
+  );
+
+  await overlay.keyboard.press('Escape');
+});
+
 scenario('the floating overlay summons and dismisses', async () => {
   const { app, window } = harness;
 
