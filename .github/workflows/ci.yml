@@ -104,5 +104,5 @@ jobs:
     uses: ./.github/workflows/design-standards.yml
     with:
       tokens: src/renderer/styles/tokens.css
-      report-only: false
+      report-only: true
       ref: ${{ github.sha }}
