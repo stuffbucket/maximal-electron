@@ -129,3 +129,38 @@ export const MenuKeyboard: StoryObj = {
     );
   },
 };
+
+/**
+ * A caption above the items.
+ *
+ * A `DropdownMenu.Label`, so roving focus steps over it. The first arrow key
+ * lands on the first action, not on the caption, which is what a disabled item
+ * would have got wrong.
+ */
+export const MenuHeader: StoryObj = {
+  name: 'Menu — with a header',
+  render: () => (
+    <Menu
+      trigger={<Button>Project</Button>}
+      header={<span className="profile__name">Design system</span>}
+      items={ITEMS}
+      testId="story-menu"
+    />
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole('button', { name: 'Project' }));
+
+    const menu = await within(document.body).findByTestId('story-menu');
+    await expect(within(menu).getByText('Design system')).toBeInTheDocument();
+
+    await userEvent.keyboard('{ArrowDown}');
+    await expect(within(menu).getByText('Duplicate').closest('[role="menuitem"]')).toHaveAttribute(
+      'data-highlighted',
+    );
+
+    // Closed again, so the a11y check does not see a document behind an open
+    // popup and report the trigger as focusable inside `aria-hidden`.
+    await userEvent.keyboard('{Escape}');
+  },
+};

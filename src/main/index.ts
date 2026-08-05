@@ -6,6 +6,7 @@ import { BrowserWindow, app, globalShortcut } from 'electron';
 
 import { registerIpcHandlers, sendEvent } from './ipc.js';
 import { focusWindow, installApplicationMenu } from './native/menu.js';
+import { applyDockIcon } from './native/app-icon.js';
 import { clearBadge } from './native/notifications.js';
 import { isAgentBusy, shutdownAgent } from './native/agent.js';
 import {
@@ -70,6 +71,9 @@ let mainWindow: BrowserWindow | undefined;
  */
 function setDockVisible(visible: boolean): void {
   if (process.platform !== 'darwin' || !app.dock) return;
+  // A quiet run must not put an icon in the developer's dock, once per
+  // scenario. Nothing under test asserts dock visibility.
+  if (visible && isE2EQuiet()) return;
   if (visible) void app.dock.show();
   else app.dock.hide();
 }
@@ -92,11 +96,7 @@ function activate(): void {
 
   // `app.dock.show()` resolves asynchronously. Focus after the window paints,
   // or the application can come forward without taking key status.
-  //
-  // Under test that focus lands in the middle of whatever the user is doing,
-  // so a quiet run shows the window without ever taking the keyboard.
   mainWindow.once('ready-to-show', () => {
-    if (isE2EQuiet()) return;
     focusWindow(mainWindow);
   });
 }
@@ -161,6 +161,11 @@ async function runUpdateCheck(): Promise<void> {
 
 function bootstrap(): void {
   const prefs = getPreferences();
+
+  // An unpackaged run shows Electron's own dock icon until this call. A
+  // packaged build already carries the bundle icon; this keeps the two the
+  // same when `STUFFBUCKET_ICON_DIR` overrides it.
+  applyDockIcon();
 
   registerIpcHandlers();
 

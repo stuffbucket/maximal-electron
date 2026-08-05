@@ -29,24 +29,12 @@ import { getPreferences } from './preferences.js';
 import { buildToolsetTools, type RiskyTool } from './toolsets.js';
 
 /**
- * The overlay agent, powered by the pi coding agent.
+ * The overlay agent, powered by the pi coding agent from `badlogic/pi-mono`:
+ * `pi-ai` streams from the provider, `pi-agent-core` runs the tool loop.
  *
- * Two pieces do the work, both from `badlogic/pi-mono`:
- *
- * - `@earendil-works/pi-ai` is the provider layer. It streams from an
- *   Anthropic-compatible or OpenAI-compatible endpoint.
- * - `@earendil-works/pi-agent-core` is the agent loop: it decides when to call
- *   a tool, runs it, feeds the result back, and repeats until the model stops.
- *
- * Backend discovery copies `stuffbucket/wiggle`, and the property worth keeping
- * is that there is **nothing to configure to start**:
- *
- * 1. Try maximal on `localhost:4141`. It speaks the Anthropic API.
- * 2. Fall back to Ollama on `localhost:11434`.
- * 3. If neither is up, say so plainly. Never demand a key.
- *
- * So this application holds no API key, and maximal is the default backend
- * without being a hard dependency.
+ * Discovery copies `stuffbucket/wiggle`, and the property worth keeping is that
+ * there is **nothing to configure to start**. maximal, then Ollama, then say so
+ * plainly. Never demand a key. See `docs/agent.md` for the ranking and why.
  */
 
 const MAXIMAL_BASE = 'http://localhost:4141';

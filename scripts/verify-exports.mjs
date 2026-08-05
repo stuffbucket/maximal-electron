@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, URL } from 'node:url';
@@ -114,6 +114,60 @@ console.log('\nPacked library artifacts');
 for (const target of exportTargets) {
   const packedPath = target?.replace(/^\.\//, '');
   check(packed.includes(packedPath), `${String(packedPath)} is included by npm pack`);
+}
+
+/* ------------------------------------------------------- artifact freshness */
+
+/*
+ * `dist/` is a build artifact that is also committed, and `.gitignore` lists
+ * it. Once a file is tracked the ignore stops applying, so a build rewrites
+ * tracked files and nothing says so. Everything above then reads whatever was
+ * last committed: the export names, the import graph, the packed paths. Each
+ * check passes against an artifact that may be several merges behind `src/`,
+ * which is a green run over the wrong files.
+ *
+ * That is not hypothetical. `npm run verify:exports` builds first, so a
+ * difference here means the committed artifact and the source disagree — which
+ * they did after the tab strip landed, leaving the published `./renderer`
+ * export one merged pull request behind.
+ *
+ * Issue #33 proposes building at pack time and untracking `dist/` entirely.
+ * This check reports nothing once that lands, because there is nothing tracked
+ * to be stale.
+ */
+console.log('\nCommitted artifacts');
+
+const git = (...args) => {
+  try {
+    return execFileSync('git', args, { cwd: root, encoding: 'utf8' });
+  } catch {
+    return undefined;
+  }
+};
+
+const tracked = git('ls-files', '--', 'dist');
+if (tracked === undefined) {
+  console.log('  skip   git is not available, so staleness cannot be judged');
+} else if (tracked.trim() === '') {
+  console.log('  skip   dist is not tracked, so there is nothing to be stale');
+} else {
+  // Both directions. A modified file is a rebuild nobody committed. A file
+  // this build wrote that git does not track is a new export missing from the
+  // artifact a consumer installs, and `.gitignore` keeps it out of
+  // `git status`.
+  const changed = (git('status', '--porcelain', '--', 'dist') ?? '').trim();
+  const onDisk = readdirSync(path.join(root, 'dist'), {
+    recursive: true,
+    encoding: 'utf8',
+  })
+    .map((entry) => `dist/${entry.split(path.sep).join('/')}`)
+    .filter((entry) => existsSync(path.join(root, entry)) && /\.[a-z]+$/.test(entry));
+  const untracked = onDisk.filter((entry) => !tracked.includes(`${entry}\n`));
+
+  check(changed === '', 'committed dist matches a fresh build');
+  if (changed !== '') console.log(changed);
+  check(untracked.length === 0, 'every built file is committed');
+  for (const entry of untracked) console.log(`         ${entry}`);
 }
 
 if (failures.length > 0) {

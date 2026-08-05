@@ -1,6 +1,7 @@
-import path from 'node:path';
+import { Tray } from 'electron';
 
-import { Tray, app, nativeImage } from 'electron';
+import { trayIcon } from './app-icon.js';
+import { TRAY_ICON, TRAY_TEMPLATE_ICON } from './icons.js';
 
 /**
  * The menu bar (macOS) or tray (Windows and Linux) icon.
@@ -20,14 +21,6 @@ import { Tray, app, nativeImage } from 'electron';
 
 let tray: Tray | undefined;
 
-function iconPath(): string {
-  const file = process.platform === 'darwin' ? 'trayTemplate.png' : 'tray.png';
-  // Packaged: resources/icons. Development: build/icons beside the sources.
-  return app.isPackaged
-    ? path.join(process.resourcesPath, 'icons', file)
-    : path.join(__dirname, '../../build/icons', file);
-}
-
 export function setTrayEnabled(enabled: boolean, onActivate: () => void): void {
   if (!enabled) {
     destroyTray();
@@ -35,8 +28,12 @@ export function setTrayEnabled(enabled: boolean, onActivate: () => void): void {
   }
   if (tray) return;
 
-  const image = nativeImage.createFromPath(iconPath());
-  if (process.platform === 'darwin') image.setTemplateImage(true);
+  const isMac = process.platform === 'darwin';
+  const image = trayIcon(isMac ? TRAY_TEMPLATE_ICON : TRAY_ICON);
+  // An icon directory without a tray image gets no tray. An empty click target
+  // carrying only a tooltip is worse than none. `trayIcon` says which file.
+  if (!image) return;
+  if (isMac) image.setTemplateImage(true);
 
   tray = new Tray(image);
   tray.setToolTip('Stuffbucket');

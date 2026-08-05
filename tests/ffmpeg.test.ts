@@ -193,11 +193,14 @@ describe('findTool', () => {
     // stderr is ignored rather than piped. Were it piped and never read, the
     // pipe buffer would fill at roughly 64 KB and the child would block
     // forever on the write, so detection would time out instead of answering.
+    //
+    // 256 KB in one pipeline, not 400 of them. The loop this replaces spawned
+    // 800 processes and took five seconds under load, which is Vitest's own
+    // limit rather than the ten seconds passed to `findTool` — so it failed on
+    // roughly one seed in six while testing nothing about the loop.
     const noisy = script(
       'noisy',
-      ['i=0', 'while [ $i -lt 400 ]; do', '  head -c 1024 /dev/zero | tr "\\0" "x" >&2', '  i=$((i+1))', 'done', 'echo "ffmpeg version 9.9"'].join(
-        '\n',
-      ),
+      ['head -c 262144 /dev/zero | tr "\\0" "x" >&2', 'echo "ffmpeg version 9.9"'].join('\n'),
     );
     const found = await findTool('ffmpeg', 'sunos', { FFMPEG: noisy }, 10_000);
     expect(found?.version).toBe('ffmpeg version 9.9');

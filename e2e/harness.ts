@@ -296,3 +296,47 @@ export async function providerState(page: Page): Promise<ProviderStatus['state']
 
   return (status as ProviderStatus | undefined)?.state ?? 'unavailable';
 }
+
+/**
+ * Does the model actually answer, rather than merely respond to a probe?
+ *
+ * `providerState` reports `ready` when the endpoint replies, which is a weaker
+ * claim than it reads as. A saturated local proxy returns 200, the guard
+ * passes, and the scenario then waits for output that never arrives and fails
+ * on a timeout that looks like a product defect. That is issue #26.
+ *
+ * So this asks for one word and waits a short budget for any sign of life.
+ * Answering is the property the scenarios depend on, so it is the property
+ * worth testing before running one.
+ *
+ * Deliberately not folded into the assertions of a scenario. Turning a missing
+ * answer into a skip inside the scenario body would also skip a genuine
+ * regression in the thing being asserted.
+ */
+export async function providerAnswers(overlay: Page, budgetMs = 30_000): Promise<boolean> {
+  await overlay.fill('[data-testid="overlay-input"]', 'Reply with the single word: ok');
+  await overlay.keyboard.press('Enter');
+
+  // Either is a live model: text streaming back, or a gate asking about a tool
+  // the model chose to call.
+  const alive = overlay.locator(
+    '[data-testid="overlay-answer"], [data-testid="overlay-approval"]',
+  );
+
+  try {
+    await alive.first().waitFor({ state: 'visible', timeout: budgetMs });
+    return true;
+  } catch {
+    return false;
+  } finally {
+    await overlay.evaluate(() => {
+      const api = (
+        globalThis as unknown as {
+          stuffbucket?: { invoke: (channel: string) => Promise<unknown> };
+        }
+      ).stuffbucket;
+      return api?.invoke('overlay:abort');
+    });
+    await overlay.fill('[data-testid="overlay-input"]', '');
+  }
+}

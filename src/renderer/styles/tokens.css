@@ -136,6 +136,19 @@
   --bg-raised: #23272f;
   --bg-hover: #272c35;
   --bg-active: #2f3540;
+  /*
+   * The selected tab's fill.
+   *
+   * Not `--bg-active`. That is a selected row inside a panel; a tab sits on the
+   * title bar, which is a darker surface in one scheme and the lightest one in
+   * the other, so a row's step lands in the wrong place at both ends. It also
+   * has to clear `--bg-hover` by enough that a hovered tab beside the selected
+   * one is not mistaken for it.
+   *
+   * The direction is not the same in both schemes, and cannot be: the light
+   * title bar is already white, so the tab steps down rather than up.
+   */
+  --tab-active: #373d49;
   --border-subtle: #262b33;
   --border-strong: #363d48;
   --text-primary: #e6e8ec;
@@ -200,6 +213,7 @@
   --bg-raised: #ffffff;
   --bg-hover: #eceef2;
   --bg-active: #e2e6ec;
+  --tab-active: #d5dae3;
   --border-subtle: #e3e6eb;
   --border-strong: #ccd2da;
   --text-primary: #12141a;
