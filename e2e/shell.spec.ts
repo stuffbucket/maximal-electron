@@ -1,7 +1,6 @@
 import { expect, test, type Locator } from '@playwright/test';
 
 import {
-  capture,
   closeApp,
   launchApp,
   providerState,
@@ -332,35 +331,6 @@ scenario('the floating overlay summons and dismisses', async () => {
     .toBe(false);
 });
 
-scenario('capture a reference screenshot of the overlay', async () => {
-  // The overlay is a non-activating panel, parked off the side of the display
-  // under `STUFFBUCKET_E2E`. A desktop session still composites it, so this
-  // produces a real image locally. A CI runner does not, and `capture` is
-  // right to reject the blank result: an image that looks like success and is
-  // not, is the failure this template already learned about the hard way.
-  //
-  // So the artifact is skipped where it cannot be produced, rather than
-  // lowering the floor that catches it.
-  test.skip(
-    Boolean(process.env['CI']),
-    'A CI runner does not composite the off-screen overlay panel.',
-  );
-
-  const { app, window } = harness;
-
-  await window.click('[data-testid="toggle-overlay"]');
-  const overlay =
-    app.windows().find((page) => page.url().includes('overlay')) ??
-    (await app.waitForEvent('window', { timeout: 15_000 }));
-  await overlay.waitForSelector('[data-testid="overlay-card"]', {
-    timeout: 15_000,
-  });
-
-  await capture(overlay, 'test-results/overlay.png');
-
-  await overlay.keyboard.press('Escape');
-});
-
 scenario('the overlay answers when a local backend is running', async () => {
   const { app, window } = harness;
 
@@ -452,7 +422,6 @@ scenario('the overlay agent asks before it runs bash, and runs it when allowed',
     .poll(() => handle.evaluate((win) => win.isVisible()), { timeout: 10_000 })
     .toBe(true);
 
-  await capture(overlay, 'test-results/overlay-approval.png');
 
   await overlay.click('[data-testid="overlay-allow"]');
 
@@ -461,7 +430,6 @@ scenario('the overlay agent asks before it runs bash, and runs it when allowed',
     { timeout: 120_000 },
   );
 
-  await capture(overlay, 'test-results/overlay-agent.png');
   await overlay.keyboard.press('Escape');
 });
 
@@ -486,26 +454,6 @@ scenario('Escape answers a pending approval rather than dismissing the overlay',
   await expect(overlay.locator('[data-testid="overlay-card"]')).toBeVisible();
 
   await overlay.keyboard.press('Escape');
-});
-
-/* ------------------------------------------------------------ screenshots */
-
-scenario('capture a reference screenshot of the shell', async () => {
-  const { window } = harness;
-  // `resetShell` already put the shell in the library grid view.
-  await capture(window, 'test-results/shell.png');
-});
-
-scenario('capture a reference screenshot of the terminal', async () => {
-  const { window } = harness;
-
-  await window.click('[data-testid="tab-new"]');
-  const terminal = window.locator('[data-testid="terminal"]').last();
-  await expect(terminal.locator('canvas').first()).toBeVisible({
-    timeout: 20_000,
-  });
-
-  await capture(window, 'test-results/terminal.png');
 });
 
 /* ------------------------------------------------------------- registration */

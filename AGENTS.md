@@ -18,6 +18,7 @@ background. If a rule looks arbitrary, the reason is in the linked document.
 | End-to-end tests | `npm run package && npm run test:e2e` |
 | Record a demo | `npm run package && npm run record` |
 | Re-cut a demo | `npm run compose -- <name>` |
+| Capture reference images | `npm run package && npm run stills` |
 | Package | `npm run package` |
 | Verify a package | `npm run verify:package` |
 | Verify the docs | `npm run verify:docs` |
