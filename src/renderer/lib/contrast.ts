@@ -53,6 +53,7 @@ export const CONTRAST_PAIRS: ContrastPair[] = [
   { foreground: '--text-primary', background: '--bg-raised', where: 'card title', minimum: AA_NORMAL },
   { foreground: '--text-primary', background: '--bg-panel', where: 'dialog text', minimum: AA_NORMAL },
   { foreground: '--text-primary', background: '--bg-input', where: 'field value', minimum: AA_NORMAL },
+  { foreground: '--text-primary', background: '--bg-active', where: 'pressed segment', minimum: AA_NORMAL },
   { foreground: '--text-primary', background: '--bg-hover', where: 'hovered tab, hovered icon button', minimum: AA_NORMAL },
   { foreground: '--text-primary', background: '--tab-active', where: 'selected tab label', minimum: AA_NORMAL },
   { foreground: '--text-secondary', background: '--bg-app', where: 'nav item, field label', minimum: AA_NORMAL },
