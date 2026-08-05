@@ -103,10 +103,16 @@ while (pending.length > 0) {
   }
 }
 
+/*
+ * Deliberately without `--ignore-scripts`. `dist/` is built by `prepack` and
+ * not committed, so skipping scripts would test whether a stale build happens
+ * to be on disk rather than what a publish produces.
+ */
 const packed = JSON.parse(
-  execFileSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'], {
+  execFileSync('npm', ['pack', '--dry-run', '--json'], {
     cwd: root,
     encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'inherit'],
   }),
 )[0].files.map((file) => file.path);
 
@@ -136,7 +142,6 @@ for (const target of exportTargets) {
  * to be stale.
  */
 console.log('\nCommitted artifacts');
-
 const git = (...args) => {
   try {
     return execFileSync('git', args, { cwd: root, encoding: 'utf8' });
