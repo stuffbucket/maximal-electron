@@ -183,28 +183,10 @@
   gap: var(--space-2);
 }
 
-.approval__allow,
-.approval__deny {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-1);
+/* The pair splits the row. `Button` sizes itself; this is the only thing the
+   fixture has to say about them. */
+.approval__actions > .btn {
   flex: 1;
-  height: var(--control-md);
-  border-radius: var(--radius-input);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-md);
-}
-
-.approval__allow {
-  background: var(--accent);
-  color: var(--accent-contrast);
-}
-
-.approval__deny {
-  background: var(--bg-raised);
-  border: 1px solid var(--border-strong);
-  color: var(--text-secondary);
 }
 
 .tool-use {

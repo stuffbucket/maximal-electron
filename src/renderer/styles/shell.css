@@ -692,34 +692,6 @@ body {
  * fleet fixture's own selectors live in `e2e/fixtures/demo-shell/demo.css`.
  */
 
-.dot[data-status='running'],
-.chip[data-status='running'],
-.nav__item[data-status='running'] {
-  --status: var(--accent);
-  --status-soft: var(--accent-soft);
-}
-
-.dot[data-status='blocked'],
-.chip[data-status='blocked'],
-.nav__item[data-status='blocked'] {
-  --status: var(--warning);
-  --status-soft: var(--warning-soft);
-}
-
-.dot[data-status='done'],
-.chip[data-status='done'],
-.nav__item[data-status='done'] {
-  --status: var(--success);
-  --status-soft: var(--success-soft);
-}
-
-.dot[data-status='failed'],
-.chip[data-status='failed'],
-.nav__item[data-status='failed'] {
-  --status: var(--danger);
-  --status-soft: var(--danger-soft);
-}
-
 .dot {
   width: 7px;
   height: 7px;
@@ -813,4 +785,50 @@ body {
 .nav::-webkit-scrollbar-track,
 .inspector__body::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* ------------------------------------------------------------ column split */
+
+/* The centre column, when it holds a drawer under the canvas. */
+.column {
+  min-height: 0;
+  flex: 1;
+}
+
+.panel--drawer {
+  background: var(--bg-app);
+  border-top: 1px solid var(--border-subtle);
+  overflow: auto;
+}
+
+.resize-handle--horizontal {
+  width: auto;
+  height: 1px;
+}
+
+.resize-handle--horizontal::after {
+  inset: -3px 0;
+}
+
+/* ----------------------------------------------------------------- banner */
+
+/*
+ * The top slot's usual occupant: something that addresses the whole window.
+ * Full width, above the panels, so it is not competing with panel content for
+ * attention or for room.
+ */
+.banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  flex: none;
+  font-size: var(--text-sm);
+  background: var(--status-soft, var(--bg-raised));
+  color: var(--status, var(--text-primary));
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.banner__grow {
+  flex: 1;
 }

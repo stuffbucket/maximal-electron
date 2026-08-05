@@ -52,3 +52,291 @@ button {
  * `--opacity-disabled` is the value they should use. It was referenced by the
  * overlay's textarea with an inline fallback and defined nowhere before this.
  */
+
+/* ------------------------------------------------------------------ status */
+
+/*
+ * One custom property carries a status colour. Each element that knows its own
+ * status sets it, and every child reads it, so a chip inside a card does not
+ * repeat the mapping.
+ *
+ * This lived in `shell.css`, which meant the overlay document could render a
+ * status-bearing control and get no colour at all.
+ */
+
+.dot[data-status='running'],
+.chip[data-status='running'],
+.nav__item[data-status='running'],
+.banner[data-status='running'] {
+  --status: var(--accent);
+  --status-soft: var(--accent-soft);
+}
+
+.dot[data-status='blocked'],
+.chip[data-status='blocked'],
+.nav__item[data-status='blocked'],
+.banner[data-status='blocked'] {
+  --status: var(--warning);
+  --status-soft: var(--warning-soft);
+}
+
+.dot[data-status='done'],
+.chip[data-status='done'],
+.nav__item[data-status='done'],
+.banner[data-status='done'] {
+  --status: var(--success);
+  --status-soft: var(--success-soft);
+}
+
+.dot[data-status='failed'],
+.chip[data-status='failed'],
+.nav__item[data-status='failed'],
+.banner[data-status='failed'] {
+  --status: var(--danger);
+  --status-soft: var(--danger-soft);
+}
+
+
+/* ------------------------------------------------------------------ button */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-input);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-raised);
+  color: var(--text-primary);
+  font-weight: var(--weight-md);
+  white-space: nowrap;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-input-hover);
+}
+
+.btn--sm {
+  height: var(--control-sm);
+  font-size: var(--text-xs);
+  padding: 0 var(--space-2);
+}
+.btn--md {
+  height: var(--control-md);
+  font-size: var(--text-sm);
+}
+.btn--lg {
+  height: var(--control-lg);
+  font-size: var(--text-base);
+  padding: 0 var(--space-4);
+}
+
+.btn--block {
+  width: 100%;
+}
+
+/* Disabled lives on the control classes, not on a blanket attribute selector.
+   See the note at the end of this file. */
+.btn:disabled,
+.input:disabled,
+.switch:disabled,
+.checkbox__box:disabled,
+.radio-group[data-disabled] {
+  opacity: var(--opacity-disabled);
+  cursor: not-allowed;
+}
+
+.btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+}
+.btn--primary:hover:not(:disabled) {
+  background: var(--accent);
+  filter: brightness(1.08);
+}
+
+.btn--danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--text-on-solid);
+}
+.btn--danger:hover:not(:disabled) {
+  background: var(--danger);
+  filter: brightness(1.08);
+}
+
+/* ------------------------------------------------------------------ inputs */
+
+.input {
+  width: 100%;
+  height: var(--control-lg);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-input);
+  border: 1px solid var(--border-input);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-sm);
+}
+
+.input::placeholder {
+  color: var(--text-muted);
+}
+
+.input:hover:not(:disabled) {
+  border-color: var(--border-input-hover);
+}
+
+.input[aria-invalid='true'] {
+  border-color: var(--border-invalid);
+}
+
+.input--multiline {
+  height: auto;
+  padding: var(--space-2);
+  resize: vertical;
+  line-height: var(--leading-base);
+}
+
+/* The native arrow needs room, and the platform draws it. */
+.input--select {
+  padding-right: var(--space-1);
+}
+
+/* ------------------------------------------------------------- form field */
+
+.form-field {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.form-field__label {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.form-field__hint {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.form-field__error {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-invalid);
+}
+
+/* ---------------------------------------------------------------- choices */
+
+.checkbox,
+.radio {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.checkbox__box {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  accent-color: var(--accent);
+  cursor: inherit;
+}
+
+.radio-group {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.radio__box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  flex: none;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-input);
+  background: var(--bg-input);
+}
+
+.radio__box[data-state='checked'] {
+  border-color: var(--accent);
+}
+
+.radio__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+}
+
+/* ---------------------------------------------------------------- dialog */
+
+.dialog__scrim {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 0.34);
+}
+
+.dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(520px, 90vw);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-dialog);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--elevation-dialog);
+}
+
+/* ------------------------------------------------------------------ menu */
+
+.menu {
+  min-width: 180px;
+  padding: var(--space-1);
+  border-radius: var(--radius-input);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--elevation-popover);
+}
+
+.menu__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--size-row);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-chip);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  outline: none;
+}
+
+.menu__item[data-highlighted] {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.menu__item[data-disabled] {
+  opacity: var(--opacity-disabled);
+  cursor: not-allowed;
+}
+
+.menu__item--danger[data-highlighted] {
+  background: var(--danger-soft);
+  color: var(--danger);
+}

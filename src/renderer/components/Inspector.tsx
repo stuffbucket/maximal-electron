@@ -7,7 +7,7 @@ import type {
 import { bridge } from '../lib/bridge.js';
 import type { Item } from '../lib/data.js';
 
-import { Field, InspectorPanel, Switch } from './Controls.js';
+import { Button, Field, FormField, InspectorPanel, Select, Switch } from './Controls.js';
 
 function updateLabel(status: UpdateStatus): string {
   switch (status.state) {
@@ -98,23 +98,23 @@ export function Inspector({
               working directory.
             </p>
             {prefs.agentTools && (
-              <label className="field field--stacked">
-                <span className="field__label">Ask before running</span>
-                <select
-                  className="field__select"
-                  value={prefs.agentApproval}
-                  onChange={(event) =>
-                    onPrefChange({
-                      agentApproval: event.target.value as AgentApproval,
-                    })
-                  }
-                  data-testid="pref-agent-approval"
-                >
-                  <option value="writes">Anything that changes files</option>
-                  <option value="all">Every tool</option>
-                  <option value="none">Never ask</option>
-                </select>
-              </label>
+              <FormField label="Ask before running">
+                {(field) => (
+                  <Select
+                    {...field}
+                    value={prefs.agentApproval}
+                    onChange={(agentApproval: AgentApproval) =>
+                      onPrefChange({ agentApproval })
+                    }
+                    options={[
+                      { value: 'writes', label: 'Anything that changes files' },
+                      { value: 'all', label: 'Every tool' },
+                      { value: 'none', label: 'Never ask' },
+                    ]}
+                    testId="pref-agent-approval"
+                  />
+                )}
+              </FormField>
             )}
             <Switch
               label="Light theme"
@@ -127,9 +127,8 @@ export function Inspector({
 
         <section style={{ display: 'grid', gap: 'var(--space-2)' }}>
           <h3 className="inspector__title">Native</h3>
-          <button
-            type="button"
-            className="row"
+          <Button
+            block
             onClick={() =>
               void bridge.invoke('notify:show', {
                 title: 'Stuffbucket',
@@ -137,18 +136,13 @@ export function Inspector({
                 urgent: true,
               })
             }
-            data-testid="send-notification"
+            testId="send-notification"
           >
             Send a test notification
-          </button>
-          <button
-            type="button"
-            className="row"
-            onClick={onCheckUpdates}
-            data-testid="check-updates"
-          >
+          </Button>
+          <Button block onClick={onCheckUpdates} testId="check-updates">
             Check for updates
-          </button>
+          </Button>
           <p className="card__sub card__sub--wrap">{updateLabel(updateStatus)}</p>
         </section>
 
