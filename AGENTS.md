@@ -58,6 +58,10 @@ Do not relax any of these. Each one is load-bearing.
   widen it beyond `http`, `https`, and `mailto`.
 - `setWindowOpenHandler` denies, and `will-navigate` blocks cross-origin
   navigation. Both send the URL to the real browser instead.
+- **No channel takes a filesystem path from the renderer.** That is an
+  arbitrary file read and a path traversal surface. The application icon is the
+  worked example: it is configuration the host owns, through
+  `STUFFBUCKET_ICON_DIR`, not a request the renderer makes.
 
 ## Fuses
 
@@ -71,6 +75,20 @@ Do not relax any of these. Each one is load-bearing.
 `EnableNodeCliInspectArguments: false` is why the end-to-end tests drive the
 unpackaged build. Playwright attaches through the Node inspector, which that
 fuse disables. Do not "fix" the tests by turning the fuse back on.
+
+## Icons
+
+`STUFFBUCKET_ICON_DIR` names the directory. It defaults to `build/icons`, and
+it is the seam a consumer swaps. Three rules:
+
+1. Resolution lives in `src/main/native/icons.ts`, which imports no `electron`
+   and is in the `stryker.conf.json` mutate list. Keep it that way.
+   `src/main/native/app-icon.ts` holds the part that needs `nativeImage`.
+2. `forge.config.ts` and `scripts/verify-package.mjs` each hold a copy of the
+   run-time icon file names, for the same reason the fuses are duplicated.
+   Change both in one commit.
+3. A macOS development run shows Electron's dock icon until `app.dock.setIcon`
+   runs. That is not a defect, and packaging does not change it.
 
 ## Terminals
 

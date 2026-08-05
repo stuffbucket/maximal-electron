@@ -18,6 +18,7 @@ export function createHostWindow(options) {
         title: options.title,
         show: false,
         backgroundColor: options.backgroundColor ?? '#16181d',
+        icon: options.icon,
         titleBarStyle: options.titleBarStyle,
         titleBarOverlay: options.titleBarOverlay,
         trafficLightPosition: options.trafficLightPosition,

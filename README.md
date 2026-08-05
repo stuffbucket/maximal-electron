@@ -111,6 +111,43 @@ Run `npm run build:package` after changing an exported source file. Run
 `npm run verify:exports` to rebuild, inspect the complete renderer import graph,
 and verify that every export target appears in `npm pack`.
 
+## Your own icon
+
+The dock, taskbar, window, and menu bar icons all come from one directory.
+`STUFFBUCKET_ICON_DIR` says which one, so a fork brands its build without
+editing the shell.
+
+```bash
+STUFFBUCKET_ICON_DIR=~/brand/icons npm run package
+STUFFBUCKET_ICON_DIR=~/brand/icons npm start
+```
+
+The directory must carry all six names. `npm run icons` writes them, and honours
+the same variable, so it can seed a new set.
+
+| File | Used for |
+| --- | --- |
+| `icon.icns` | The macOS bundle icon. |
+| `icon.ico` | The Windows executable icon. |
+| `icon.png` | 512 square. Linux, the dock, the taskbar, and the window. |
+| `tray.png` | 32 square, full colour. The Windows and Linux tray. |
+| `trayTemplate.png` | 16 square, alpha only. The macOS menu bar. |
+| `trayTemplate@2x.png` | 32 square, alpha only. The same, on a retina display. |
+
+`forge.config.ts` reads the variable at build time and fails the build when a
+name is missing. `src/main/native/icons.ts` reads it again at run time, which is
+what makes an unpackaged `npm start` on macOS show the icon: **a development run
+takes its dock icon from Electron itself**, and no amount of packaging changes
+that, so `app.dock.setIcon` is the only way to see it before a build.
+
+There is no channel for this. The renderer cannot set an icon, because a
+filesystem path taken from a renderer and loaded as an image is an arbitrary
+file read. The icon belongs to whoever launches the application.
+
+A consumer depending on this shell as a package passes `icon` to
+`createHostWindow` instead, and sets `packagerConfig.icon` in their own Forge
+configuration.
+
 ## Demos
 
 The application can drive itself and record the result. `demo/` holds the mp4s
@@ -173,15 +210,16 @@ Stated here rather than discovered later.
 - **macOS is arm64 only.** The build runner is Apple Silicon.
 - **Windows is unsigned.** SmartScreen warns on first run.
 - **Placeholder icons.** `scripts/gen-icons.mjs` draws them. Replace the output
-  with designer assets before a public release.
+  with designer assets before a public release, or point
+  `STUFFBUCKET_ICON_DIR` at your own set.
 
 ## Fork it
 
 Read [.claude/skills/port-to-project/SKILL.md](./.claude/skills/port-to-project/SKILL.md).
 
 The short version: rename the app, and mint a new WiX `UpgradeCode`. Point
-`.macos-builder/config` at your build output. Then do the two manual onboarding
-steps in the GitHub interface.
+`.macos-builder/config` at your build output, and `STUFFBUCKET_ICON_DIR` at
+your icons. Then do the two manual onboarding steps in the GitHub interface.
 
 ## Credits
 
