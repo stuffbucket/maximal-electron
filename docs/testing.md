@@ -120,3 +120,14 @@ into the bundle a user installs.
 `e2e/demo/*.demo.ts` are timelines, not tests. Four configurations match four
 suffixes: `.demo.ts` records, `.compose.ts` cuts, `.stills.ts` photographs,
 `.spec.ts` gates. Do not merge them.
+
+## The capture fixture is not always built
+
+`npm run package` builds `demo_window` alongside the application, and
+`forge.config.ts` then excludes it from the package. `verify-package.mjs`
+asserts that exclusion, which is why the default builds it: a check that the
+fixture is absent proves nothing if the fixture was never made.
+
+`STUFFBUCKET_SKIP_FIXTURE=1` drops it. CI sets that on the end-to-end job only,
+where no spec reaches the fixture and `verify:package` does not run. Leave it
+unset anywhere `npm run stills` or `npm run record` follows.

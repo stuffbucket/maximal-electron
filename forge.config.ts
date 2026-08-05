@@ -147,8 +147,11 @@ const config: ForgeConfig = {
       renderer: [
         { name: 'main_window', config: 'vite.renderer.config.ts' },
         // The capture fixture. Built alongside, excluded from the package by
-        // the `ignore` predicate above.
-        { name: 'demo_window', config: 'vite.demo.config.ts' },
+        // the `ignore` predicate above. `STUFFBUCKET_SKIP_FIXTURE` drops it
+        // where nothing drives it; see docs/testing.md.
+        ...(process.env.STUFFBUCKET_SKIP_FIXTURE
+          ? []
+          : [{ name: 'demo_window', config: 'vite.demo.config.ts' }]),
       ],
     }),
     // Fuses harden the packaged binary. Changing any value here invalidates an
