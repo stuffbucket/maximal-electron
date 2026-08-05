@@ -54,12 +54,39 @@
   --radius-card: 8px;
   --radius-chip: 4px;
   --radius-pill: 9999px;
+  /* A panel, not a control. Off the scale above on purpose: the overlay card
+     is the one surface large enough that 8px reads as a sharp corner. */
+  --radius-dialog: 14px;
 
   /* ---- Sizing ---- */
   --size-titlebar: 40px;
   --size-tabbar: 36px;
   --size-row: 30px;
   --size-icon: 16px;
+
+  /*
+   * ---- Control heights ----
+   *
+   * Three steps, because a segmented button and an icon button are different
+   * sizes for a reason. These describe what the shell already does; they were
+   * hardcoded in five places before they had names.
+   */
+  --control-sm: 22px;
+  --control-md: 26px;
+  --control-lg: 28px;
+
+  /*
+   * ---- Focus ----
+   *
+   * One ring. This was written out five times in three different geometries,
+   * so a control's focus outline depended on which stylesheet it landed in.
+   */
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+  --focus-ring-color: var(--accent);
+
+  /* ---- Disabled ---- */
+  --opacity-disabled: 0.5;
 
   /* ---- Motion ---- */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
@@ -69,6 +96,7 @@
   /* ---- Elevation ---- */
   --elevation-card: 0 1px 2px rgb(0 0 0 / 0.16);
   --elevation-popover: 0 8px 24px rgb(0 0 0 / 0.28);
+  --elevation-dialog: 0 24px 64px rgb(0 0 0 / 0.5);
 
   /* ---- Dark palette (default) ---- */
   --bg-app: #16181d;
@@ -97,6 +125,31 @@
   --warning-soft: rgb(224 163 62 / 0.16);
   --danger-soft: rgb(244 113 116 / 0.16);
 
+  /*
+   * A field surface is its own token, not an alias.
+   *
+   * The two controls that existed before this disagreed: the overlay's
+   * textarea sat on `--bg-canvas`, the inspector's select on `--bg-raised`.
+   * Neither alias survives both schemes. An input should read as recessed in
+   * the dark palette and as paper in the light one, and those are different
+   * members of the ramp.
+   */
+  --bg-input: #101216;
+  --border-input: #363d48;
+  --border-input-hover: #454e5c;
+
+  /*
+   * A field that failed validation. Equal to `--danger` today and named apart
+   * from it because they answer different questions: one is "this operation
+   * failed", the other is "fix this before you continue".
+   */
+  --border-invalid: #f47174;
+  --text-invalid: #f47174;
+
+  /* A foreground on a solid semantic fill. White in both schemes, because a
+     filled accent or danger surface is dark in both. */
+  --text-on-solid: #ffffff;
+
   color-scheme: dark;
 }
 
@@ -121,6 +174,15 @@
   --success-soft: rgb(23 134 74 / 0.12);
   --warning-soft: rgb(169 105 27 / 0.12);
   --danger-soft: rgb(211 55 59 / 0.12);
+
+  --bg-input: #ffffff;
+  --border-input: #ccd2da;
+  --border-input-hover: #aab3be;
+
+  --border-invalid: #d3373b;
+  --text-invalid: #d3373b;
+
+  --text-on-solid: #ffffff;
 
   color-scheme: light;
 }

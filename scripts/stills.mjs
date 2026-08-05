@@ -11,6 +11,10 @@
  * off-screen panel produced a blank artifact, and a window that happened not
  * to be key rewrote two rows of every still.
  *
+ * The output is also not stable enough to diff for equality. Three runs over
+ * identical code produced two different canvas layouts. See "A still is not an
+ * oracle" in AGENTS.md before using these images to prove anything.
+ *
  * Run `npm run package` first. The suite drives the built bundles.
  */
 

@@ -1,4 +1,4 @@
-@import './tokens.css';
+@import './controls.css';
 
 *,
 *::before,
@@ -20,21 +20,6 @@ body {
   font:
     var(--weight-base) var(--text-base) / var(--leading-base) var(--font-body);
   -webkit-font-smoothing: antialiased;
-}
-
-button {
-  font: inherit;
-  color: inherit;
-  background: none;
-  border: 0;
-  padding: 0;
-  cursor: pointer;
-}
-
-:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  border-radius: var(--radius-chip);
 }
 
 /* -------------------------------------------------------------- app shell */
@@ -90,8 +75,8 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: var(--control-lg);
+  height: var(--control-lg);
   border-radius: var(--radius-input);
   color: var(--text-secondary);
   transition: background var(--duration-fast) var(--ease-out);
@@ -109,7 +94,7 @@ button {
 
 .icon-button--danger:hover {
   background: var(--danger);
-  color: #fff;
+  color: var(--text-on-solid);
 }
 
 /* ------------------------------------------------------------------ panels */
@@ -323,7 +308,7 @@ button {
   width: 30px;
   flex: none;
   align-self: center;
-  height: 26px;
+  height: var(--control-md);
   border-radius: var(--radius-input);
   color: var(--text-muted);
 }
@@ -367,8 +352,8 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 22px;
+  width: var(--control-md);
+  height: var(--control-sm);
   border-radius: var(--radius-chip);
   color: var(--text-muted);
 }
@@ -596,16 +581,15 @@ button {
   width: 100%;
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-input);
-  border: 1px solid var(--border-strong);
-  background: var(--bg-raised);
+  border: 1px solid var(--border-input);
+  background: var(--bg-input);
   color: var(--text-primary);
   font: inherit;
   font-size: var(--text-sm);
 }
 
-.field__select:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+.field__select:hover {
+  border-color: var(--border-input-hover);
 }
 
 .field__value {
@@ -657,7 +641,7 @@ button {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--text-on-solid);
   transition: transform var(--duration-fast) var(--ease-out);
 }
 
