@@ -1,7 +1,7 @@
 {
   "name": "stuffbucket-electron",
   "productName": "Stuffbucket",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Reference Electron application with cross-platform build and release mechanics",
   "license": "MIT",
   "author": "stuffbucket",
