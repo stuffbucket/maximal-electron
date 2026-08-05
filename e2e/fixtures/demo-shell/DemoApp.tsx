@@ -132,13 +132,7 @@ export function DemoApp() {
           </>
         )
       }
-      right={(collapse) => (
-        <RunInspector
-          run={selected}
-          onCollapse={collapse}
-          onSelect={setSelectedId}
-        />
-      )}
+      right={<RunInspector run={selected} onSelect={setSelectedId} />}
     />
   );
 }

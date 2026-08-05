@@ -121,7 +121,7 @@ export const Inspector: StoryObj = {
         border: '1px solid var(--border-subtle)',
       }}
     >
-      <InspectorPanel title="Properties" onCollapse={() => undefined}>
+      <InspectorPanel title="Properties">
         <Field label="Name" value="Design system" />
         <Field label="Author" value="brian" />
       </InspectorPanel>

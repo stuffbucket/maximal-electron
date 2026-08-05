@@ -53,15 +53,13 @@ function WaitingOnYou({ onSelect }: { onSelect: (id: string) => void }) {
  */
 export function RunInspector({
   run,
-  onCollapse,
   onSelect,
 }: {
   run: AgentRun | undefined;
-  onCollapse: () => void;
   onSelect: (id: string) => void;
 }) {
   return (
-    <InspectorPanel title={run ? 'Agent run' : 'Fleet'} onCollapse={onCollapse}>
+    <InspectorPanel title={run ? 'Agent run' : 'Fleet'}>
       {run ? (
           <>
             <section className="inspector__section">

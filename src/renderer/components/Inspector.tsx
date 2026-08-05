@@ -40,7 +40,6 @@ export function Inspector({
   onPrefChange,
   updateStatus,
   onCheckUpdates,
-  onCollapse,
 }: {
   item: Item | undefined;
   versions: AppVersions | undefined;
@@ -48,10 +47,9 @@ export function Inspector({
   onPrefChange: (patch: Partial<Preferences>) => void;
   updateStatus: UpdateStatus;
   onCheckUpdates: () => void;
-  onCollapse: () => void;
 }) {
   return (
-    <InspectorPanel title={item ? 'Properties' : 'Settings'} onCollapse={onCollapse}>
+    <InspectorPanel title={item ? 'Properties' : 'Settings'}>
       {item ? (
           <section>
             <Field label="Name" value={item.name} />
