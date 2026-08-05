@@ -14,9 +14,9 @@ import { capture } from './harness.js';
  * by git; `demo/` is not, so these images are committable.
  *
  * The demo shell is opt in. `STUFFBUCKET_DEMO=1` makes the main process load
- * the renderer with `?demo=1`, and `src/renderer/main.tsx` mounts the demo tree
- * instead of `App`. Without that variable this file is the only place in the
- * repository that behaves differently.
+ * the fixture's own renderer bundle, built from `e2e/fixtures/demo-shell/`,
+ * instead of the product's. That bundle is not in the package, so an installed
+ * application cannot reach it however the variable is set.
  *
  * Why this launches its own application rather than reusing `launchApp`: the
  * harness deliberately launches the production shell, and the demo needs one

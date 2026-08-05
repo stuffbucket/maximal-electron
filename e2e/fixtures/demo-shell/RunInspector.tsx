@@ -1,7 +1,7 @@
 import { Check, X } from 'lucide-react';
 
-import { RUNS, STATUS_LABELS, type AgentRun } from '../../lib/demo-runs.js';
-import { Field, InspectorPanel, StatusChip } from '../Controls.js';
+import { RUNS, STATUS_LABELS, type AgentRun } from './runs.js';
+import { Field, InspectorPanel, StatusChip } from '../../../src/renderer/components/Controls.js';
 
 /**
  * What the inspector shows when nothing is selected.

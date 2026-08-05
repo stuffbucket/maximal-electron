@@ -281,12 +281,19 @@ so the encoder that runs is the one that was tested.
 
 ## Fixture data
 
-`src/renderer/lib/demo-runs.ts` holds the agent fleet the video shows. The main
-process loads the renderer with `?demo=1` when `STUFFBUCKET_DEMO` is set, and
-the renderer mounts that fixture instead of the ordinary shell.
+`e2e/fixtures/demo-shell/runs.ts` holds the agent fleet the video shows, beside
+the components that render it. The whole fixture is a separate renderer entry
+point, and `STUFFBUCKET_DEMO` selects it: the main process loads that bundle
+instead of the product's.
+
+`forge.config.ts` keeps the fixture bundle out of the package, and
+`npm run verify:package` fails if it ever appears. The fixture is reachable from
+a checkout and not from an installed application.
 
 Nothing else in the application behaves differently. The terminal, the overlay,
-the agent, and the approval gate are all the production code paths.
+the agent, and the approval gate are all the production code paths, and the
+chrome around them is the product's own `ShellLayout`, `NavRail`, and
+`TerminalTabs` rather than a copy.
 
 ## Cards
 

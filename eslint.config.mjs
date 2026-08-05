@@ -30,7 +30,9 @@ export default tseslint.config(
     rules: { 'no-console': 'off' },
   },
   {
-    files: ['**/*.ts'],
+    // `.tsx` was missing here, so none of these rules had ever applied to a
+    // renderer component.
+    files: ['**/*.ts', '**/*.tsx'],
     languageOptions: {
       parserOptions: {
         projectService: true,
@@ -39,6 +41,8 @@ export default tseslint.config(
       globals: {
         MAIN_WINDOW_VITE_DEV_SERVER_URL: 'readonly',
         MAIN_WINDOW_VITE_NAME: 'readonly',
+        DEMO_WINDOW_VITE_DEV_SERVER_URL: 'readonly',
+        DEMO_WINDOW_VITE_NAME: 'readonly',
       },
     },
     rules: {
@@ -49,6 +53,31 @@ export default tseslint.config(
       '@typescript-eslint/consistent-type-imports': 'error',
       eqeqeq: ['error', 'always'],
       'no-console': ['warn', { allow: ['warn', 'error'] }],
+    },
+  },
+  {
+    /*
+     * The product may not import from the test tree.
+     *
+     * `e2e/fixtures/demo-shell` is a capture fixture that imports the product's
+     * components, and that direction is the only one that is allowed. Nothing
+     * enforced it before, and a single import the other way would put the
+     * fixture back in the bundle this change takes it out of.
+     */
+    files: ['src/**/*.ts', 'src/**/*.tsx'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/e2e/**'],
+              message:
+                'src must not import from e2e. The fixture depends on the product, never the reverse.',
+            },
+          ],
+        },
+      ],
     },
   },
 );

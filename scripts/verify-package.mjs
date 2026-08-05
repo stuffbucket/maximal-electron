@@ -85,6 +85,15 @@ check(
   'renderer stylesheet is packed',
 );
 
+// The capture fixture is a screenshot and video prop. It used to sit inside the
+// product's own bundle, reachable with a query parameter, and shipped to every
+// user. `forge.config.ts` drops it; this is what makes that a fact rather than
+// an intention.
+check(
+  !listing.some((entry) => entry.includes('/renderer/demo_window')),
+  'capture fixture is not packed',
+);
+
 /* ------------------------------------------------- native module (pty) */
 
 console.log('\nnative modules');

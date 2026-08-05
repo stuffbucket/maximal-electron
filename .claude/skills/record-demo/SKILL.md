@@ -14,7 +14,7 @@ exists. Full reference is `docs/recording.md`.
 - A new capability needs to be shown rather than described.
 - A release needs an asset that proves the application works.
 
-Do not use it to capture a still. `e2e/demo-stills.spec.ts` does that, and it
+Do not use it to capture a still. `e2e/demo-stills.stills.ts` does that, and it
 is far quicker.
 
 ## Run it

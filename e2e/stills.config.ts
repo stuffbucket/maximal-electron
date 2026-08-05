@@ -20,6 +20,8 @@ import { defineConfig } from '@playwright/test';
 export default defineConfig({
   testDir: '.',
   testMatch: '**/*.stills.ts',
+  // Refuses to photograph a build older than the source it came from.
+  globalSetup: './stills-setup.ts',
   fullyParallel: false,
   // Electron holds a single-instance lock, so these must not race each other.
   workers: 1,

@@ -43,6 +43,11 @@ const config: ForgeConfig = {
       if (!file) return false;
       if (file === '/package.json') return false;
 
+      // The capture fixture is built beside the product's renderer so the
+      // recording tools can drive it, and dropped here so a user never
+      // installs it. `scripts/verify-package.mjs` asserts it is absent.
+      if (file.startsWith('/.vite/renderer/demo_window')) return true;
+
       const keep = [
         '/.vite',
         '/node_modules/@lydell',
@@ -93,7 +98,12 @@ const config: ForgeConfig = {
           target: 'preload',
         },
       ],
-      renderer: [{ name: 'main_window', config: 'vite.renderer.config.ts' }],
+      renderer: [
+        { name: 'main_window', config: 'vite.renderer.config.ts' },
+        // The capture fixture. Built alongside, excluded from the package by
+        // the `ignore` predicate above.
+        { name: 'demo_window', config: 'vite.demo.config.ts' },
+      ],
     }),
     // Fuses harden the packaged binary. Changing any value here invalidates an
     // existing signature, so a change must go through a fresh signed build.
