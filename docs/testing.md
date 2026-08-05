@@ -102,6 +102,20 @@ scenario. So a test run parks its windows off the side of the display.
   exactly like success. It measures compressed bytes per pixel rather than a
   byte count, because an absolute floor is a pixel-density constant and failed
   real Windows screenshots.
+- **A quiet run takes no focus and puts no icon in the dock.** `focusWindow` and
+  `setDockVisible` both return early. Nothing under test asserts either, because
+  Playwright dispatches input through the debugger rather than the window
+  server.
+
+### No specification needs a real frame
+
+`e2e/*.spec.ts` never calls `capture`. Every assertion goes through a Playwright
+locator, `getComputedStyle`, or `getBoundingClientRect`, none of which need the
+window composited. Only `*.stills.ts` and the recorder need real pixels, and
+both are outside `playwright.config.ts` and outside CI.
+
+So the suite that runs constantly does not need to be seen. If it is visible on
+your desktop, that is a leak worth fixing rather than a requirement.
 
 ### The overlay is the worst of it
 
