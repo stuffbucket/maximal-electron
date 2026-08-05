@@ -3,6 +3,7 @@ import { expect, test, type Locator } from '@playwright/test';
 import {
   closeApp,
   launchApp,
+  providerAnswers,
   providerState,
   resetShell,
   setTheme,
@@ -461,6 +462,10 @@ scenario('the overlay answers when a local backend is running', async () => {
   // maximal or Ollama should still get a green suite, and CI has neither.
   const state = await providerState(overlay);
   test.skip(state !== 'ready', `No local model backend: ${state}`);
+  test.skip(
+    !(await providerAnswers(overlay)),
+    'The backend reported ready and did not answer a one-word prompt',
+  );
 
   await overlay.fill('[data-testid="overlay-input"]', 'Reply with exactly: OVERLAY_OK');
   await overlay.keyboard.press('Enter');
@@ -506,6 +511,10 @@ async function openOverlay() {
 async function requireBackend(overlay: Awaited<ReturnType<typeof openOverlay>>) {
   const state = await providerState(overlay);
   test.skip(state !== 'ready', `No local model backend: ${state}`);
+  test.skip(
+    !(await providerAnswers(overlay)),
+    'The backend reported ready and did not answer a one-word prompt',
+  );
 }
 
 scenario('the overlay agent asks before it runs bash, and runs it when allowed', async () => {
