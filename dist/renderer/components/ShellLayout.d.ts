@@ -14,9 +14,10 @@ import { type Tab, type TabStripProps } from './TabBar.js';
  * this repository wanting the same layout would have made a third.
  *
  * The slots are named for where they are, not for what the application happens
- * to put in them. `left` and `right` are render props rather than nodes because
- * both need state this component owns: the left one needs to know it is
- * collapsed, the right one needs a way to collapse itself.
+ * to put in them. `left` is a render prop because it needs to know whether it
+ * is collapsed; the others are plain nodes. `right` was a render prop too,
+ * until the collapse button it existed to serve turned out to duplicate the
+ * title bar's.
  */
 /** A side panel's geometry. Sizes are strings in v4, not numbers. */
 export interface PanelSize {
@@ -51,7 +52,7 @@ export declare function ShellLayout<T extends Tab>({ layoutId, tabs, activeTab, 
      * group of one.
      */
     bottom?: ReactNode;
-    right: (collapse: () => void) => ReactNode;
+    right: ReactNode;
     status: ReactNode;
     leftSize?: PanelSize;
     rightSize?: PanelSize;

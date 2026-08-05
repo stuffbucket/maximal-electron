@@ -1,5 +1,7 @@
 import type { ViewId } from '../../shared/ipc.js';
 
+import type { Account } from './account.js';
+
 /**
  * Sample content.
  *
@@ -7,6 +9,19 @@ import type { ViewId } from '../../shared/ipc.js';
  * no more. Replace this module with a real data source; nothing else in the
  * renderer reads from it directly.
  */
+
+/**
+ * Who the reference application says is signed in.
+ *
+ * Sample content, exactly like the rows below. A consumer passes their own
+ * `Account` to `Profile`, and the shell learns nothing else about them.
+ */
+export const SAMPLE_ACCOUNT: Account = {
+  id: 'sample-account',
+  displayName: 'Avery Chen',
+  handle: 'avery@example.com',
+  plan: 'Pro',
+};
 
 export interface Item {
   id: string;

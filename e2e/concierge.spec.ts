@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import {
   closeApp,
   launchApp,
+  providerAnswers,
   providerState,
   resetShell,
   type Harness,
@@ -49,6 +50,10 @@ test('the overlay agent flips the shell theme', async () => {
 
   const state = await providerState(overlay);
   test.skip(state !== 'ready', `No local model backend: ${state}`);
+  test.skip(
+    !(await providerAnswers(overlay)),
+    'The backend reported ready and did not answer a one-word prompt',
+  );
 
   await overlay.fill(
     '[data-testid="overlay-input"]',

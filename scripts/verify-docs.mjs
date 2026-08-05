@@ -30,6 +30,19 @@ const DOC_ROOTS = ['docs', '.claude/skills'];
 const DOC_FILES = ['README.md', 'AGENTS.md'];
 
 /**
+ * Prose describing what does not exist yet.
+ *
+ * This check asks whether a documented name is real. A proposal argues for
+ * names that are not real, which is the point of writing one, so running the
+ * check over it produces a failure that says only "this has not been built".
+ *
+ * The cost is honest and worth stating: a proposal that is accepted and built
+ * gets no name checking until its content moves into a document outside this
+ * directory. Move it when it lands, rather than leaving it here as the record.
+ */
+const DOC_EXEMPT = ['docs/proposals'];
+
+/**
  * Where a name has to appear to count as real.
  *
  * Deliberately wide. A constant may live in source, a fuse in `forge.config.ts`,
@@ -83,7 +96,12 @@ function walk(dir, match) {
 const docs = [
   ...DOC_FILES.map((file) => path.join(ROOT, file)),
   ...DOC_ROOTS.flatMap((dir) => walk(path.join(ROOT, dir), (name) => name.endsWith('.md'))),
-].filter((file) => existsSync(file));
+]
+  .filter((file) => existsSync(file))
+  .filter((file) => {
+    const relative = path.relative(ROOT, file);
+    return !DOC_EXEMPT.some((dir) => relative.startsWith(dir + path.sep));
+  });
 
 const sourceFiles = [
   ...SOURCE_FILES.map((file) => path.join(ROOT, file)),

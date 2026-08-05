@@ -5,33 +5,15 @@ import { bridge } from '../lib/bridge.js';
 import { currentTerminalTheme } from '../lib/theme.js';
 
 /**
- * A real terminal in the tab, powered by `ghostty-web`.
- *
- * `ghostty-web` is Ghostty's own VT implementation compiled to WebAssembly,
- * with the xterm.js API on top. It parses and renders; it does not run a
- * process. The shell lives in the main process, in `src/main/native/pty.ts`.
- *
- * Data flow:
- *
- *   keystroke -> term.onData -> `pty:write`  -> shell
- *   shell     -> `pty:data` event            -> term.write
- *
- * The WebAssembly module loads once per renderer. `init()` is idempotent, and
- * this component awaits it before constructing a terminal.
+ * A real terminal in the tab. `ghostty-web` parses and renders; the shell lives
+ * in the main process. See `docs/architecture.md` for the data flow.
  *
  * **The theme is fixed for a session.** The emulator draws to a canvas, so it
- * inherits nothing from CSS and has to be handed literal colours. Those go to
- * the WebAssembly terminal at construction, as the default background,
- * foreground, and palette of every cell. `renderer.setTheme` changes only the
- * layer that those cells are then painted over, and `options.theme` after
- * `open()` is a no-op that logs a warning. Rebuilding the WebAssembly terminal
- * is the supported route, through `reset()`, and it wipes the screen and the
- * scrollback.
- *
- * So a terminal keeps the scheme it was opened in, and a new tab picks up the
- * current one. Losing a build log to a theme toggle is the worse trade. Revisit
- * if `ghostty-web` gains a live palette swap; the tokens are already resolved
- * in one place for it.
+ * inherits nothing from CSS and is handed literal colours at construction.
+ * `options.theme` after `open()` is a no-op that logs a warning, and the
+ * supported route, `reset()`, wipes the screen and the scrollback. Losing a
+ * build log to a theme toggle is the worse trade, so a terminal keeps the
+ * scheme it opened in and a new tab picks up the current one.
  */
 
 /** `init()` is shared, so several tabs opening at once await one load. */

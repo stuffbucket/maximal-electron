@@ -1,4 +1,9 @@
-# Blocking CI. Runs on pull requests and pushes to main.
+# Blocking CI. Runs on pull requests, and on pushes to main and a release
+# branch.
+#
+# A release branch accumulates merges and is only folded into main at the cut.
+# Without it here, the state that is about to become a release is the one state
+# nothing has run against.
 #
 # The split between this and the release workflow follows openai/codex:
 # a fast blocking gate here, and the expensive platform matrix at release time.
@@ -10,7 +15,7 @@ name: ci
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, 'release/**']
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -49,6 +54,12 @@ jobs:
       # The shipped palette stays legible. See src/renderer/lib/contrast.ts.
       - run: npm run check:contrast
 
+      # The library exports. This rebuilds dist/, walks the renderer import
+      # graph, and asserts the committed artifact matches that build. Nothing
+      # in CI ran it before, so the published ./renderer export was free to
+      # drift behind src/ — and did.
+      - run: npm run verify:exports
+
   package:
     name: package (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -85,8 +96,12 @@ jobs:
           cache: npm
       - run: npm ci
 
-      # Produces the .vite bundles the harness drives.
+      # Produces the .vite bundles the harness drives. Not the capture fixture:
+      # no spec reaches it, and this job does not run `verify:package`, which is
+      # the check that fixture exists to satisfy.
       - run: npm run package
+        env:
+          STUFFBUCKET_SKIP_FIXTURE: '1'
       - run: npm run test:e2e
 
       - if: failure()

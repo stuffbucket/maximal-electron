@@ -3,7 +3,7 @@ import path from 'node:path';
 import { _electron as electron, expect, test } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 
-import { capture } from './harness.js';
+import { capture, closeApp } from './harness.js';
 
 /**
  * Still images of the demo shell, for the README and the screen recording.
@@ -61,7 +61,7 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  await app?.close();
+  await closeApp(app ? { app } : undefined);
 });
 
 /**

@@ -7,27 +7,18 @@ import { app } from 'electron';
 import type { ModelProgress } from '../../shared/ipc.js';
 
 /**
- * The embedded model: download, load, and unload.
+ * The embedded model: download, load, and unload. The floor under the provider
+ * chain, so that the application is never useless with nothing installed. See
+ * `docs/agent.md`.
  *
- * This is the floor under the provider chain. A proxy backed by a real
- * subscription beats it on quality, so it is the offline and no-subscription
- * answer rather than the default. What it buys is that the application is
- * never useless: there is nothing to install and no key to paste.
- *
- * ## Why the weights are not in the installer
- *
- * They are a third of a gigabyte and they change on a different schedule to
- * the application. Shipping them would put that on every release and every
- * update, and would pin the model to the app version. Fetching once on first
- * use keeps the installer small and makes a later upgrade a download rather
- * than a rebuild.
- *
- * ## Loading
+ * The weights are not in the installer. They are a third of a gigabyte and
+ * change on a different schedule to the application, so shipping them would pin
+ * the model to the app version and put that download on every update.
  *
  * `node-llama-cpp` is ESM only while this bundle is CommonJS, and Rollup
  * rewrites a plain dynamic import into `require`, which cannot load it. The
- * `Function` constructor below hides the import from the bundler. It is also
- * main-process only: the library crashes a renderer.
+ * `Function` constructor below hides the import from the bundler. Main process
+ * only: the library crashes a renderer.
  */
 
 /**

@@ -21,10 +21,15 @@
  *
  *   build/icons/icon.icns              macOS bundle icon
  *   build/icons/icon.ico               Windows bundle icon
- *   build/icons/icon.png               512, Linux and fallback
+ *   build/icons/icon.png               512, Linux, dock, taskbar, and window
  *   build/icons/trayTemplate.png       16, macOS menu bar
  *   build/icons/trayTemplate@2x.png    32, macOS menu bar, retina
  *   build/icons/tray.png               32, Windows and Linux tray
+ *
+ * `STUFFBUCKET_ICON_DIR` writes them somewhere else. That is the same variable
+ * `forge.config.ts` and `src/main/native/icons.ts` read, so a consumer keeps
+ * their own icon set outside this repository and never edits it. The six names
+ * are the contract; see the icons section in `README.md`.
  *
  * The `.icns` and `.ico` files are written by hand rather than through
  * `iconutil`, so the script runs on any platform. Both formats accept PNG
@@ -36,12 +41,9 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const OUT_DIR = path.join(
-  path.dirname(fileURLToPath(import.meta.url)),
-  '..',
-  'build',
-  'icons',
-);
+const OUT_DIR = process.env.STUFFBUCKET_ICON_DIR
+  ? path.resolve(process.env.STUFFBUCKET_ICON_DIR)
+  : path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'build', 'icons');
 
 const BRAND = [0xc8, 0x33, 0x4a]; // house red, mirrors maximal tokens
 const CREAM = [0xf4, 0xea, 0xd4]; // house cream
@@ -310,8 +312,9 @@ function buildIco(pngs, sizes) {
 mkdirSync(OUT_DIR, { recursive: true });
 
 const write = (name, data) => {
-  writeFileSync(path.join(OUT_DIR, name), data);
-  console.log(`wrote build/icons/${name} (${data.length} bytes)`);
+  const file = path.join(OUT_DIR, name);
+  writeFileSync(file, data);
+  console.log(`wrote ${path.relative(process.cwd(), file)} (${data.length} bytes)`);
 };
 
 // One render per size, reused by every container format.

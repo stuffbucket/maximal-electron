@@ -29,29 +29,34 @@ build and release mechanics.
    `package.json`. Change `packagerConfig.name`, `executableName`, and
    `appBundleId` in `forge.config.ts`.
 
-2. **Mint a new `UpgradeCode`.** In `build/windows/app.wxs`. Two products that
+2. **Point at your own icons.** Set `STUFFBUCKET_ICON_DIR` to a directory
+   holding the six names in the icons section of `README.md`. Build and run
+   both read it, so nothing in the shell is edited. `npm run icons` writes a
+   placeholder set into it.
+
+3. **Mint a new `UpgradeCode`.** In `build/windows/app.wxs`. Two products that
    share an `UpgradeCode` will uninstall each other.
 
    ```bash
    node -e "console.log(require('node:crypto').randomUUID().toUpperCase())"
    ```
 
-3. **Write `.macos-builder/config`.** `app_path` must point at whatever your
+4. **Write `.macos-builder/config`.** `app_path` must point at whatever your
    build system produces. Keep `entitlements = default` unless you ship a
    sidecar that needs more. Widening it needs a reason you can name.
 
-4. **Adapt `.macos-builder/build.sh`.** Keep three things regardless of build
+5. **Adapt `.macos-builder/build.sh`.** Keep three things regardless of build
    system: stamp the version, remove stale output, and assert the built
    bundle's version matches the tag. That third check exists because a stale
    `Info.plist` once shipped the wrong version inside a dmg.
 
-5. **Do the two manual onboarding steps.** Neither can be scripted.
+6. **Do the two manual onboarding steps.** Neither can be scripted.
    - Install the `app-repoman` GitHub App on the repository, with Contents:
      read and write.
    - Add a `MACOS_BUILDER_PAT` secret: a fine-grained token scoped to Actions:
      write on `stuffbucket/macos-builder` only.
 
-6. **Rehearse before you rely on it.** Dispatch `windows-msi-dev.yml` from a
+7. **Rehearse before you rely on it.** Dispatch `windows-msi-dev.yml` from a
    branch, then push a `v0.0.1-alpha.1` tag and watch the full run.
 
 ## For a project that already releases
