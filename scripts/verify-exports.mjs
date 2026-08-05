@@ -49,11 +49,15 @@ const expectedExports = [
   'Canvas',
   'IconButton',
   'NavRail',
+  'SHELL_TERMINAL_PROPERTIES',
   'ShellLayout',
   'TabBar',
+  'TerminalTabs',
+  'TerminalView',
   'TitleBar',
   'getTabPanelId',
   'getTabTriggerId',
+  'readTerminalTheme',
 ];
 const actualExports = [
   ...rendererSource.matchAll(/export\s*\{([^}]+)}\s*from/g),
@@ -73,10 +77,21 @@ check(
   'renderer package specifier resolves to the built entry',
 );
 
+/*
+ * `lib/` holds this application's own things — the bridge, the sample data, the
+ * palette — so reaching one from the export means the package carries the
+ * application with it. The exceptions are contracts: types and pure functions a
+ * consumer implements against, with no import of their own.
+ *
+ * An allowlist rather than a dropped rule. `TerminalView` used to be forbidden
+ * outright because it imported `bridge.js`; it now takes a transport as a
+ * value, and this is what keeps it that way — re-adding that import puts
+ * `lib/bridge.js` in the graph and fails here.
+ */
+const contracts = [/(?:^|\/)lib\/terminal-transport(?:\.js)?$/];
 const forbidden = [
   /(?:^|\/)App(?:\.js)?$/,
   /(?:^|\/)lib\//,
-  /Terminal/,
   /(?:^|\/)native\//,
   /demo/i,
   /fixture/i,
@@ -92,7 +107,10 @@ while (pending.length > 0) {
   visited.add(file);
 
   const relative = path.relative(root, file).split(path.sep).join('/');
-  check(!forbidden.some((pattern) => pattern.test(relative)), `${relative} is generic`);
+  const allowed =
+    contracts.some((pattern) => pattern.test(relative)) ||
+    !forbidden.some((pattern) => pattern.test(relative));
+  check(allowed, `${relative} is generic`);
 
   const source = await readFile(file, 'utf8');
   for (const match of source.matchAll(importPattern)) {
