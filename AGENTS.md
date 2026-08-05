@@ -101,6 +101,10 @@ checks names, not prose.
   that is not the current release.
 - Every issue and every pull request carries a milestone. If it does not have
   one, it has not been triaged.
+- **Never delete a branch that another pull request targets.** GitHub closes the
+  children rather than retargeting them, and a closed pull request whose base is
+  gone cannot be reopened. Retarget every child first. This has cost a rebuild
+  twice.
 - Bump the patch version on the release branch when the train reaches a stable
   state, so `main` never claims a version that has not shipped.
 
