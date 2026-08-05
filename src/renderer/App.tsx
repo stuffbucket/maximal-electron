@@ -185,7 +185,7 @@ export function App() {
           </>
         )
       }
-      right={(collapse) => (
+      right={
         <Inspector
           item={selected}
           versions={versions}
@@ -193,9 +193,8 @@ export function App() {
           onPrefChange={setPrefs}
           updateStatus={updateStatus}
           onCheckUpdates={checkUpdates}
-          onCollapse={collapse}
         />
-      )}
+      }
     />
   );
 }

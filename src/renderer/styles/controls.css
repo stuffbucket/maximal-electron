@@ -26,6 +26,16 @@ button {
 }
 
 /*
+ * Icon weight, once.
+ *
+ * Lucide sets `stroke-width` as an attribute, which this property overrides.
+ * Setting it per call site would mean remembering it at every one.
+ */
+svg {
+  stroke-width: var(--icon-stroke);
+}
+
+/*
  * The focus ring, once.
  *
  * Five copies existed, in three geometries: two used a 2px offset, two used

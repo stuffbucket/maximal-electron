@@ -57,7 +57,7 @@ export function NavRail<Id extends string, Status extends string = string>({
       aria-label={label}
       data-testid={testId}
     >
-      {sections.map((section) => (
+      {sections.map((section, index) => (
         <Collapsible.Root
           key={section.id}
           className="nav__section"
@@ -66,7 +66,10 @@ export function NavRail<Id extends string, Status extends string = string>({
             setOpen((prev) => ({ ...prev, [section.id]: next }))
           }
         >
-          {!collapsed && (
+          {collapsed ? (
+            // The heading's space, kept. Removing it shifted every icon below.
+            <span className="nav__break" data-first={index === 0 || undefined} />
+          ) : (
             <Collapsible.Trigger className="nav__heading">
               <ChevronDown className="nav__chevron" size={12} />
               <span>{section.label}</span>

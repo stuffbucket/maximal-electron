@@ -32,9 +32,10 @@ import {
  * this repository wanting the same layout would have made a third.
  *
  * The slots are named for where they are, not for what the application happens
- * to put in them. `left` and `right` are render props rather than nodes because
- * both need state this component owns: the left one needs to know it is
- * collapsed, the right one needs a way to collapse itself.
+ * to put in them. `left` is a render prop because it needs to know whether it
+ * is collapsed; the others are plain nodes. `right` was a render prop too,
+ * until the collapse button it existed to serve turned out to duplicate the
+ * title bar's.
  */
 
 /** A side panel's geometry. Sizes are strings in v4, not numbers. */
@@ -50,7 +51,20 @@ export type PanelToggleSubscription = (
   listener: (panel: ShellPanel) => void,
 ) => () => void;
 
-const LEFT: PanelSize = { default: '18', min: '12', max: '30', collapsed: '4' };
+/*
+ * Pixels for the rail, percentages for the rest.
+ *
+ * A rail holds fixed-size icons and a label, so what it needs does not change
+ * with the window. As a percentage the collapsed rail grew from 51px at 1280
+ * to 67px around 16px icons, and the width at which it snapped shut moved with
+ * the window too — which is most of why the collapse felt like it resisted.
+ */
+const LEFT: PanelSize = {
+  default: '228px',
+  min: '168px',
+  max: '320px',
+  collapsed: '48px',
+};
 const RIGHT: PanelSize = { default: '22', min: '16', max: '36', collapsed: '0' };
 const BOTTOM: PanelSize = { default: '30', min: '10', max: '70', collapsed: '0' };
 
@@ -100,7 +114,7 @@ export function ShellLayout<T extends Tab>({
    * group of one.
    */
   bottom?: ReactNode;
-  right: (collapse: () => void) => ReactNode;
+  right: ReactNode;
   status: ReactNode;
   leftSize?: PanelSize;
   rightSize?: PanelSize;
@@ -271,7 +285,7 @@ export function ShellLayout<T extends Tab>({
             }
             className="panel"
           >
-            {right(() => togglePanel('right'))}
+            {right}
           </Panel>
         </Group>
       </div>

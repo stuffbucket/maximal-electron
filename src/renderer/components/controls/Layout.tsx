@@ -1,4 +1,4 @@
-import { LayoutGrid, List, PanelRight, X } from 'lucide-react';
+import { LayoutGrid, List, X } from 'lucide-react';
 import type { ComponentType, ReactNode } from 'react';
 
 import { IconButton } from './Button.js';
@@ -96,19 +96,20 @@ export function StatusChip({ status, label }: { status: string; label: string })
 }
 
 /**
- * The chrome of a side panel: a title, and the button that collapses it.
+ * The chrome of a side panel: a title, and what is in it.
  *
- * Both inspectors in this repository had this header written out by hand,
- * identically, down to the spacer and the 15px icon.
+ * It used to carry its own collapse button, which sat about forty pixels below
+ * the title bar's panel toggle, wore the same icon and did the same thing. The
+ * title bar's is the one that survives: it is symmetric with the left rail's
+ * toggle, and it is still there when the panel is shut, so it can reopen it.
+ * This one could only ever close.
  */
 export function InspectorPanel({
   title,
-  onCollapse,
   children,
   testId = 'inspector',
 }: {
   title: string;
-  onCollapse: () => void;
   children: ReactNode;
   testId?: string;
 }) {
@@ -116,10 +117,6 @@ export function InspectorPanel({
     <div className="inspector" data-testid={testId}>
       <header className="inspector__header">
         <h2 className="inspector__title">{title}</h2>
-        <span className="titlebar__grow" />
-        <IconButton label="Collapse panel" onClick={onCollapse}>
-          <PanelRight size={15} />
-        </IconButton>
       </header>
 
       <div className="inspector__body">{children}</div>

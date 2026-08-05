@@ -155,6 +155,11 @@ function referencedTokens(): string[] {
 
   for (const name of readdirSync(dir)) {
     if (!name.endsWith('.css')) continue;
+    // `structural.css` is the public package's stylesheet and deliberately
+    // defines no palette: it reads a separate `--shell-*` namespace that a
+    // consumer supplies and README.md documents. A different contract, so not
+    // this one's tokens.
+    if (name === 'structural.css') continue;
     const css = readFileSync(new URL(name, dir), 'utf8');
     for (const match of css.matchAll(/var\((--[a-z0-9-]+)/gi)) {
       const token = match[1];

@@ -90,7 +90,8 @@ function Frame({ collapsed, children }: { collapsed: boolean; children: React.Re
     <div
       className="panel"
       style={{
-        width: collapsed ? 64 : 240,
+        // The widths the shell actually gives it, from the tokens.
+        width: collapsed ? 'var(--nav-collapsed)' : 'var(--nav-default)',
         height: 420,
         border: '1px solid var(--border-subtle)',
       }}
