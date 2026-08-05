@@ -75,11 +75,28 @@ neutral.
   add a new module instead of growing the file. This applies most to
   `src/renderer/App.tsx` and `src/main/index.ts`, which both attract unrelated
   changes.
-- **Do not restate code in a comment.** A comment that says what the next line
-  says creates two things to keep in step, and they drift. Comment the reason,
-  the constraint, or the failure that motivated the shape. If there is nothing
-  to say beyond what the code says, say nothing.
 - Match the density and idiom of the surrounding code.
+
+### Comments
+
+The default is no comment. A comment earns its place by recording something the
+code cannot: a constraint from outside the file, a rejected alternative, or the
+failure that produced the shape.
+
+- **Do not restate code.** A comment that says what the next line says creates
+  two things to keep in step, and they drift.
+- **Keep a comment shorter than the code it explains.** One or two lines above a
+  rule, up to about five above a function. Past that the explanation is a
+  document, so put it in `docs/` and leave one line pointing there. A ten line
+  block over a one line rule is the case this is written for.
+- **State the constraint, not the story.** "macOS throttles an occluded
+  renderer" earns its line. Three paragraphs retelling how that was discovered
+  do not; name the issue number instead and let the issue hold the account.
+- **Do not narrate the change.** The code is the current state, not a history.
+  Anything of the form "changed from X" or "used to be Y" belongs in the commit
+  message.
+- Every comment costs attention on every future read, not only the one where it
+  was useful. Delete one that has stopped paying.
 
 ## Writing prose
 
