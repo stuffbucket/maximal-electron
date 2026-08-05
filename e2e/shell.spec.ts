@@ -154,6 +154,77 @@ scenario('selecting an item fills the inspector', async () => {
   );
 });
 
+/* ---------------------------------------------------------------- profile */
+
+scenario('the title bar carries one profile control', async () => {
+  const { window } = harness;
+
+  // One, not two. The right-hand controls were de-duplicated once already,
+  // and a second account button is the easiest way to undo that.
+  await expect(window.locator('[data-testid="profile"]')).toHaveCount(1);
+
+  // The name, not the state. Which account is signed in is another test's
+  // business, and these run in a random order.
+  await expect(window.locator('[data-testid="profile"]')).toHaveAttribute(
+    'aria-label',
+    /^Account: /,
+  );
+});
+
+scenario('the profile menu opens the usage dashboard in a tab', async () => {
+  const { window } = harness;
+
+  const tabs = window.locator('.tab');
+  const before = await tabs.count();
+
+  await window.click('[data-testid="profile"]');
+  await window.click('[data-testid="menu-usage"]');
+
+  await expect(tabs).toHaveCount(before + 1);
+  await expect(window.locator('[data-testid="settings-usage"]')).toBeVisible();
+  await expect(window.locator('[data-testid="usage-summary"]')).toContainText(
+    'requests',
+  );
+
+  // The tab is the point: the shell behind it is still the shell.
+  await expect(window.locator('[data-testid="left-nav"]')).toBeVisible();
+});
+
+scenario('the profile menu opens the API keys dialog', async () => {
+  const { window } = harness;
+
+  await window.click('[data-testid="profile"]');
+  await window.click('[data-testid="menu-api-keys"]');
+
+  const dialog = window.locator('[data-testid="settings-api-keys"]');
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAttribute('role', 'dialog');
+
+  // Masked until asked. The value behind it is a sample, not a credential.
+  await expect(window.locator('[data-testid="client-client-1-key"]')).toHaveText(
+    /^•+$/,
+  );
+
+  // Closed again, because a dialog left up would swallow the next test's
+  // clicks and `resetShell` only closes tabs.
+  await window.click('[data-testid="api-keys-done"]');
+  await expect(dialog).toBeHidden();
+});
+
+scenario('signing out empties the profile control', async () => {
+  const { window } = harness;
+  const profile = window.locator('[data-testid="profile"]');
+
+  await profile.click();
+  await window.click('[data-testid="menu-sign-out"]');
+  await expect(profile).toHaveAttribute('aria-label', 'Account: not signed in');
+
+  // Back in, so the shared application is where the next test expects it.
+  await profile.click();
+  await window.click('[data-testid="menu-sign-in"]');
+  await expect(profile).toHaveAttribute('aria-label', 'Account: Avery Chen');
+});
+
 scenario('card name and subtitle sit on separate lines', async () => {
   const { window } = harness;
 
