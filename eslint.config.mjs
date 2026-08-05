@@ -94,4 +94,39 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    /*
+     * An application under test closes through `closeApp`.
+     *
+     * `app.close()` on its own hides a whole class of fault. The process can
+     * abort during teardown and Playwright still reports every test as passed,
+     * because the assertions already ran. That happened here: the embedded
+     * model crashed on quit through four consecutive green runs, and the only
+     * evidence was in the operating system's crash reports.
+     *
+     * `closeApp` in `e2e/harness.ts` reads the exit code and the signal, and
+     * throws on either. It was written for that incident and then not used by
+     * the stills configuration, which kept the hole open in the one place
+     * nobody watches.
+     */
+    files: ['e2e/**/*.ts'],
+    ignores: ['e2e/harness.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            'CallExpression[callee.property.name="close"][callee.object.name=/^(app|electronApp)$/]',
+          message:
+            'Close the application with closeApp from e2e/harness.ts. app.close() reports a crash during teardown as a pass.',
+        },
+        {
+          selector:
+            'CallExpression[callee.property.name="close"][callee.object.property.name="app"]',
+          message:
+            'Close the application with closeApp from e2e/harness.ts. app.close() reports a crash during teardown as a pass.',
+        },
+      ],
+    },
+  },
 );

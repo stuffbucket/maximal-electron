@@ -1,4 +1,4 @@
-import type { ComponentType } from 'react';
+import { type ComponentType } from 'react';
 /**
  * One tab. What it tabs is the caller's business.
  *
@@ -39,13 +39,6 @@ export interface TabStripProps<T extends Tab> {
 export declare function getTabTriggerId(tabIdBase: string, tabId: string): string;
 /** The ID applied to the panel controlled by a tab trigger. */
 export declare function getTabPanelId(tabIdBase: string, tabId: string): string;
-/**
- * A tab strip built on Radix `Tabs`, which owns keyboard navigation and roving
- * focus. Stable public IDs connect each trigger to caller-rendered content.
- *
- * This renders the strip only. The caller renders the active document with the
- * ID from `getTabPanelId` and labels it with `getTabTriggerId`.
- */
 export declare function TabBar<T extends Tab>({ tabIdBase, tabs, active, onSelect, onClose, onNew, icon, label, newLabel, }: {
     tabIdBase: string;
     tabs: T[];

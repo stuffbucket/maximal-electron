@@ -91,6 +91,19 @@
   background: var(--shell-accent-muted);
 }
 
+/*
+ * The destructive variant. `IconButton` takes a `danger` prop, so the package
+ * stylesheet has to carry the class it writes. Styled only in the reference
+ * application's `shell.css`, it reached a consumer with no rule at all.
+ *
+ * Both tokens fall back, so a consumer who names no danger colour gets a plain
+ * icon button rather than an invisible one.
+ */
+.sb-shell .icon-button--danger:hover {
+  color: var(--shell-danger-contrast, var(--shell-text));
+  background: var(--shell-danger, var(--shell-hover));
+}
+
 .sb-shell .icon-button:focus-visible,
 .sb-shell .tab:focus-visible,
 .sb-shell .tab__new:focus-visible,
@@ -318,6 +331,27 @@
 
 .sb-shell .nav__chevron {
   transition: transform 120ms ease-out;
+}
+
+/*
+ * The heading's space, kept when the rail collapses. There is no room for the
+ * label at that width, and removing the heading outright moved every icon
+ * below it. So the space stays and a rule is drawn in it. The first section
+ * gets the space and no rule, because a line above the first item divides it
+ * from nothing.
+ */
+.sb-shell .nav__break {
+  display: flex;
+  align-items: center;
+  height: var(--shell-nav-heading-height, 24px);
+  flex: none;
+}
+
+.sb-shell .nav__break:not([data-first])::before {
+  content: '';
+  width: 100%;
+  height: 1px;
+  background: var(--shell-border);
 }
 
 .sb-shell .nav__heading[aria-expanded='false'] .nav__chevron {

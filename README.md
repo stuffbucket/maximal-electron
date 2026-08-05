@@ -97,8 +97,9 @@ an ancestor:
 | `--shell-accent` | Selection, focus, and resize feedback. |
 | `--shell-accent-muted` | Selected-control background. |
 
-`--shell-border-strong`, `--shell-focus`, `--shell-font`, spacing, radius, and
-height variables have structural fallbacks in the CSS. Applications should set
+`--shell-border-strong`, `--shell-focus`, `--shell-font`, `--shell-danger`,
+`--shell-danger-contrast`, spacing, radius, and height variables have
+structural fallbacks in the CSS. Applications should set
 them when their design system differs from those defaults. `TitleBar` accepts
 caller-owned `leading` and `actions` nodes. Direct `TitleBar` and `TabBar`
 consumers provide `tabIdBase` and use `getTabTriggerId` and `getTabPanelId` on

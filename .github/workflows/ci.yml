@@ -54,6 +54,12 @@ jobs:
       # The shipped palette stays legible. See src/renderer/lib/contrast.ts.
       - run: npm run check:contrast
 
+      # The library exports. This rebuilds dist/, walks the renderer import
+      # graph, and asserts the committed artifact matches that build. Nothing
+      # in CI ran it before, so the published ./renderer export was free to
+      # drift behind src/ — and did.
+      - run: npm run verify:exports
+
   package:
     name: package (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
