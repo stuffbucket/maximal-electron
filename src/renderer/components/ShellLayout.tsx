@@ -40,7 +40,20 @@ export interface PanelSize {
   collapsed: string;
 }
 
-const LEFT: PanelSize = { default: '18', min: '12', max: '30', collapsed: '4' };
+/*
+ * Pixels for the rail, percentages for the rest.
+ *
+ * A rail holds fixed-size icons and a label, so what it needs does not change
+ * with the window. As a percentage the collapsed rail grew from 51px at 1280
+ * to 67px around 16px icons, and the width at which it snapped shut moved with
+ * the window too — which is most of why the collapse felt like it resisted.
+ */
+const LEFT: PanelSize = {
+  default: '228px',
+  min: '168px',
+  max: '320px',
+  collapsed: '48px',
+};
 const RIGHT: PanelSize = { default: '22', min: '16', max: '36', collapsed: '0' };
 const BOTTOM: PanelSize = { default: '30', min: '10', max: '70', collapsed: '0' };
 

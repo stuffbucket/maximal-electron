@@ -84,6 +84,22 @@
    */
   --tab-min: 112px;
   --tab-max: 216px;
+
+  /*
+   * ---- Navigation rail ----
+   *
+   * Pixels, not percentages. A rail holding 16px icons was sized as 4% of the
+   * window, so it was 51px at 1280 and 67px at 1920 — the icons stayed put and
+   * the empty space around them grew.
+   *
+   * `--nav-heading` is shared by a section heading and by the break that
+   * stands in for it when collapsed, so the icons below do not shift.
+   */
+  --nav-collapsed: 48px;
+  --nav-min: 168px;
+  --nav-max: 320px;
+  --nav-default: 228px;
+  --nav-heading: 24px;
   /* How far the fade reaches back from the right edge of a truncated label. */
   --tab-fade: 24px;
 
@@ -93,6 +109,9 @@
    * One ring. This was written out five times in three different geometries,
    * so a control's focus outline depended on which stylesheet it landed in.
    */
+  /* Lucide draws at 2. That reads as heavy next to text at these sizes. */
+  --icon-stroke: 1.5;
+
   --focus-ring-width: 2px;
   --focus-ring-offset: 2px;
   --focus-ring-color: var(--accent);
