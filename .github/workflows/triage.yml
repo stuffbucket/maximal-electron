@@ -1,0 +1,27 @@
+name: triage
+
+# Hands every issue event to repoman's canonical triage workflow, which applies
+# `needs-triage` to anything arriving without a milestone and without
+# `needs-bot` or `needs-triage`. A milestoned issue is already sorted onto a
+# release train, so it is left alone.
+#
+# No `secrets:` block. A called workflow gets its own scoped `GITHUB_TOKEN`, and
+# `secrets: inherit` would hand every secret here to a workflow pinned to a
+# floating tag in another repository.
+#
+# Event path only. The default token does not fire new workflow runs, so an
+# issue opened by a job is missed. repoman's poll backstop covers that for the
+# repositories in its `managed-repos.json`, and this one is not among them.
+
+on:
+  issues:
+    types: [opened, edited, reopened]
+
+permissions:
+  issues: write
+
+jobs:
+  call:
+    uses: stuffbucket/repoman/.github/workflows/triage-reusable.yml@v1
+    with:
+      issue_number: ${{ github.event.issue.number }}
