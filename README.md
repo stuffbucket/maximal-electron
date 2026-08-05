@@ -57,6 +57,60 @@ Native integration covers a splash window and the application menu. It also
 covers an optional menu bar or tray icon, notifications, and an update check.
 A dock badge tracks real application state.
 
+## Consume the shell frame
+
+GitHub and npm installs expose the secured host window at
+`stuffbucket-electron/host` and the generic renderer frame at
+`stuffbucket-electron/renderer`. The renderer entry exports `ShellLayout`,
+`TitleBar`, `TabBar`, `NavRail`, `Canvas`, and `IconButton`. It does not export
+the reference application, terminal, agent, sample data, or fixtures.
+
+Import the structural styles separately:
+
+```ts
+import {
+  Canvas,
+  NavRail,
+  ShellLayout,
+  TabBar,
+  TitleBar,
+} from 'stuffbucket-electron/renderer';
+import 'stuffbucket-electron/renderer/styles.css';
+```
+
+The stylesheet ships no palette and scopes every rule under `.sb-shell`.
+`ShellLayout` applies that root class. Apply it yourself when composing the
+smaller exports directly. Define these semantic variables on that container or
+an ancestor:
+
+| Variable | Contract |
+| --- | --- |
+| `--shell-background` | Window chrome and side-panel surface. |
+| `--shell-canvas` | Main document surface and active tab. |
+| `--shell-raised` | Tooltip and other floating surfaces. |
+| `--shell-text` | Primary foreground. |
+| `--shell-text-muted` | Secondary foreground and inactive controls. |
+| `--shell-text-subtle` | Tertiary labels and counts. |
+| `--shell-border` | Dividers and quiet outlines. |
+| `--shell-hover` | Hovered controls. |
+| `--shell-active` | Pressed or nested hover controls. |
+| `--shell-accent` | Selection, focus, and resize feedback. |
+| `--shell-accent-muted` | Selected-control background. |
+
+`--shell-border-strong`, `--shell-focus`, `--shell-font`, spacing, radius, and
+height variables have structural fallbacks in the CSS. Applications should set
+them when their design system differs from those defaults. `TitleBar` accepts
+caller-owned `leading` and `actions` nodes. Direct `TitleBar` and `TabBar`
+consumers provide `tabIdBase` and use `getTabTriggerId` and `getTabPanelId` on
+their document tabpanels. `ShellLayout` creates that association from
+`layoutId`. It also accepts the same title bar regions and an optional
+panel-toggle subscription adapter, so host IPC stays in the consuming
+application.
+
+Run `npm run build:package` after changing an exported source file. Run
+`npm run verify:exports` to rebuild, inspect the complete renderer import graph,
+and verify that every export target appears in `npm pack`.
+
 ## Demos
 
 The application can drive itself and record the result. `demo/` holds the mp4s

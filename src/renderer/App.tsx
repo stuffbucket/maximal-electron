@@ -1,13 +1,23 @@
-import { Component, FileText, Play, SquareTerminal } from 'lucide-react';
+import { Component, FileText, Play, Sparkles, SquareTerminal } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState, type ComponentType } from 'react';
 
 import type { AppVersions, UpdateStatus, ViewId } from '../shared/ipc.js';
 
 import { Canvas } from './components/Canvas.js';
-import { Card, EmptyState, Row, Toolbar, type ViewMode } from './components/Controls.js';
+import {
+  Card,
+  EmptyState,
+  IconButton,
+  Row,
+  Toolbar,
+  type ViewMode,
+} from './components/Controls.js';
 import { Inspector } from './components/Inspector.js';
 import { LeftNav } from './components/LeftNav.js';
-import { ShellLayout } from './components/ShellLayout.js';
+import {
+  ShellLayout,
+  type PanelToggleSubscription,
+} from './components/ShellLayout.js';
 import { TerminalTabs } from './components/TerminalTabs.js';
 import type { Tab } from './components/TabBar.js';
 import { bridge, useBridgeEvent, usePreferences } from './lib/bridge.js';
@@ -48,6 +58,9 @@ function newTerminal(existing: ShellTab[]): ShellTab {
     kind: 'terminal',
   };
 }
+
+const subscribeToPanelToggles: PanelToggleSubscription = (listener) =>
+  bridge.on('menu:toggle-panel', ({ panel }) => listener(panel));
 
 export function App() {
   const [view, setView] = useState<ViewId>('library');
@@ -122,6 +135,16 @@ export function App() {
       tabsLabel="Open documents"
       newTabLabel="New terminal tab"
       tabIcon={(tab) => (tab.kind === 'terminal' ? SquareTerminal : undefined)}
+      titleBarActions={
+        <IconButton
+          label="Ask (summon overlay)"
+          onClick={() => void bridge.invoke('overlay:toggle')}
+          testId="toggle-overlay"
+        >
+          <Sparkles size={15} />
+        </IconButton>
+      }
+      subscribeToPanelToggles={subscribeToPanelToggles}
       status={<span>{selected ? selected.name : 'No selection'}</span>}
       left={(collapsed) => (
         <LeftNav view={view} collapsed={collapsed} onSelect={goToView} />

@@ -1,5 +1,6 @@
 import * as Tooltip from '@radix-ui/react-tooltip';
-import { useCallback, useState, type ReactNode } from 'react';
+import { PanelLeft, PanelRight } from 'lucide-react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
   Group,
   Panel,
@@ -8,10 +9,14 @@ import {
   usePanelRef,
 } from 'react-resizable-panels';
 
-import { useBridgeEvent } from '../lib/bridge.js';
-
+import { IconButton } from './controls/Button.js';
 import { TitleBar } from './TitleBar.js';
-import type { Tab, TabStripProps } from './TabBar.js';
+import {
+  getTabPanelId,
+  getTabTriggerId,
+  type Tab,
+  type TabStripProps,
+} from './TabBar.js';
 
 /**
  * The three-panel shell.
@@ -40,6 +45,11 @@ export interface PanelSize {
   collapsed: string;
 }
 
+export type ShellPanel = 'left' | 'right';
+export type PanelToggleSubscription = (
+  listener: (panel: ShellPanel) => void,
+) => () => void;
+
 const LEFT: PanelSize = { default: '18', min: '12', max: '30', collapsed: '4' };
 const RIGHT: PanelSize = { default: '22', min: '16', max: '36', collapsed: '0' };
 const BOTTOM: PanelSize = { default: '30', min: '10', max: '70', collapsed: '0' };
@@ -54,6 +64,9 @@ export function ShellLayout<T extends Tab>({
   tabsLabel,
   newTabLabel,
   tabIcon,
+  titleBarLeading,
+  titleBarActions,
+  subscribeToPanelToggles,
   top,
   left,
   main,
@@ -66,6 +79,12 @@ export function ShellLayout<T extends Tab>({
 }: {
   /** Namespaces the persisted panel sizes. Two shells must not share one. */
   layoutId: string;
+  /** Caller-owned content before the sidebar toggle. */
+  titleBarLeading?: ReactNode;
+  /** Caller-owned actions before the inspector toggle. */
+  titleBarActions?: ReactNode;
+  /** Optional host event adapter, such as an Electron menu subscription. */
+  subscribeToPanelToggles?: PanelToggleSubscription;
   /**
    * Full width, under the title bar and over the panels. For anything that
    * addresses the whole window rather than one panel: an offline banner, an
@@ -86,9 +105,10 @@ export function ShellLayout<T extends Tab>({
   leftSize?: PanelSize;
   rightSize?: PanelSize;
   bottomSize?: PanelSize;
-} & TabStripProps<T>) {
+} & Omit<TabStripProps<T>, 'tabIdBase'>) {
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
+  const tabIdBase = `${layoutId}-documents`;
 
   const leftPanel = usePanelRef();
   const rightPanel = usePanelRef();
@@ -109,7 +129,7 @@ export function ShellLayout<T extends Tab>({
   });
 
   const togglePanel = useCallback(
-    (panel: 'left' | 'right') => {
+    (panel: ShellPanel) => {
       const handle = panel === 'left' ? leftPanel.current : rightPanel.current;
       if (!handle) return;
       if (handle.isCollapsed()) handle.expand();
@@ -118,16 +138,54 @@ export function ShellLayout<T extends Tab>({
     [leftPanel, rightPanel],
   );
 
-  useBridgeEvent('menu:toggle-panel', ({ panel }) => togglePanel(panel));
+  useEffect(() => {
+    if (!subscribeToPanelToggles) return;
+    return subscribeToPanelToggles(togglePanel);
+  }, [subscribeToPanelToggles, togglePanel]);
+
+  const documentPanel = (
+    <div
+      className="tabpanel"
+      role="tabpanel"
+      id={getTabPanelId(tabIdBase, activeTab)}
+      aria-labelledby={getTabTriggerId(tabIdBase, activeTab)}
+      tabIndex={0}
+    >
+      {main}
+    </div>
+  );
 
   return (
     <Tooltip.Provider delayDuration={400}>
-      <div className="app">
+      <div className="sb-shell app">
         <TitleBar
-          leftCollapsed={leftCollapsed}
-          rightCollapsed={rightCollapsed}
-          onToggleLeft={() => togglePanel('left')}
-          onToggleRight={() => togglePanel('right')}
+          tabIdBase={tabIdBase}
+          leading={
+            <>
+              {titleBarLeading}
+              <IconButton
+                label={leftCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+                onClick={() => togglePanel('left')}
+                active={!leftCollapsed}
+                testId="toggle-left"
+              >
+                <PanelLeft size={15} />
+              </IconButton>
+            </>
+          }
+          actions={
+            <>
+              {titleBarActions}
+              <IconButton
+                label={rightCollapsed ? 'Show panel' : 'Hide panel'}
+                onClick={() => togglePanel('right')}
+                active={!rightCollapsed}
+                testId="toggle-right"
+              >
+                <PanelRight size={15} />
+              </IconButton>
+            </>
+          }
           tabs={tabs}
           activeTab={activeTab}
           onSelectTab={onSelectTab}
@@ -166,7 +224,7 @@ export function ShellLayout<T extends Tab>({
 
           <Panel id="main" minSize="30" className="panel panel--canvas">
             {bottom === undefined ? (
-              main
+              documentPanel
             ) : (
               <Group
                 orientation="vertical"
@@ -175,7 +233,7 @@ export function ShellLayout<T extends Tab>({
                 onLayoutChanged={columnLayout.onLayoutChanged}
               >
                 <Panel id="main" minSize="20" className="panel panel--canvas">
-                  {main}
+                  {documentPanel}
                 </Panel>
                 <Separator className="resize-handle resize-handle--horizontal" />
                 <Panel
