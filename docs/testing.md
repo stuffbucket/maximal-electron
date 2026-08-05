@@ -103,6 +103,20 @@ scenario. So a test run parks its windows off the side of the display.
   byte count, because an absolute floor is a pixel-density constant and failed
   real Windows screenshots.
 
+### The overlay is the worst of it
+
+Everything that makes the overlay good at being an overlay makes it hostile to
+the machine running the suite. It sits above full screen applications, follows
+the user across spaces, covers the whole display, and takes key input. A run
+then flashes over whatever the user is doing and pulls focus out of their
+editor, once per scenario.
+
+None of that is needed to test it. Playwright dispatches input through the
+debugger rather than the window server, and `capture` reads the renderer rather
+than the screen. So `applyStacking` in `src/main/windows/overlay.ts` quiets it
+under `STUFFBUCKET_E2E`: the window still shows, still reports visible, and
+still lays out exactly as it does in production.
+
 ## Three directories say "demo"
 
 They are not the same thing, and the names are a trap.
