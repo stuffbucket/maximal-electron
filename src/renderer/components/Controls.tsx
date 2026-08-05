@@ -135,14 +135,17 @@ export function Toolbar({
   title,
   mode,
   onModeChange,
+  as: Heading = 'h1',
 }: {
   title: string;
   mode: ViewMode;
   onModeChange: (mode: ViewMode) => void;
+  /** A document has one h1. A second toolbar on the page needs h2. */
+  as?: 'h1' | 'h2' | 'h3';
 }) {
   return (
     <div className="toolbar">
-      <h1 className="toolbar__title">{title}</h1>
+      <Heading className="toolbar__title">{title}</Heading>
       <span className="toolbar__grow" />
       <ViewModeSwitch mode={mode} onChange={onModeChange} />
     </div>
@@ -195,13 +198,15 @@ export function InspectorPanel({
   title,
   onCollapse,
   children,
+  testId = 'inspector',
 }: {
   title: string;
   onCollapse: () => void;
   children: ReactNode;
+  testId?: string;
 }) {
   return (
-    <div className="inspector" data-testid="inspector">
+    <div className="inspector" data-testid={testId}>
       <header className="inspector__header">
         <h2 className="inspector__title">{title}</h2>
         <span className="titlebar__grow" />

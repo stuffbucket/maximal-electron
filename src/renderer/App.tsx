@@ -1,25 +1,54 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Component, FileText, Play, SquareTerminal } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState, type ComponentType } from 'react';
 
 import type { AppVersions, UpdateStatus, ViewId } from '../shared/ipc.js';
 
 import { Canvas } from './components/Canvas.js';
-import { Toolbar, type ViewMode } from './components/Controls.js';
+import { Card, EmptyState, Row, Toolbar, type ViewMode } from './components/Controls.js';
 import { Inspector } from './components/Inspector.js';
 import { LeftNav } from './components/LeftNav.js';
 import { ShellLayout } from './components/ShellLayout.js';
 import { TerminalTabs } from './components/TerminalTabs.js';
+import type { Tab } from './components/TabBar.js';
 import { bridge, useBridgeEvent, usePreferences } from './lib/bridge.js';
-import { VIEW_LABELS, itemsFor } from './lib/data.js';
+import { VIEW_LABELS, itemsFor, type Item } from './lib/data.js';
 import { useShellTabs } from './lib/useShellTabs.js';
 import { useThemePreference } from './lib/useThemePreference.js';
 
 /**
  * The application shell.
  *
- * `ShellLayout` owns the three panels and their collapse behaviour. This
- * component owns view state: which navigation entry is current, what the canvas
- * shows, and what the inspector is inspecting.
+ * `ShellLayout` owns the three panels and their collapse. This component owns
+ * everything the shell cannot know: what a tab is, what an item looks like, and
+ * which navigation entry is current.
  */
+
+/** A tab in this application. `kind` is ours, not the tab strip's. */
+interface ShellTab extends Tab {
+  kind: 'library' | 'terminal';
+}
+
+const KIND_ICONS: Record<Item['kind'], ComponentType<{ size?: number }>> = {
+  file: FileText,
+  component: Component,
+  prototype: Play,
+};
+
+function icon(item: Item, size = 28) {
+  const Icon = KIND_ICONS[item.kind];
+  return <Icon size={size} />;
+}
+
+/** The `+` button opens a terminal, numbered from the terminals already open. */
+function newTerminal(existing: ShellTab[]): ShellTab {
+  const count = existing.filter((tab) => tab.kind === 'terminal').length + 1;
+  return {
+    id: `term-${String(count)}`,
+    title: `Terminal ${String(count)}`,
+    kind: 'terminal',
+  };
+}
+
 export function App() {
   const [view, setView] = useState<ViewId>('library');
   const [mode, setMode] = useState<ViewMode>('grid');
@@ -28,8 +57,10 @@ export function App() {
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ state: 'idle' });
   const [prefs, setPrefs] = usePreferences();
 
-  const { tabs, setTabs, activeTab, setActiveTab, openTab, closeTab } =
-    useShellTabs([{ id: 'tab-1', title: 'Library', kind: 'library' }]);
+  const { tabs, setTabs, activeTab, setActiveTab, openTab, closeTab } = useShellTabs(
+    [{ id: 'tab-1', title: 'Library', kind: 'library' }] as ShellTab[],
+    newTerminal,
+  );
 
   const items = useMemo(() => itemsFor(view), [view]);
   const selected = items.find((item) => item.id === selectedId);
@@ -88,13 +119,19 @@ export function App() {
       onSelectTab={setActiveTab}
       onCloseTab={closeTab}
       onNewTab={openTab}
+      tabsLabel="Open documents"
+      newTabLabel="New terminal tab"
+      tabIcon={(tab) => (tab.kind === 'terminal' ? SquareTerminal : undefined)}
       status={<span>{selected ? selected.name : 'No selection'}</span>}
-      nav={(collapsed) => (
+      left={(collapsed) => (
         <LeftNav view={view} collapsed={collapsed} onSelect={goToView} />
       )}
       main={
         current?.kind === 'terminal' ? (
-          <TerminalTabs tabs={tabs} activeTab={activeTab} />
+          <TerminalTabs
+            ids={tabs.filter((tab) => tab.kind === 'terminal').map((tab) => tab.id)}
+            activeId={activeTab}
+          />
         ) : (
           <>
             <Toolbar title={VIEW_LABELS[view]} mode={mode} onModeChange={setMode} />
@@ -102,12 +139,30 @@ export function App() {
               items={items}
               mode={mode}
               selectedId={selectedId}
-              onSelect={setSelectedId}
+              empty={<EmptyState icon={FileText} message="Nothing here yet." />}
+              renderCard={(item, isSelected) => (
+                <Card selected={isSelected} onSelect={() => setSelectedId(item.id)}>
+                  <span className="card__thumb">{icon(item)}</span>
+                  <span className="card__meta">
+                    <span className="card__name">{item.name}</span>
+                    <span className="card__sub">Edited {item.updated}</span>
+                  </span>
+                </Card>
+              )}
+              renderRow={(item, isSelected) => (
+                <Row selected={isSelected} onSelect={() => setSelectedId(item.id)}>
+                  {icon(item, 14)}
+                  <span className="row__name">{item.name}</span>
+                  <span className="row__sub">{item.author}</span>
+                  <span className="row__sub">{item.updated}</span>
+                  <span className="row__sub">{item.size}</span>
+                </Row>
+              )}
             />
           </>
         )
       }
-      inspector={(collapse) => (
+      right={(collapse) => (
         <Inspector
           item={selected}
           versions={versions}

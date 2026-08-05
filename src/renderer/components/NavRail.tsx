@@ -35,12 +35,17 @@ export function NavRail<Id extends string, Status extends string = string>({
   onSelect,
   collapsed,
   icon,
+  label = 'Primary',
+  testId = 'left-nav',
 }: {
   sections: NavRailSection<Id, Status>[];
   current: Id;
   onSelect: (id: Id) => void;
   collapsed: boolean;
   icon: (entry: NavRailEntry<Id, Status>) => ComponentType<{ size?: number }>;
+  /** Only one rail on a page may be the primary navigation. */
+  label?: string;
+  testId?: string;
 }) {
   // Unset means open. Seeding this with every section id would say the same
   // thing at more length, and would go stale when a section is added.
@@ -49,8 +54,8 @@ export function NavRail<Id extends string, Status extends string = string>({
   return (
     <nav
       className={`nav${collapsed ? ' nav--collapsed' : ''}`}
-      aria-label="Primary"
-      data-testid="left-nav"
+      aria-label={label}
+      data-testid={testId}
     >
       {sections.map((section) => (
         <Collapsible.Root

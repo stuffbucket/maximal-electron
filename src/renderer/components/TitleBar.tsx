@@ -1,7 +1,7 @@
 import { PanelLeft, PanelRight, Sparkles } from 'lucide-react';
 
 import { bridge } from '../lib/bridge.js';
-import { TabBar, type DocumentTab } from './TabBar.js';
+import { TabBar, type Tab, type TabStripProps } from './TabBar.js';
 import { IconButton } from './Controls.js';
 
 /**
@@ -15,7 +15,7 @@ import { IconButton } from './Controls.js';
  * Windows and Linux use `titleBarOverlay`, which draws the system controls on
  * top, so the bar keeps its right edge clear instead.
  */
-export function TitleBar({
+export function TitleBar<T extends Tab>({
   leftCollapsed,
   rightCollapsed,
   onToggleLeft,
@@ -25,17 +25,15 @@ export function TitleBar({
   onSelectTab,
   onCloseTab,
   onNewTab,
+  tabsLabel,
+  newTabLabel,
+  tabIcon,
 }: {
   leftCollapsed: boolean;
   rightCollapsed: boolean;
   onToggleLeft: () => void;
   onToggleRight: () => void;
-  tabs: DocumentTab[];
-  activeTab: string;
-  onSelectTab: (id: string) => void;
-  onCloseTab: (id: string) => void;
-  onNewTab: () => void;
-}) {
+} & TabStripProps<T>) {
   const isMac = navigator.userAgent.includes('Mac');
 
   return (
@@ -57,6 +55,9 @@ export function TitleBar({
         onSelect={onSelectTab}
         onClose={onCloseTab}
         onNew={onNewTab}
+        label={tabsLabel}
+        newLabel={newTabLabel}
+        icon={tabIcon}
       />
 
       {/* Empty space stays draggable, so the window still moves by its bar. */}

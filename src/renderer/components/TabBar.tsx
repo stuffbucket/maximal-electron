@@ -1,40 +1,67 @@
 import * as Tabs from '@radix-ui/react-tabs';
-import { Bot, Plus, SquareTerminal, X } from 'lucide-react';
+import { Plus, X } from 'lucide-react';
+import type { ComponentType } from 'react';
 
-export interface DocumentTab {
+/**
+ * One tab. What it tabs is the caller's business.
+ *
+ * This carried a `kind` of `library | terminal | run` and a `state` union
+ * copied by hand from the capture fixture's `RunStatus`. Neither belonged to a
+ * tab strip: `kind` only ever selected an icon, and `run` was a concept from a
+ * fixture that the product had no idea about.
+ */
+export interface Tab {
   id: string;
   title: string;
-  /** `library` shows the file grid, `terminal` hosts a shell, `run` an agent. */
-  kind: 'library' | 'terminal' | 'run';
-  /**
-   * Optional state dot, for a tab that tracks something with a lifecycle.
-   *
-   * The demo shell uses it for agent sessions. The union repeats `RunStatus`
-   * from `lib/demo-runs.ts` rather than importing it, because this component
-   * belongs to the production shell and must not depend on demo content.
-   */
-  state?: 'running' | 'blocked' | 'done' | 'failed';
+  /** Optional status dot. The stylesheet colours the ones it knows. */
+  status?: string;
 }
 
 /**
- * Tabbed documents, built on Radix `Tabs` so keyboard navigation, roving focus,
- * and ARIA wiring come for free rather than being hand-rolled.
+ * Everything needed to drive a tab strip.
  *
- * This component renders the tab strip only. `App.tsx` renders the active
- * document, because the canvas is shared across tabs.
+ * Declared once because three components in a row forward it: `ShellLayout`
+ * takes it, hands it to `TitleBar`, which hands it to `TabBar`.
  */
-export function TabBar({
+export interface TabStripProps<T extends Tab> {
+  tabs: T[];
+  activeTab: string;
+  onSelectTab: (id: string) => void;
+  onCloseTab: (id: string) => void;
+  onNewTab: () => void;
+  /** Only one tab strip on a page can be the primary one. */
+  tabsLabel?: string;
+  newTabLabel?: string;
+  /** Optional leading icon per tab. */
+  tabIcon?: (tab: T) => ComponentType<{ size?: number }> | undefined;
+}
+
+/**
+ * A tab strip, built on Radix `Tabs` so keyboard navigation, roving focus, and
+ * ARIA wiring come for free rather than being hand-rolled.
+ *
+ * This renders the strip only. The caller renders the active document, because
+ * what a tab points at is not something a strip can know.
+ */
+export function TabBar<T extends Tab>({
   tabs,
   active,
   onSelect,
   onClose,
   onNew,
+  icon,
+  label = 'Open documents',
+  newLabel = 'New tab',
 }: {
-  tabs: DocumentTab[];
+  tabs: T[];
   active: string;
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
   onNew: () => void;
+  /** Optional leading icon per tab. */
+  icon?: (tab: T) => ComponentType<{ size?: number }> | undefined;
+  label?: string;
+  newLabel?: string;
 }) {
   return (
     <Tabs.Root
@@ -43,36 +70,38 @@ export function TabBar({
       className="tabs"
       activationMode="manual"
     >
-      <Tabs.List className="tabbar" aria-label="Open documents">
-        {tabs.map((tab) => (
-          <Tabs.Trigger key={tab.id} value={tab.id} className="tab">
-            {tab.kind === 'terminal' && <SquareTerminal size={13} />}
-            {tab.kind === 'run' && <Bot size={13} />}
-            {tab.state && <span className="dot" data-status={tab.state} />}
-            <span className="tab__label">{tab.title}</span>
-            {tabs.length > 1 && (
-              <span
-                role="button"
-                tabIndex={-1}
-                aria-label={`Close ${tab.title}`}
-                className="tab__close"
-                onPointerDown={(event) => {
-                  // Stop the trigger from activating before the close lands.
-                  event.stopPropagation();
-                  event.preventDefault();
-                  onClose(tab.id);
-                }}
-              >
-                <X size={12} />
-              </span>
-            )}
-          </Tabs.Trigger>
-        ))}
+      <Tabs.List className="tabbar" aria-label={label}>
+        {tabs.map((tab) => {
+          const Icon = icon?.(tab);
+          return (
+            <Tabs.Trigger key={tab.id} value={tab.id} className="tab">
+              {Icon && <Icon size={13} />}
+              {tab.status && <span className="dot" data-status={tab.status} />}
+              <span className="tab__label">{tab.title}</span>
+              {tabs.length > 1 && (
+                <span
+                  role="button"
+                  tabIndex={-1}
+                  aria-label={`Close ${tab.title}`}
+                  className="tab__close"
+                  onPointerDown={(event) => {
+                    // Stop the trigger from activating before the close lands.
+                    event.stopPropagation();
+                    event.preventDefault();
+                    onClose(tab.id);
+                  }}
+                >
+                  <X size={12} />
+                </span>
+              )}
+            </Tabs.Trigger>
+          );
+        })}
         <button
           type="button"
           className="tab__new"
           onClick={onNew}
-          aria-label="New terminal tab"
+          aria-label={newLabel}
           data-testid="tab-new"
         >
           <Plus size={14} />

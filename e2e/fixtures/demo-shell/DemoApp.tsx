@@ -2,7 +2,7 @@ import { useCallback, useState, useMemo } from 'react';
 
 import { Toolbar, type ViewMode } from '../../../src/renderer/components/Controls.js';
 import { ShellLayout } from '../../../src/renderer/components/ShellLayout.js';
-import { type DocumentTab } from '../../../src/renderer/components/TabBar.js';
+import { type Tab } from '../../../src/renderer/components/TabBar.js';
 import { TerminalTabs } from '../../../src/renderer/components/TerminalTabs.js';
 import { usePreferences } from '../../../src/renderer/lib/bridge.js';
 import {
@@ -34,12 +34,26 @@ import { RunInspector } from './RunInspector.js';
  * primitives, which is the same relationship a dependent project will have.
  */
 
+/** A tab in the fleet: a run, or a terminal somebody opened. */
+interface FleetTab extends Tab {
+  kind: 'run' | 'terminal';
+}
+
 /** Concurrent agent sessions, as they would sit in the tab strip. */
-const SESSION_TABS: DocumentTab[] = [
-  { id: 'run-101', title: 'refactor auth', kind: 'run', state: 'running' },
-  { id: 'run-102', title: 'flaky test triage', kind: 'run', state: 'blocked' },
-  { id: 'run-103', title: 'bump deps', kind: 'run', state: 'running' },
+const SESSION_TABS: FleetTab[] = [
+  { id: 'run-101', title: 'refactor auth', kind: 'run', status: 'running' },
+  { id: 'run-102', title: 'flaky test triage', kind: 'run', status: 'blocked' },
+  { id: 'run-103', title: 'bump deps', kind: 'run', status: 'running' },
 ];
+
+function newTerminal(existing: FleetTab[]): FleetTab {
+  const count = existing.filter((tab) => tab.kind === 'terminal').length + 1;
+  return {
+    id: `term-${String(count)}`,
+    title: `Terminal ${String(count)}`,
+    kind: 'terminal',
+  };
+}
 
 /**
  * A deterministic, impersonal shell for the demo terminal.
@@ -66,8 +80,10 @@ export function DemoApp() {
   const [selectedId, setSelectedId] = useState<string>();
   const [prefs] = usePreferences();
 
-  const { tabs, activeTab, setActiveTab, openTab, closeTab } =
-    useShellTabs(SESSION_TABS);
+  const { tabs, activeTab, setActiveTab, openTab, closeTab } = useShellTabs(
+    SESSION_TABS,
+    newTerminal,
+  );
 
   const runs = useMemo(() => runsFor(view), [view]);
   const selected = RUNS.find((run) => run.id === selectedId);
@@ -92,14 +108,18 @@ export function DemoApp() {
       onSelectTab={selectTab}
       onCloseTab={closeTab}
       onNewTab={openTab}
-      inspectorSize="24"
+      rightSize={{ default: '24', min: '16', max: '36', collapsed: '0' }}
       status={<span>{selected ? selected.branch : 'No run selected'}</span>}
-      nav={(collapsed) => (
+      left={(collapsed) => (
         <AgentNav view={view} collapsed={collapsed} onSelect={setView} />
       )}
       main={
         current?.kind === 'terminal' ? (
-          <TerminalTabs tabs={tabs} activeTab={activeTab} shell={DEMO_SHELL} />
+          <TerminalTabs
+            ids={tabs.filter((tab) => tab.kind === 'terminal').map((tab) => tab.id)}
+            activeId={activeTab}
+            shell={DEMO_SHELL}
+          />
         ) : (
           <>
             <Toolbar title={viewLabel(view)} mode={mode} onModeChange={setMode} />
@@ -112,7 +132,7 @@ export function DemoApp() {
           </>
         )
       }
-      inspector={(collapse) => (
+      right={(collapse) => (
         <RunInspector
           run={selected}
           onCollapse={collapse}

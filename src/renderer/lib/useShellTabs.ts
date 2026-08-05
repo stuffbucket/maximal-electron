@@ -1,32 +1,35 @@
 import { useCallback, useState } from 'react';
 
-import type { DocumentTab } from '../components/TabBar.js';
+import type { Tab } from '../components/TabBar.js';
 
 /**
- * The document tab strip's state.
+ * The tab strip's state.
  *
- * Opening and closing a tab are the same two operations in every shell built on
- * `ShellLayout`, and both have a rule that is not obvious from the call site:
- * opening numbers the new terminal from the count of existing ones, and closing
- * the last tab is refused rather than leaving an empty document area.
+ * Two operations, each with a rule that is not obvious from the call site:
+ * `makeTab` sees the current tabs so it can number the new one however it
+ * counts, and closing the last tab is refused rather than leaving an empty
+ * document area.
  *
- * `setTabs` and `setActiveTab` stay exposed because what a tab *means* is the
- * caller's: the application renames the active library tab when the view
- * changes, and the capture fixture selects a run when its tab is activated.
+ * Generic over the tab type, because what a tab points at is the caller's. It
+ * supplies `makeTab`, so the shape it wants back is the shape it gets.
+ * `setTabs` and `setActiveTab` stay exposed for the same reason: the
+ * application renames its library tab when the view changes, and the capture
+ * fixture selects a run when its tab is activated.
  */
-export function useShellTabs(initial: DocumentTab[]) {
-  const [tabs, setTabs] = useState<DocumentTab[]>(initial);
+export function useShellTabs<T extends Tab>(
+  initial: T[],
+  makeTab: (existing: T[]) => T,
+) {
+  const [tabs, setTabs] = useState<T[]>(initial);
   const [activeTab, setActiveTab] = useState(initial[0]?.id ?? '');
 
-  /** Opens a terminal. Terminal tabs are the working surface. */
   const openTab = useCallback(() => {
     setTabs((prev) => {
-      const count = prev.filter((tab) => tab.kind === 'terminal').length + 1;
-      const id = `term-${String(count)}`;
-      setActiveTab(id);
-      return [...prev, { id, title: `Terminal ${String(count)}`, kind: 'terminal' }];
+      const next = makeTab(prev);
+      setActiveTab(next.id);
+      return [...prev, next];
     });
-  }, []);
+  }, [makeTab]);
 
   const closeTab = useCallback(
     (id: string) => {
