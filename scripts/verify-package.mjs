@@ -167,6 +167,27 @@ const LLAMA_LIBRARIES =
 const llamaLibs = LLAMA_LIBRARIES.flatMap((pattern) => findUnpacked(pattern));
 check(llamaLibs.length > 0, 'llama.cpp shared libraries are unpacked');
 
+/* ---------------------------------------------------------------- icons */
+
+console.log('\nicons');
+
+// The main process loads these at run time, from beside the asar. They are not
+// in the bundle, so nothing in the build fails when they are missing: the
+// window shows a stock Electron icon and the tray silently does not appear.
+// `forge.config.ts` copies them out of the directory `STUFFBUCKET_ICON_DIR`
+// names, which is the seam a consumer swaps. Keep the two lists together.
+const RUNTIME_ICONS = [
+  'icon.png',
+  'tray.png',
+  'trayTemplate.png',
+  'trayTemplate@2x.png',
+];
+
+const resources = path.dirname(asar);
+for (const file of RUNTIME_ICONS) {
+  check(existsSync(path.join(resources, file)), `${file} is beside the asar`);
+}
+
 /* ---------------------------------------------------------------- fuses */
 
 console.log('\nfuse configuration');
