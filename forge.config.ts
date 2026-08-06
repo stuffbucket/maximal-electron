@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
@@ -6,7 +6,33 @@ import { VitePlugin } from '@electron-forge/plugin-vite';
 import type { ForgeConfig } from '@electron-forge/shared-types';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 
-import { PACKAGE_FUSES, RUNTIME_ICONS, LLAMA_BACKENDS_VARIABLE, llamaPackagePlan, parseLlamaBackends } from './scripts/package-contract.mjs';
+import { PACKAGE_FUSES, RUNTIME_ICONS, LLAMA_BACKENDS_VARIABLE, hoistedDependencies, llamaPackagePlan, parseLlamaBackends } from './scripts/package-contract.mjs';
+
+/**
+ * The external native modules, and the packages npm hoisted out of them.
+ *
+ * `EXTERNAL_MODULES` is the list the Vite configs keep out of the bundle. The
+ * closure is derived at build time rather than written down, because a
+ * dependency that moves between an upgrade's nested and hoisted positions
+ * would otherwise vanish from the package with everything still green. See
+ * `hoistedDependencies`, and issue #133 for the load failure it fixes.
+ */
+const EXTERNAL_MODULES = ['node-pty', 'node-llama-cpp'];
+
+const NODE_MODULES = path.resolve('node_modules');
+
+const HOISTED = hoistedDependencies(
+  {
+    join: (...parts: string[]) => path.join(...parts),
+    readPackageJson: (dir: string) => {
+      const file = path.join(dir, 'package.json');
+      if (!existsSync(file)) return undefined;
+      return JSON.parse(readFileSync(file, 'utf8')) as { dependencies?: Record<string, string> };
+    },
+  },
+  NODE_MODULES,
+  EXTERNAL_MODULES,
+);
 
 /**
  * Where the application icons come from.
@@ -190,6 +216,9 @@ const config: ForgeConfig = {
         '/node_modules/node-pty',
         '/node_modules/node-llama-cpp',
         '/node_modules/@node-llama-cpp',
+        // Everything those two reach that npm hoisted out of them. Without
+        // this, `node-llama-cpp` cannot load at all in a packaged build.
+        ...HOISTED.map((name) => `/node_modules/${name}`),
       ];
       return !keep.some(
         (prefix) =>
@@ -230,6 +259,14 @@ const config: ForgeConfig = {
         {
           entry: 'src/main/index.ts',
           config: 'vite.main.config.ts',
+          target: 'main',
+        },
+        // The llama.cpp engine, forked as a `utilityProcess`. A separate
+        // bundle because it is a separate process; `target: 'main'` because
+        // it is Node, not a preload. Issue #133.
+        {
+          entry: 'src/main/llama-worker.ts',
+          config: 'vite.worker.config.ts',
           target: 'main',
         },
         {

@@ -20,7 +20,7 @@
 
 import { randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { existsSync, renameSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, renameSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -30,6 +30,14 @@ const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const FLAG = '--self-check=terminal';
 const TOKEN_FLAG = '--self-check-token=';
 const FAILED = 'self-check terminal: failed';
+
+/**
+ * The second check. Kept in step with `src/main/native/llama-protocol.ts` by
+ * `tests/llama-protocol.test.ts`.
+ */
+const LLAMA_FLAG = '--self-check=llama';
+const LLAMA_OK = 'self-check llama: ok';
+const LLAMA_FAILED = 'self-check llama: failed';
 
 const LAUNCH_TIMEOUT_MS = 90_000;
 
@@ -63,10 +71,11 @@ if (!existsSync(BINARY)) {
 if (existsSync(ASIDE) && !existsSync(HELPER)) renameSync(ASIDE, HELPER);
 
 /** Run the packaged binary once, with a fresh token. */
-function launch() {
+function launch(args) {
   const token = randomBytes(8).toString('hex');
   return new Promise((resolve) => {
-    const child = spawn(BINARY, [FLAG, `${TOKEN_FLAG}${token}`], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const argv = args ?? [FLAG, `${TOKEN_FLAG}${token}`];
+    const child = spawn(BINARY, argv, { stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
     let timedOut = false;
@@ -147,10 +156,82 @@ check(
   'spawn-helper is back where it was',
 );
 
+/* ------------------------------ and the engine runs, and can be survived */
+
+/**
+ * The llama.cpp half. Issue #133.
+ *
+ * `verify:package` reads names out of the archive listing, and until this ran,
+ * `docs/architecture.md` said in as many words that nothing exercised the
+ * packaged llama.cpp. A name in a listing is not a library that loads: #88 is
+ * the same shape, and it shipped.
+ *
+ * The application forks its engine as a `utilityProcess`, makes it load
+ * `node-llama-cpp` out of `app.asar.unpacked`, then makes it abort in native
+ * code. A pass means both halves: the library resolved from the child, and the
+ * main process outlived the abort well enough to print a line about it.
+ */
+console.log('\nLoading llama.cpp in the engine process, then killing it\n');
+
+const engine = await launch([LLAMA_FLAG]);
+console.log(`${describe(engine)}\n`);
+
+check(engine.code === 0, 'the packaged application survives a native abort in the engine');
+check(
+  engine.stdout.includes(LLAMA_OK),
+  'the engine loaded llama.cpp and the main process reported its death',
+);
+check(
+  engine.stdout.includes('SIGABRT'),
+  'it reports the fault by name rather than a bare failure',
+);
+
+/**
+ * The floor for that one. With the prebuild scope gone, the engine cannot load
+ * llama.cpp, and the check must say so rather than pass — and the application
+ * must still exit rather than hang, because a crash the supervisor never hears
+ * about is the failure this whole change exists to remove.
+ */
+console.log('Reproducing #113: moving the @node-llama-cpp scope aside\n');
+
+const SCOPE = path.join(APP, 'Contents/Resources/app.asar.unpacked/node_modules/@node-llama-cpp');
+const SCOPE_ASIDE = `${SCOPE}.aside`;
+if (existsSync(SCOPE_ASIDE) && !existsSync(SCOPE)) renameSync(SCOPE_ASIDE, SCOPE);
+
+if (!existsSync(SCOPE)) {
+  console.error(`No llama.cpp prebuild scope at ${path.relative(ROOT, SCOPE)}.`);
+  process.exit(1);
+}
+const scopeEntries = readdirSync(SCOPE).length;
+
+let noEngine;
+try {
+  renameSync(SCOPE, SCOPE_ASIDE);
+  noEngine = await launch([LLAMA_FLAG]);
+} finally {
+  renameSync(SCOPE_ASIDE, SCOPE);
+}
+
+console.log(`${describe(noEngine)}\n`);
+
+check(noEngine.code !== 0, 'the llama check fails with no prebuild scope');
+check(
+  noEngine.stdout.includes(LLAMA_FAILED),
+  'it fails by reporting the engine, not by dying before the check',
+);
+check(!noEngine.stdout.includes(LLAMA_OK), 'no pass line comes back when nothing loaded');
+check(
+  existsSync(SCOPE) && readdirSync(SCOPE).length === scopeEntries && !existsSync(SCOPE_ASIDE),
+  'the prebuild scope is back where it was',
+);
+
 /* --------------------------------------------------------------- result */
 
 if (failures.length > 0) {
   console.error(`\n${String(failures.length)} check(s) failed.`);
   process.exit(1);
 }
-console.log('\nThe packaged application opened a shell, and cannot pass without one.');
+console.log(
+  '\nThe packaged application opened a shell, and cannot pass without one.\n' +
+    'It loaded llama.cpp out of process, and outlived it aborting.',
+);

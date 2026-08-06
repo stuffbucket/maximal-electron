@@ -282,10 +282,70 @@ keeps none of them. Before this, `--platform=linux` on a mac produced a Linux
 package whose only llama.cpp backend was 12 MB of macOS `.dylib` files, and
 nothing said so. CI packages natively on each runner, so no job changes.
 
-Nothing exercises the packaged llama.cpp. `npm run smoke:packaged` launches the
-application and spawns a shell; it does not load a model. `e2e/embedded.spec.ts`
-does, against the unpackaged build and the repository's own `node_modules`,
-which is the tree before the prune. Issue #113.
+`e2e/embedded.spec.ts` drives the embedded provider against the unpackaged
+build and the repository's own `node_modules`, which is the tree before the
+prune. What exercises the packaged tree is below.
+
+## Why llama.cpp runs in its own process
+
+A native abort is not a JavaScript exception. A corrupt GGUF, an out-of-memory,
+or an unsupported quantisation ends in `abort()` or a fault, and no `try` sees
+it. With the engine in the main process, that took every window and every
+terminal session with it.
+
+It is reproducible. Truncate the weights file underneath the live mapping and
+llama.cpp reads past the end of it: the process dies of `SIGBUS` with no
+JavaScript error, no `exit` event, and nothing written to disk. Issue #133.
+
+So `src/main/llama-worker.ts` is the only file in the repository that loads
+`node-llama-cpp`, and it runs as an Electron `utilityProcess`. The two things
+that must stay shared survive the boundary: a tool call becomes a message the
+main process answers, so the approval gate is still the one gate, and a token
+is posted as it is produced, so nothing accumulates a response.
+
+**One loading path, not two.** The download moved with the engine, even though
+it is ordinary JavaScript, because a second place that imports the library is a
+second place that can die.
+
+`native/llama-host.ts` supervises. When the engine goes, every outstanding
+operation ends with a sentence naming the fault, and the next request starts a
+new engine — **on demand, never on a timer, and at most three times a minute**.
+A silent restart loop is worse than a crash: past the budget the engine reports
+that it will not start again until the application restarts.
+
+What it costs, measured on an M-series mac:
+
+| | |
+| --- | --- |
+| Fork to `spawn` | 2 ms |
+| Idle child before llama.cpp loads | 70 MB |
+| First `getLlama()` on a cold Metal shader cache | 9.3 s |
+| `getLlama()` warm | 0.4 s |
+| Resident after the weights load | ~1.0 GB, in the child rather than in main |
+
+The last row is the real trade: the same gigabyte, held somewhere the operating
+system can reclaim by killing one process.
+
+## What exercises the packaged llama.cpp
+
+`npm run smoke:packaged` now launches the installed binary with
+`--self-check=llama`. The application forks its engine, makes it load
+`node-llama-cpp` out of `app.asar.unpacked` through a `utilityProcess`, and
+then makes it abort in native code. A pass needs both halves: the library
+resolved from the child, and the main process outlived the abort well enough to
+print a line about it. A negative control moves the `@node-llama-cpp` scope
+aside and requires the same run to fail by reporting the engine.
+
+That check found a defect on its first run. `packagerConfig.prune` is off and
+the keep-list names directories, so a dependency npm hoisted out of
+`node-llama-cpp` never reached the package: the library failed to load with
+`Cannot find module 'universalify'` in every build ever made. `verify:package`
+read names out of the archive listing, `smoke:packaged` only opened a shell, and
+`e2e/embedded.spec.ts` drives the unpackaged tree where the hoisted packages are
+all still there. `hoistedDependencies` in `scripts/package-contract.mjs` derives
+the closure from the installed tree, `forge.config.ts` keeps it, and
+`verify-package.mjs` asserts it arrived — 64 packages and 13 MB on
+`darwin-arm64`. Issue #133.
 
 ## The terminal a consumer gets
 
@@ -393,8 +453,11 @@ contrast. An unreadable pair is never counted as a pass.
 | Updates | `native/updates.ts` | Returns `unsupported`. See `docs/release.md`. |
 | Overlay | `windows/overlay.ts` | Non-activating panel on the cursor's display. |
 | Agent | `native/agent.ts` | Ranks backends, then runs one. No API key. |
-| Embedded model | `native/llama.ts` | Downloads and loads the local weights. |
-| Embedded run | `native/embedded.ts` | The llama.cpp engine, behind the same gate. |
+| Embedded model | `native/llama.ts` | Where the weights live, and the download. Loads nothing itself. |
+| Embedded run | `native/embedded.ts` | The main-process half of a turn: the gate and the sink. |
+| Engine supervisor | `native/llama-host.ts` | Forks the engine process, and turns its death into a sentence. |
+| Engine wire | `native/llama-protocol.ts` | The messages and the crash policy. Pure, and mutation tested. |
+| Engine process | `llama-worker.ts` | The only file that loads `node-llama-cpp`. Runs as a `utilityProcess`. |
 | Tool approval | `native/approval.ts` | Decides what the agent must ask about. Pure, and mutation tested. |
 | Toolsets | `native/toolsets.ts` | Named groups of tools. Each tool declares its own risk, so the gate cannot go stale. |
 | Schema bridge | `native/grammar.ts` | Translates tool schemas for llama.cpp. Pure, and mutation tested. |

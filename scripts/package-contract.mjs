@@ -180,3 +180,83 @@ export function llamaPackagePlan(present, platform, arch, backends) {
     };
   });
 }
+
+/* ------------------------------------------- external module dependencies */
+
+/**
+ * The packages an external native module needs at run time, derived.
+ *
+ * `packagerConfig.prune` is off and the keep-list names directories, so a
+ * dependency of a kept module that npm hoisted to the top level never reached
+ * the package. `node-llama-cpp` reaches `universalify` that way, through its
+ * own nested `fs-extra`, and the packaged library therefore failed to load
+ * with `Cannot find module 'universalify'`. Nothing saw it: `verify:package`
+ * reads names out of the archive listing, `smoke:packaged` only opened a
+ * shell, and `e2e/embedded.spec.ts` drives the unpackaged tree where every
+ * hoisted package is still there. Issue #133.
+ *
+ * Derived rather than listed, because a hand-list is the same defect one
+ * upgrade later. Resolution follows Node's: nested first, then up the tree, so
+ * a nested copy stays inside its own kept directory and only a hoisted one
+ * becomes an entry here.
+ *
+ * Throws on a dependency it cannot resolve. A package that silently loses one
+ * builds cleanly and fails at run time, which is the failure this exists for.
+ *
+ * @param {{
+ *   readPackageJson: (dir: string) => { dependencies?: Record<string, string> } | undefined,
+ *   join: (...parts: string[]) => string,
+ * }} io
+ * @param {string} nodeModules Absolute path of the top-level `node_modules`.
+ * @param {readonly string[]} roots Module names whose closure is wanted.
+ * @returns {string[]} Top-level package names, sorted. Scoped names included.
+ */
+export function hoistedDependencies(io, nodeModules, roots) {
+  const rootSet = new Set(roots);
+  const kept = new Set();
+  const visited = new Set();
+
+  /**
+   * Node's own algorithm: `<dir>/node_modules/<name>`, then up a directory.
+   *
+   * It stops at the project root rather than continuing to the filesystem
+   * root. A checkout inside another checkout would otherwise resolve against
+   * the outer tree, and record a package that is not in this one.
+   */
+  const projectRoot = io.join(nodeModules, '..');
+  const resolve = (fromDir, name) => {
+    let dir = fromDir;
+    for (;;) {
+      const candidate = io.join(dir, 'node_modules', name);
+      if (io.readPackageJson(candidate)) return candidate;
+      if (dir === projectRoot) return undefined;
+      const parent = io.join(dir, '..');
+      if (parent === dir) return undefined;
+      dir = parent;
+    }
+  };
+
+  const walk = (dir, name) => {
+    if (visited.has(dir)) return;
+    visited.add(dir);
+
+    const json = io.readPackageJson(dir);
+    if (!json) throw new Error(`${name} is not installed at ${dir}.`);
+
+    for (const dependency of Object.keys(json.dependencies ?? {})) {
+      const target = resolve(dir, dependency);
+      if (!target) {
+        throw new Error(`${name} depends on ${dependency}, which is not installed.`);
+      }
+      // A top-level resolution is one the keep-list has to name. A nested one
+      // already travels inside the directory that owns it.
+      if (target === io.join(nodeModules, dependency) && !rootSet.has(dependency)) {
+        kept.add(dependency);
+      }
+      walk(target, dependency);
+    }
+  };
+
+  for (const root of roots) walk(io.join(nodeModules, root), root);
+  return [...kept].sort();
+}

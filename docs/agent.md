@@ -22,7 +22,7 @@ deployment CLI, and is easy to vendor by mistake.
    subscription beats any local model.
 2. **Ollama** on `localhost:11434`, when it has a model pulled. The model comes
    from `/api/tags`, so `discoverProvider` names only something installed.
-3. **embedded**, always. `node-llama-cpp` runs Qwen3 0.6B in this process.
+3. **embedded**, always. `node-llama-cpp` runs Qwen3 0.6B in a child process.
 
 Rules:
 
@@ -44,11 +44,21 @@ The embedded provider does not use pi's `Agent`. `node-llama-cpp` owns its own
 loop and constrains sampling to the tool grammar, which is most of why a 0.6B
 model can call tools at all. `src/main/native/embedded.ts` is that path.
 
-What both paths share is not optional:
+**It runs in another process**, because a native abort is not catchable and
+took the whole application with it. `src/main/llama-worker.ts` is the engine
+and the only file that loads the library; `src/main/native/llama-host.ts`
+supervises it. See `docs/architecture.md` and issue #133.
+
+What both paths share is not optional, and the boundary was designed around
+keeping it:
 
 - **The same approval gate**, through the same `approve` callback and the same
-  risk classification. Two ways to reach a shell, one way to permit it.
-- **The same sink.** The overlay does not know which engine ran.
+  risk classification. Two ways to reach a shell, one way to permit it. The
+  engine cannot hold the callback, so a tool call becomes a message the main
+  process answers and the gate never moves.
+- **The same sink.** The overlay does not know which engine ran. A token is
+  posted across the boundary as it is produced, so nothing accumulates a
+  response on either side.
 
 `src/main/native/grammar.ts` translates between the two schema dialects. pi uses
 TypeBox, which writes a closed set of strings as `anyOf: [{const: 'a'}]`;
@@ -80,16 +90,21 @@ than casting. A hand-edited file must not be able to land on `none`.
 
 ## Quitting with native work in flight
 
-The embedded model runs on a worker thread. Tear the Node environment down while
-any of that is outstanding, and the addon completes into an environment that no
-longer exists. It calls `ThrowAsJavaScriptException` against it, and the process
-aborts inside ggml's terminate handler.
+The embedded model runs on a worker thread, in the engine process. Tear a Node
+environment down while any of that is outstanding, and the addon completes into
+an environment that no longer exists. It calls `ThrowAsJavaScriptException`
+against it, and the process aborts inside ggml's terminate handler.
+
+That is now the engine's process rather than the application's, which is most
+of the point. The rules still hold, because an abort during quit is still a
+crash report a user can see.
 
 - **Never start native work during `before-quit`.** An earlier version disposed
   of a model there without awaiting the result. Every embedded run aborted on
   exit.
 - **Nothing frees the weights.** The process is ending and the operating system
-  reclaims the memory, so there is no reason to ask.
+  reclaims the memory, so there is no reason to ask. `llama-host.ts` kills the
+  engine on `will-quit` instead.
 - `before-quit` defers the quit through `shutdownAgent` when a run is in flight,
   then quits again. The guard flag is what stops that looping.
 - Close an application under test with `closeApp` from `e2e/harness.ts`, not

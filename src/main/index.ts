@@ -19,7 +19,9 @@ import {
   quietBounds,
 } from './native/preferences.js';
 import { configurePty, killAllPtys } from './native/pty.js';
+import { llamaCheckRequested } from './native/llama-protocol.js';
 import { selfCheckRequested } from './native/self-check.js';
+import { runLlamaCheck } from './llama-check.js';
 import { runSelfCheck } from './self-check.js';
 import { destroyTray, setTrayEnabled } from './native/tray.js';
 import { checkForUpdates } from './native/updates.js';
@@ -252,6 +254,10 @@ if (selfCheckRequested(process.argv)) {
    * which is a green run of a check that launched nothing. Issue #89.
    */
   runSelfCheck(process.argv);
+} else if (llamaCheckRequested(process.argv)) {
+  // The other half of the same idea: load the packaged llama.cpp out of
+  // process and survive it aborting. Issue #133.
+  runLlamaCheck();
 } else {
   void runMain(
     { app },
