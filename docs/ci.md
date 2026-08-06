@@ -63,6 +63,24 @@ even when a key collides.
 `release.yml` does not use it. `package-tarball` never packages, so it never
 resolves the binary either.
 
+### What it has been measured to save, which is nothing yet
+
+The first three runs missed every time: a cache written under
+`refs/pull/<n>/merge` is invisible to `refs/heads/release/**`, so the pull
+request that added it and the push that merged it each had to write their own.
+The first run in the steady state hit on all four packaging jobs.
+
+At that hit, `npm run package` came in at 19 s and 15 s on the two macOS jobs
+against pre-change medians of 30 s and 22 s, and at 42 s and 35 s on the two
+Windows jobs against 38 s and 39 s. Two down, one flat, one up, on one run each,
+against a step whose spread over five pre-change runs is ten seconds wide. The
+restore itself costs three to four seconds per job.
+
+**So the saving is inside the noise on the evidence there is.** The arrangement
+is correct and cheap, and that is not the same as it paying. Re-measure over a
+week of runs, and take it out if the four jobs still do not separate. Issue #129
+carries the run ids.
+
 ### Why there is a check on it
 
 A cache is exactly the shape of defect this page is about. Put it in a job that
