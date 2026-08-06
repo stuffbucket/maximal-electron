@@ -69,6 +69,10 @@ function target() {
       resources: path.join(app, 'Contents/Resources'),
       fragile: 'spawn-helper',
       heading: 'Reproducing #88: moving spawn-helper aside',
+      // What `llama-protocol.ts` calls the fault `process.abort()` raises in
+      // the engine. Observed on this platform: Electron reports a POSIX signal
+      // death as the bare signal number, and 6 is SIGABRT.
+      abortName: 'SIGABRT',
     };
   }
   if (process.platform === 'win32') {
@@ -78,6 +82,12 @@ function target() {
       resources: path.join(directory, 'resources'),
       fragile: 'conpty.node',
       heading: 'The same defect as #88, one platform over: moving conpty.node aside',
+      // Windows reports a status code rather than a signal, and which one a
+      // CRT `abort()` produces has not been observed from a run. The check
+      // below still requires the supervisor to have named it as a fault, so
+      // an unrecognised code fails here with the number in the log rather
+      // than passing quietly. Issue #133.
+      abortName: undefined,
     };
   }
   return undefined;
@@ -90,8 +100,9 @@ if (!platform) {
 }
 
 const { binary: BINARY, fragile: FRAGILE, heading: HEADING } = platform;
+const RESOURCES = platform.resources;
 const NATIVE = path.join(
-  platform.resources,
+  RESOURCES,
   `app.asar.unpacked/node_modules/node-pty/prebuilds/${process.platform}-${process.arch}`,
   FRAGILE,
 );
@@ -218,10 +229,22 @@ check(
   engine.stdout.includes(LLAMA_OK),
   'the engine loaded llama.cpp and the main process reported its death',
 );
+// The supervisor must have recognised the death as a fault rather than as an
+// ordinary exit. This is the assertion that holds on every platform: an exit
+// code `llama-protocol.ts` cannot name reads as "exited with code N", and the
+// number is then in the log above to be pinned.
 check(
-  engine.stdout.includes('SIGABRT'),
-  'it reports the fault by name rather than a bare failure',
+  engine.stdout.includes(LLAMA_OK) && !engine.stdout.includes('exited with code'),
+  'it names a native fault rather than a bare exit code',
 );
+if (platform.abortName === undefined) {
+  console.log(`  skip   no fault name is pinned for ${process.platform}; see the line above`);
+} else {
+  check(
+    engine.stdout.includes(platform.abortName),
+    `it reports the fault as ${platform.abortName}`,
+  );
+}
 
 /**
  * The floor for that one. With the prebuild scope gone, the engine cannot load
@@ -231,7 +254,7 @@ check(
  */
 console.log('Reproducing #113: moving the @node-llama-cpp scope aside\n');
 
-const SCOPE = path.join(APP, 'Contents/Resources/app.asar.unpacked/node_modules/@node-llama-cpp');
+const SCOPE = path.join(RESOURCES, 'app.asar.unpacked/node_modules/@node-llama-cpp');
 const SCOPE_ASIDE = `${SCOPE}.aside`;
 if (existsSync(SCOPE_ASIDE) && !existsSync(SCOPE)) renameSync(SCOPE_ASIDE, SCOPE);
 

@@ -329,12 +329,21 @@ system can reclaim by killing one process.
 ## What exercises the packaged llama.cpp
 
 `npm run smoke:packaged` now launches the installed binary with
-`--self-check=llama`. The application forks its engine, makes it load
-`node-llama-cpp` out of `app.asar.unpacked` through a `utilityProcess`, and
-then makes it abort in native code. A pass needs both halves: the library
-resolved from the child, and the main process outlived the abort well enough to
-print a line about it. A negative control moves the `@node-llama-cpp` scope
-aside and requires the same run to fail by reporting the engine.
+`--self-check=llama`, on both packaging hosts. The application forks its engine,
+makes it load `node-llama-cpp` out of `app.asar.unpacked` through a
+`utilityProcess`, and then makes it abort in native code. A pass needs both
+halves: the library resolved from the child, and the main process outlived the
+abort well enough to print a line about it. A negative control moves the
+`@node-llama-cpp` scope aside and requires the same run to fail by reporting the
+engine.
+
+**The fault name is pinned per platform, and only where it has been seen.**
+macOS reports a signal death as the bare signal number, so `SIGABRT` is
+asserted by name. Windows reports a status code instead, and which one a CRT
+`abort()` produces has not been observed here. The assertion that holds
+everywhere is that the supervisor named it as a fault at all: a code
+`llama-protocol.ts` cannot name reads as "exited with code N", which fails the
+check and puts the number in the log to be pinned.
 
 That check found a defect on its first run. `packagerConfig.prune` is off and
 the keep-list names directories, so a dependency npm hoisted out of
