@@ -99,9 +99,7 @@
       warns. `scripts/build-msi.ps1` is what makes it absolute (#86).
     -->
     <ComponentGroup Id="AppFiles" Directory="INSTALLFOLDER">
-      <Files Include="!(bindpath.AppDir)\**">
-        <Exclude Files="!(bindpath.AppDir)\resources\**" />
-      </Files>
+      <Files Include="!(bindpath.AppDir)\**" />
     </ComponentGroup>
   </Fragment>
 
