@@ -76,6 +76,7 @@ you use:
 | `stuffbucket-electron/host/terminal` | `node-pty` |
 | `stuffbucket-electron/renderer` | `react`, `react-dom`, `ghostty-web`, `lucide-react`, `react-resizable-panels`, `@radix-ui/react-collapsible`, `@radix-ui/react-tabs`, `@radix-ui/react-tooltip` |
 | `stuffbucket-electron/verify` | none |
+| `stuffbucket-electron/verify/shell-variables` | none |
 
 npm says nothing about a missing optional peer at install time. The failure
 lands later: a bundler stops on the unresolved import and names the package,
