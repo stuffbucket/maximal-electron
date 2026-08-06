@@ -191,6 +191,23 @@ describe('a workflow that has stopped running', () => {
     expect(entry.recency.asserted).toBe(false);
     expect(entry.notes.join(' ')).toContain('recency not asserted');
   });
+
+  /**
+   * Found by running it. A window shorter than a day printed "it ran within 0
+   * day(s)", against a span also printed as 0, which is a message saying less
+   * than the numbers behind it.
+   */
+  it('states the span in a unit that does not round it away', () => {
+    const entry = assess(
+      observed({
+        triggers: { events: [], crons: ['*/5 * * * *'] },
+        runs: runs(1, 'success', 1),
+      }),
+      NOW,
+    );
+    expect(entry.findings[0]?.assertion).toBe('it ran within 10 minute(s)');
+    expect(entry.findings[0]?.detail).toContain('1 day(s) ago');
+  });
 });
 
 describe('a workflow that could not be read', () => {

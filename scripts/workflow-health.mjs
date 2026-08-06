@@ -154,8 +154,17 @@ export function cadence({ events, crons }) {
   };
 }
 
-/** Whole days, for a message a reader can act on. */
-const days = (span) => `${String(Math.round((span / DAY) * 10) / 10)} day(s)`;
+/**
+ * A span in the largest unit that does not round it to nothing. A fixed unit
+ * printed "it ran within 0 day(s)" against a window of one minute, which is a
+ * message that says less than the number behind it.
+ */
+function span(length) {
+  const round = (value) => String(Math.round(value * 10) / 10);
+  if (length >= DAY) return `${round(length / DAY)} day(s)`;
+  if (length >= HOUR) return `${round(length / HOUR)} hour(s)`;
+  return `${round(length / MINUTE)} minute(s)`;
+}
 
 /**
  * One workflow file against the runs GitHub holds for it.
@@ -202,8 +211,8 @@ export function assess(observed, now = Date.now()) {
 
   if (recency.asserted && age > recency.window) {
     findings.push({
-      assertion: `it ran within ${days(recency.window)}`,
-      detail: `the newest of ${String(runs.length)} run(s) started ${days(age)} ago, and it is triggered by ${recency.why}.`,
+      assertion: `it ran within ${span(recency.window)}`,
+      detail: `the newest of ${String(runs.length)} run(s) started ${span(age)} ago, and it is triggered by ${recency.why}.`,
     });
   } else if (!recency.asserted) {
     notes.push(`recency not asserted: ${recency.why}.`);
