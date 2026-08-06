@@ -57,6 +57,9 @@ Each of these is load-bearing. Do not relax one to make a change fit.
   worked example: it is configuration the host owns, through
   `STUFFBUCKET_ICON_DIR`, not a request the renderer makes.
 - **Never lower the mutation threshold.** `npm run mutate` breaks below 100.
+  It also breaks when a module the criterion selects is on neither the mutate
+  list nor its deferred list, and when the mutant count falls. See
+  `docs/testing.md`.
 - **Never turn a fuse back on to make a test pass.**
   `EnableNodeCliInspectArguments: false` is why the end-to-end tests drive the
   unpackaged build, and why `npm run smoke:packaged` drives the packaged one
