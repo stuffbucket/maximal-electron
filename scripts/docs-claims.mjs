@@ -30,8 +30,17 @@ export function withoutFences(text) {
  * how the prose linter this replaced earned its removal.
  */
 export function codeSpans(text) {
-  return [...withoutFences(text).matchAll(/`([^`\n]+)`/g)].map((match) => match[1] ?? '');
+  return [...withoutFences(text).matchAll(/`([^`\n]+)`/g)].map((match) => match[1]);
 }
+
+/**
+ * Every `npm run <name>` in the text, wherever it sits.
+ *
+ * One pattern, read by the rule and by the count of what the rule declines.
+ * Two copies of it would have to stay in step, and the number that says how
+ * much is out of scope is only worth printing if it is the same question.
+ */
+const NPM_RUN = /\bnpm run ([a-z][a-z0-9:-]*)/g;
 
 /**
  * Every `npm run <name>` named in prose.
@@ -43,15 +52,15 @@ export function codeSpans(text) {
  */
 export function npmScripts(text) {
   return codeSpans(text).flatMap((span) =>
-    [...span.matchAll(/\bnpm run ([a-z][a-z0-9:-]*)/g)].map((match) => match[1]),
+    [...span.matchAll(NPM_RUN)].map((match) => match[1]),
   );
 }
 
 /**
  * A span that could name a file: a directory separator, or an extension.
  *
- * The extension has to start with a letter, or `v0.0.2` and `127.0.0.1` read
- * as file names.
+ * The extension has to start with a letter and end the span, or `v0.0.2` and
+ * `v1.2.3-alpha.1` read as file names.
  */
 function pathShaped(span) {
   return !/\s/.test(span) && (span.includes('/') || /\.[a-z][a-z0-9]{0,4}$/i.test(span));
@@ -66,7 +75,7 @@ function pathShaped(span) {
  * import, an export subpath, a package specifier or a home directory, and
  * `node_modules/` is somebody else's tree.
  */
-const RELATIVE_PATH = /^[A-Za-z0-9][^\s]*\/[^\s]+$/;
+const OWN_TREE = /^[a-z]/i;
 
 /**
  * Every path-shaped backticked span, sorted into what the checker can decide.
@@ -99,7 +108,8 @@ export function pathClaims(text, { roots, buildRoots, moduleExtensions }) {
     else if (buildRoots.some((root) => listed === root || listed.startsWith(root + '/')))
       claims.build.push(span);
     else if (
-      RELATIVE_PATH.test(span) &&
+      OWN_TREE.test(span) &&
+      span.includes('/') &&
       !span.startsWith('node_modules/') &&
       moduleExtensions.some((extension) => span.endsWith(extension))
     )
@@ -118,8 +128,7 @@ export function pathClaims(text, { roots, buildRoots, moduleExtensions }) {
  * how the choice stays visible in the output instead of looking like coverage.
  */
 export function npmScriptsOutOfScope(text) {
-  const all = [...text.matchAll(/\bnpm run ([a-z][a-z0-9:-]*)/g)].length;
-  return all - npmScripts(text).length;
+  return [...text.matchAll(NPM_RUN)].length - npmScripts(text).length;
 }
 
 /**
@@ -137,7 +146,7 @@ export function constants(text) {
 
 /** Relative markdown link targets, with any anchor removed. */
 export function links(text) {
-  return [...text.matchAll(/]\((?!https?:|mailto:|#)([^)\s]+)\)/g)].map((match) =>
-    (match[1] ?? '').split('#')[0],
+  return [...text.matchAll(/]\((?!https?:|mailto:|#)([^)\s]+)\)/g)].map(
+    (match) => match[1].split('#')[0],
   );
 }
