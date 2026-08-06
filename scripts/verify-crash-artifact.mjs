@@ -31,6 +31,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { scopedChecks } from './check-scope.mjs';
+import { nodeModulesAbove, packagedApp, relocate } from './packaged-app.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -78,26 +79,25 @@ const MIN_DUMP_BYTES = 4096;
 /** Where Electron puts the Crashpad database, relative to the profile. */
 const DATABASE = 'Crashpad';
 
-function target() {
-  if (process.platform === 'darwin') {
-    const bundle = path.join(ROOT, `out/Stuffbucket-darwin-${process.arch}/Stuffbucket.app`);
-    return path.join(bundle, 'Contents/MacOS/Stuffbucket');
-  }
-  if (process.platform === 'win32') {
-    return path.join(ROOT, `out/Stuffbucket-win32-${process.arch}/Stuffbucket.exe`);
-  }
-  return undefined;
-}
-
-const BINARY = target();
-if (!BINARY) {
+const built = packagedApp();
+if (!built) {
   console.error(`This check runs on macOS and Windows, and the host is ${process.platform}.`);
   process.exit(1);
 }
-if (!existsSync(BINARY)) {
-  console.error(`No packaged application at ${path.relative(ROOT, BINARY)}. Run \`npm run package\`.`);
+if (!existsSync(built.binary)) {
+  console.error(`No packaged application at ${path.relative(ROOT, built.binary)}. Run \`npm run package\`.`);
   process.exit(1);
 }
+
+/**
+ * Launched from outside this repository, for the reason
+ * `scripts/packaged-app.mjs` gives: `out/` is inside it, so a package started
+ * in place resolves modules one directory up into the repository's own
+ * `node_modules`. The engine has to load llama.cpp before it can abort inside
+ * it, and in place that load takes a path a user's install cannot. Issue #149.
+ */
+const packaged = relocate(built);
+const BINARY = packaged.binary;
 
 /**
  * Every minidump under a profile's crash database.
@@ -192,7 +192,13 @@ function describe(run, timeoutMs) {
 
 const { check, summary } = scopedChecks();
 
-console.log(`Launching ${path.relative(ROOT, BINARY)}\n`);
+console.log(`Launching ${path.basename(BINARY)} from ${packaged.root}\n`);
+
+const above = nodeModulesAbove(packaged.directory);
+check(above.length === 0, 'nothing above the launched package can be resolved from inside it', {
+  count: 1,
+  of: 'relocated packages',
+});
 
 /* ---------------------------------- a run that does not crash writes none */
 
@@ -301,5 +307,6 @@ if (aborted) {
 }
 
 for (const run of [clean, crashed]) rmSync(run.profile, { recursive: true, force: true });
+packaged.cleanup();
 
 process.exit(summary('verify:crash-artifact'));

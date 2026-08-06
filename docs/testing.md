@@ -147,13 +147,14 @@ reads the archive listing, which finds a file that is absent and not one that
 is present where the loader cannot reach it.
 
 `npm run package && npm run smoke:packaged` closes it, on macOS and on Windows.
-`scripts/smoke-packaged.mjs` launches
-`Stuffbucket.app/Contents/MacOS/Stuffbucket`, or
-`out/Stuffbucket-win32-x64/Stuffbucket.exe`, with `--self-check=terminal` and a
-token. The application opens a shell through `TerminalHost`, the same class the
-terminal uses, makes it print the token, writes one line, and exits with a
-code. `src/main/native/self-check.ts` holds the argument protocol, and
-`tests/self-check.test.ts` pairs it with the driver's copy of the strings.
+`scripts/smoke-packaged.mjs` copies the package out of this checkout —
+`scripts/packaged-app.mjs` does that, and issue #149 is why — then launches
+`Stuffbucket.app/Contents/MacOS/Stuffbucket`, or `Stuffbucket.exe`, with
+`--self-check=terminal` and a token. The application opens a shell through
+`TerminalHost`, the same class the terminal uses, makes it print the token,
+writes one line, and exits with a code. `src/main/native/self-check.ts` holds
+the argument protocol, and `tests/self-check.test.ts` pairs it with the
+driver's copy of the strings.
 
 Three properties are what stop it passing for nothing:
 

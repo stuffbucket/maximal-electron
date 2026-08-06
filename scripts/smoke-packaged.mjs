@@ -14,6 +14,11 @@
  * `TerminalHost` the terminal uses, and it prints the result. See
  * `src/main/native/self-check.ts`.
  *
+ * **It is launched from outside this repository.** `out/` is inside it, so a
+ * package started in place resolves modules one directory up into the
+ * repository's own `node_modules`. `scripts/packaged-app.mjs` copies it out
+ * first and this check asserts nothing is left above it. Issue #149.
+ *
  * macOS and Windows. The vehicle on Windows is the packaged directory rather
  * than an installed tree, because this repository ships no installer.
  */
@@ -23,6 +28,15 @@ import { spawn } from 'node:child_process';
 import { existsSync, readdirSync, renameSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { scopedChecks } from './check-scope.mjs';
+import {
+  ancestors,
+  countFiles,
+  nodeModulesAbove,
+  packagedApp,
+  relocate,
+} from './packaged-app.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -54,14 +68,10 @@ const LAUNCH_TIMEOUT_MS = 90_000;
  */
 const LLAMA_LAUNCH_TIMEOUT_MS = 240_000;
 
-const failures = [];
-const check = (ok, message) => {
-  console.log(`${ok ? '  ok  ' : ' FAIL '} ${message}`);
-  if (!ok) failures.push(message);
-};
+const { check, summary } = scopedChecks();
 
 /**
- * The binary to launch, and the one file its terminal cannot resolve without.
+ * What the packaged application cannot open a shell without, per platform.
  *
  * On macOS that is `spawn-helper`, the file #88 left inside `app.asar`.
  *
@@ -73,13 +83,9 @@ const check = (ok, message) => {
  * three was moved aside on a Windows runner to establish that rather than
  * assume it; the pull request for #89 carries the runs.
  */
-function target() {
-  const arch = process.arch;
+function fragility() {
   if (process.platform === 'darwin') {
-    const app = path.join(ROOT, `out/Stuffbucket-darwin-${arch}/Stuffbucket.app`);
     return {
-      binary: path.join(app, 'Contents/MacOS/Stuffbucket'),
-      resources: path.join(app, 'Contents/Resources'),
       fragile: 'spawn-helper',
       heading: 'Reproducing #88: moving spawn-helper aside',
       // What `llama-protocol.ts` calls the fault `process.abort()` raises in
@@ -90,10 +96,7 @@ function target() {
     };
   }
   if (process.platform === 'win32') {
-    const directory = path.join(ROOT, `out/Stuffbucket-win32-${arch}`);
     return {
-      binary: path.join(directory, 'Stuffbucket.exe'),
-      resources: path.join(directory, 'resources'),
       fragile: 'conpty.node',
       heading: 'The same defect as #88, one platform over: moving conpty.node aside',
       // Windows reports a status code rather than a signal, and which one a
@@ -110,30 +113,63 @@ function target() {
   return undefined;
 }
 
-const platform = target();
-if (!platform) {
+const built = packagedApp();
+const platform = fragility();
+if (!built || !platform) {
   console.error(`This check runs on macOS and Windows, and the host is ${process.platform}.`);
   process.exit(1);
 }
 
-const { binary: BINARY, fragile: FRAGILE, heading: HEADING } = platform;
-const RESOURCES = platform.resources;
+const { fragile: FRAGILE, heading: HEADING } = platform;
+
+if (!existsSync(built.binary)) {
+  console.error(`No packaged application at ${path.relative(ROOT, built.binary)}. Run \`npm run package\`.`);
+  process.exit(1);
+}
+
+/* ------------------------------------------- out of the repository first */
+
+/**
+ * The premise, asserted rather than assumed.
+ *
+ * If nothing sits above `out/` there is nothing to relocate away from, and the
+ * copy below is ceremony. A zero here fails, which is the honest outcome if
+ * this ever stops being true.
+ */
+console.log('Copying the package out of the repository\n');
+
+const above = nodeModulesAbove(built.directory);
+check(
+  above.length > 0,
+  'out/ is inside this repository, so a package launched in place resolves up into it',
+  { count: above.length, of: 'node_modules directories above out/' },
+);
+console.log(`       nearest: ${path.relative(ROOT, above[0] ?? '(none)')}`);
+
+const packaged = relocate(built);
+const copied = countFiles(packaged.directory);
+
+check(copied === countFiles(built.directory), 'the copy holds every file the package does', {
+  count: copied,
+  of: 'files copied',
+});
+
+const stillAbove = nodeModulesAbove(packaged.directory);
+check(stillAbove.length === 0, 'and nothing above the copy can be resolved from inside it', {
+  count: ancestors(packaged.directory).length,
+  of: 'directories walked above the copy',
+});
+
+console.log(`       ${packaged.directory}\n`);
+
+const BINARY = packaged.binary;
 const NATIVE = path.join(
-  RESOURCES,
+  packaged.resources,
   `app.asar.unpacked/node_modules/node-pty/prebuilds/${process.platform}-${process.arch}`,
   FRAGILE,
 );
 /** Where the negative control parks the file. Restored before the run ends. */
 const ASIDE = `${NATIVE}.aside`;
-
-if (!existsSync(BINARY)) {
-  console.error(`No packaged application at ${path.relative(ROOT, BINARY)}. Run \`npm run package\`.`);
-  process.exit(1);
-}
-
-// An interrupted earlier run leaves the file parked. Put it back rather than
-// reporting a defect that this script caused.
-if (existsSync(ASIDE) && !existsSync(NATIVE)) renameSync(ASIDE, NATIVE);
 
 /** Run the packaged binary once, with a fresh token. */
 function launch(args, timeoutMs = LAUNCH_TIMEOUT_MS) {
@@ -175,18 +211,19 @@ function describe(run) {
 
 /* ------------------------------------------------- the application works */
 
-console.log(`Launching ${path.relative(ROOT, BINARY)}\n`);
+console.log(`Launching ${path.basename(BINARY)} from the copy\n`);
 
 const working = await launch();
 console.log(`${describe(working)}\n`);
 
-check(working.code === 0, 'the packaged application exits 0');
+check(working.code === 0, 'the packaged application exits 0', { count: 1, of: 'launches' });
 // The token is random per run and reaches the driver only by way of a shell
 // that ran a command joining its two halves. A build that spawns nothing cannot
 // produce it, and neither can a stale log.
 check(
   working.stdout.includes(working.token),
   'a shell inside the package echoed this run\'s token back',
+  { count: 1, of: 'tokens' },
 );
 
 /* ------------------------------------------------- and it can still fail */
@@ -198,7 +235,8 @@ check(
 console.log(`${HEADING}\n`);
 
 if (!existsSync(NATIVE)) {
-  console.error(`No ${FRAGILE} at ${path.relative(ROOT, NATIVE)}.`);
+  console.error(`No ${FRAGILE} at ${path.relative(packaged.root, NATIVE)}.`);
+  packaged.cleanup();
   process.exit(1);
 }
 const nativeSize = statSync(NATIVE).size;
@@ -213,15 +251,23 @@ try {
 
 console.log(`${describe(broken)}\n`);
 
-check(broken.code !== 0, `the packaged application fails without ${FRAGILE}`);
+check(broken.code !== 0, `the packaged application fails without ${FRAGILE}`, {
+  count: 1,
+  of: 'launches without it',
+});
 check(
   broken.stdout.includes(FAILED),
   'it fails by reporting the shell, not by dying before the check',
+  { count: 1, of: 'launches without it' },
 );
-check(!broken.stdout.includes(broken.token), 'no token comes back when no shell can start');
+check(!broken.stdout.includes(broken.token), 'no token comes back when no shell can start', {
+  count: 1,
+  of: 'tokens',
+});
 check(
   existsSync(NATIVE) && statSync(NATIVE).size === nativeSize && !existsSync(ASIDE),
   `${FRAGILE} is back where it was`,
+  { count: 1, of: 'files moved aside' },
 );
 
 /* ------------------------------ and the engine runs, and can be survived */
@@ -253,24 +299,35 @@ if (platform.engineGated) {
    * getting a spinner forever. So the application has to say why, and it has
    * to exit rather than hang.
    */
-  check(engine.code === 0, 'the packaged application exits rather than hanging');
+  check(engine.code === 0, 'the packaged application exits rather than hanging', {
+    count: 1,
+    of: 'engine runs',
+  });
   check(
     engine.stdout.includes(LLAMA_GATED),
     'it reports the embedded engine as gated on this platform',
+    { count: 1, of: 'engine runs' },
   );
-  check(
-    engine.stdout.includes('#149'),
-    'the gate names the issue that retires it',
-  );
-  check(!engine.stdout.includes(LLAMA_OK), 'it does not claim an engine that works');
+  check(engine.stdout.includes('#149'), 'the gate names the issue that retires it', {
+    count: 1,
+    of: 'engine runs',
+  });
+  check(!engine.stdout.includes(LLAMA_OK), 'it does not claim an engine that works', {
+    count: 1,
+    of: 'engine runs',
+  });
   console.log(
     `  skip   the #113 reproduction needs a working engine, which ${process.platform} gates off`,
   );
 } else {
-  check(engine.code === 0, 'the packaged application survives a native abort in the engine');
+  check(engine.code === 0, 'the packaged application survives a native abort in the engine', {
+    count: 1,
+    of: 'engine runs',
+  });
   check(
     engine.stdout.includes(LLAMA_OK),
     'the engine loaded llama.cpp and the main process reported its death',
+    { count: 1, of: 'engine runs' },
   );
   // The supervisor must have recognised the death as a fault rather than as an
   // ordinary exit. This is the assertion that holds on every platform: an exit
@@ -279,29 +336,34 @@ if (platform.engineGated) {
   check(
     engine.stdout.includes(LLAMA_OK) && !engine.stdout.includes('exited with code'),
     'it names a native fault rather than a bare exit code',
+    { count: 1, of: 'engine runs' },
   );
-  check(
-    engine.stdout.includes(platform.abortName),
-    `it reports the fault as ${platform.abortName}`,
-  );
+  check(engine.stdout.includes(platform.abortName), `it reports the fault as ${platform.abortName}`, {
+    count: 1,
+    of: 'named faults',
+  });
 
   /**
    * The floor for that one. With the prebuild scope gone, the engine cannot load
    * llama.cpp, and the check must say so rather than pass — and the application
    * must still exit rather than hang, because a crash the supervisor never hears
    * about is the failure this whole change exists to remove.
+   *
+   * It only means anything from the copy. Launched in place, the scope one
+   * directory above the package answers instead, so this control took the same
+   * branch as the run it is the control for. Issue #149.
    */
   console.log('Reproducing #113: moving the @node-llama-cpp scope aside\n');
 
-  const SCOPE = path.join(RESOURCES, 'app.asar.unpacked/node_modules/@node-llama-cpp');
-  const SCOPE_ASIDE = `${SCOPE}.aside`;
-  if (existsSync(SCOPE_ASIDE) && !existsSync(SCOPE)) renameSync(SCOPE_ASIDE, SCOPE);
+  const SCOPE = path.join(packaged.resources, 'app.asar.unpacked/node_modules/@node-llama-cpp');
 
   if (!existsSync(SCOPE)) {
-    console.error(`No llama.cpp prebuild scope at ${path.relative(ROOT, SCOPE)}.`);
+    console.error(`No llama.cpp prebuild scope at ${path.relative(packaged.root, SCOPE)}.`);
+    packaged.cleanup();
     process.exit(1);
   }
   const scopeEntries = readdirSync(SCOPE).length;
+  const SCOPE_ASIDE = `${SCOPE}.aside`;
 
   let noEngine;
   try {
@@ -313,10 +375,14 @@ if (platform.engineGated) {
 
   console.log(`${describe(noEngine)}\n`);
 
-  check(noEngine.code !== 0, 'the llama check fails with no prebuild scope');
+  check(noEngine.code !== 0, 'the llama check fails with no prebuild scope', {
+    count: 1,
+    of: 'engine runs without it',
+  });
   check(
     noEngine.stdout.includes(LLAMA_FAILED),
     'it fails by reporting the engine, not by dying before the check',
+    { count: 1, of: 'engine runs without it' },
   );
   // Not merely "it failed". Removing the wait on `app.whenReady()` once made both
   // this run and the real one die at the fork with the same message, and the two
@@ -326,21 +392,28 @@ if (platform.engineGated) {
   check(
     noEngine.stdout.includes(LLAMA_NO_LIBRARY),
     'it fails because the library would not load, not because nothing started',
+    { count: 1, of: 'engine runs without it' },
   );
-  check(!noEngine.stdout.includes(LLAMA_OK), 'no pass line comes back when nothing loaded');
+  check(!noEngine.stdout.includes(LLAMA_OK), 'no pass line comes back when nothing loaded', {
+    count: 1,
+    of: 'engine runs without it',
+  });
   check(
     existsSync(SCOPE) && readdirSync(SCOPE).length === scopeEntries && !existsSync(SCOPE_ASIDE),
     'the prebuild scope is back where it was',
+    { count: scopeEntries, of: 'prebuild packages' },
   );
 }
 
 /* --------------------------------------------------------------- result */
 
-if (failures.length > 0) {
-  console.error(`\n${String(failures.length)} check(s) failed.`);
-  process.exit(1);
+packaged.cleanup();
+
+const code = summary('smoke:packaged');
+if (code === 0) {
+  console.log(
+    '\nThe packaged application opened a shell, and cannot pass without one.\n' +
+      'It loaded llama.cpp out of process, and outlived it aborting.',
+  );
 }
-console.log(
-  '\nThe packaged application opened a shell, and cannot pass without one.\n' +
-    'It loaded llama.cpp out of process, and outlived it aborting.',
-);
+process.exit(code);

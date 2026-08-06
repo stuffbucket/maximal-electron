@@ -337,6 +337,33 @@ abort well enough to print a line about it. A negative control moves the
 `@node-llama-cpp` scope aside and requires the same run to fail by reporting the
 engine.
 
+### It is launched from outside this repository
+
+`out/` sits inside the checkout, so a package started in place resolves modules
+one directory above itself and reaches the repository's own `node_modules`.
+That is 600 MB the build never ships. On `win32-x64` it is where the engine
+found the vulkan prebuild `pruneLlamaBackends` prunes, and the `#113` negative
+control found it too — the control moves the scope **inside** the package, not
+the one above it, so both runs took a branch no user's install can take.
+
+`scripts/packaged-app.mjs` copies the package to a temporary directory first,
+and both `smoke:packaged` and `verify:crash-artifact` launch it from there.
+`nodeModulesAbove` states the property as two assertions rather than as an
+intention: that something is above `out/`, which is the premise and fails at
+zero, and that nothing is above the copy.
+
+A copy rather than a move, because `verify:package` reads `out/` and
+`verify:crash-artifact` runs after `smoke:packaged` on the same build.
+
+**On `darwin-arm64` this changes nothing, which was worth measuring.** With the
+scope moved aside the in-place run already failed with `NoBinaryFoundError`, so
+resolution was not escaping the package there;
+`detectBestComputeLayersAvailable` short-circuits to `["metal"]` and never
+reaches the branch that walks up. `device=metal` and `loadMs` are the same
+either way once the Metal shader cache is warm — 206 ms relocated against
+231 ms in place. The first run from each temporary directory pays a cold cache
+and costs about 9.4 s, which is inside the 60 s `engineCheckTimeoutMs` allows.
+
 **The fault name is pinned per platform, and only where it has been seen.**
 macOS reports a signal death as the bare signal number, so `SIGABRT` is
 asserted by name. Windows reports a status code instead, and which one a CRT
@@ -391,13 +418,13 @@ The same file under `node` answers `{"type":"ready"}` in 376 ms.
 `engineCheckTimeoutMs` gives up at three, which is the timeout #149 opens with.
 
 **And a build ships no vulkan prebuild.** `pruneLlamaBackends` keeps only
-`@node-llama-cpp/win-x64`. The engine finds one anyway because `out/` sits
-inside this repository, so the resolution walks one directory above the package
+`@node-llama-cpp/win-x64`. The engine found one anyway because `out/` sits
+inside this repository, so the resolution walked one directory above the package
 into `node_modules`. The last row of the table is the same package copied to a
 temporary directory, where nothing is above it: no test, no fork, and llama.cpp
-loaded. Moving the `@node-llama-cpp` scope aside inside the package does not
-move that copy, which is why the `#113` negative control hangs for exactly as
-long as the real run.
+loaded. Moving the `@node-llama-cpp` scope aside inside the package did not
+move that copy, which is why the `#113` negative control hung for exactly as
+long as the real run. Both checks now launch from a copy, as above.
 
 So the one rung nothing has run is `--self-check=llama` inside
 `Stuffbucket.exe`, which the gate short-circuits. Issue #149 carries the runs
@@ -483,12 +510,13 @@ uploaded.
 ### What proves it
 
 `npm run verify:crash-artifact` launches the packaged binary twice, each into a
-throwaway profile given by `--user-data-dir`, and compares the two crash
-databases. The first run is `--self-check=terminal`: it starts the reporter,
-crashes nothing, and must leave a database with no dump in it. The second is
-`--self-check=llama` — #144's crash, not a new one — which forks the engine,
-loads the packaged llama.cpp, and calls `process.abort()` in native code. That
-run must leave a dump where the first left none.
+throwaway profile given by `--user-data-dir`, and from a copy of the package
+outside this repository for the reason above. The first run is
+`--self-check=terminal`: it starts the reporter, crashes nothing, and must
+leave a database with no dump in it. The second is `--self-check=llama` —
+#144's crash, not a new one — which forks the engine, loads the packaged
+llama.cpp, and calls `process.abort()` in native code. That run must leave a
+dump where the first left none.
 
 Which of the two it demands is read off the line the application printed rather
 than off a platform table. Where #149 gates the engine off, the gated run
