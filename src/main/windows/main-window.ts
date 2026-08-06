@@ -1,27 +1,32 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
-import { BrowserWindow, shell } from 'electron';
+import type { BrowserWindow } from 'electron';
 
+import type { HostWindowOptions } from '../../host/host-window.js';
 import { windowIcon } from '../native/app-icon.js';
 import { isDemo } from '../native/preferences.js';
 
 /**
- * The main application window.
+ * The main application window, as options for the shell's own host window.
  *
  * The title bar is hidden on macOS (`hiddenInset`) and overlaid on Windows, so
  * the React shell can draw its own toolbar into that strip. The system draws
  * the window controls: native traffic lights on macOS, `titleBarOverlay`
  * elsewhere. Nothing in the renderer draws or drives them.
+ *
+ * `index.ts` hands these to `runMain`, which opens the window. The reveal stays
+ * here: a quiet test run parks the window off screen first, and bounds have to
+ * be set before it shows.
  */
-
-export function createMainWindow(): BrowserWindow {
-  const window = new BrowserWindow({
+export function mainWindowOptions(): HostWindowOptions {
+  return {
+    preloadPath: path.join(__dirname, 'preload.js'),
+    title: 'Stuffbucket',
     width: 1280,
     height: 820,
     minWidth: 880,
     minHeight: 560,
-    show: false,
     backgroundColor: '#16181d',
     // Windows and Linux draw the taskbar and window icon from the window.
     // macOS uses the bundle, so `windowIcon` returns nothing there.
@@ -38,48 +43,28 @@ export function createMainWindow(): BrowserWindow {
           },
         }),
     trafficLightPosition: { x: 14, y: 13 },
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      // The security posture of this application. Do not relax any of these.
-      // See AGENTS.md.
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-      // A quiet test run parks this window off screen, where macOS reports it
-      // occluded. Without this, Chromium throttles the renderer and every
-      // reference screenshot comes back blank.
-      backgroundThrottling: false,
-    },
-  });
+    showWhenReady: false,
+    loadRenderer,
+  };
+}
 
-  // Send anything that is not our own page to the real browser, where it
-  // cannot reach Electron APIs.
-  window.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url);
-    return { action: 'deny' };
-  });
+function loadRenderer(window: BrowserWindow): void {
+  if (isDemo()) {
+    loadDemoShell(window);
+    return;
+  }
 
-  window.webContents.on('will-navigate', (event, url) => {
-    const current = window.webContents.getURL();
-    if (new URL(url).origin !== new URL(current).origin) {
-      event.preventDefault();
-      void shell.openExternal(url);
-    }
-  });
-
-  if (isDemo()) loadDemoShell(window);
-  else if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     void window.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
     // Development only. The upstream Forge template opens DevTools in packaged
     // builds too, which ships a debugger to users.
     window.webContents.openDevTools({ mode: 'detach' });
-  } else {
-    void window.loadFile(
-      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
-    );
+    return;
   }
 
-  return window;
+  void window.loadFile(
+    path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
+  );
 }
 
 /**

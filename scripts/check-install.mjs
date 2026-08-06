@@ -9,6 +9,11 @@
  * compile step. npm does run `postinstall` for every install form, so this is
  * the one place that failure can be made loud. Issue #100.
  *
+ * Transitional. It costs every consumer a `postinstall` forever, and a registry
+ * install cannot reach the state it catches. Remove it once
+ * `stuffbucket/maximal` consumes this package from the GitHub Packages
+ * registry. Issue #117 holds the condition and what removal touches.
+ *
  * It runs on this repository too, where `dist/` is absent until `prepare`
  * builds it — `postinstall` runs first — hence the `node_modules` test.
  */
@@ -52,7 +57,7 @@ ${missing.map((target) => `    ${target}`).join('\n')}
   npm runs \`prepack\` for a packed tarball and \`prepare\` for a git
   dependency. It runs neither for an \`https://\` source archive, so a
   codeload.github.com URL installs source that was never built. This package is
-  not on the npm registry. Use one of:
+  not on the public npm registry. Use one of:
 
     github:${home.replace(/^https:\/\/github\.com\//, '')}#<ref>
     ${home}/releases/download/v<version>/${manifest.name}-<version>.tgz

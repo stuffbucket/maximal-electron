@@ -114,6 +114,32 @@ describe('createHostWindow', () => {
     );
   });
 
+  it('reveals the window on ready unless the consumer takes that over', () => {
+    createHostWindow({
+      preloadPath: '/absolute/preload.js',
+      title: 'Consumer',
+      width: 900,
+      height: 600,
+      loadRenderer: vi.fn(),
+    });
+
+    expect(electron.onceHandler).toBeDefined();
+    electron.onceHandler?.();
+    expect(electron.show).toHaveBeenCalledOnce();
+
+    electron.onceHandler = undefined;
+    createHostWindow({
+      preloadPath: '/absolute/preload.js',
+      title: 'Consumer',
+      width: 900,
+      height: 600,
+      showWhenReady: false,
+      loadRenderer: vi.fn(),
+    });
+
+    expect(electron.onceHandler).toBeUndefined();
+  });
+
   it('still denies new windows and cross-origin navigation', () => {
     createHostWindow({
       preloadPath: '/absolute/preload.js',

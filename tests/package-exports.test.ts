@@ -21,12 +21,16 @@ interface PackageManifest {
 }
 
 describe('package exports', () => {
-  it('publishes host, renderer JavaScript and types, and structural CSS', async () => {
+  it('publishes the main seam, host, renderer JavaScript and types, and structural CSS', async () => {
     const manifest = JSON.parse(
       await readFile(path.join(ROOT, 'package.json'), 'utf8'),
     ) as PackageManifest;
 
     expect(manifest.exports).toMatchObject({
+      './main': {
+        types: './dist/host/run-main.d.ts',
+        default: './dist/host/run-main.js',
+      },
       './host': {
         types: './dist/host/host-window.d.ts',
         default: './dist/host/host-window.js',

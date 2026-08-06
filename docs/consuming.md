@@ -12,7 +12,7 @@ build ever runs.
 | `github:stuffbucket/maximal-electron#<ref>` | `prepare`, in the clone | Works |
 | `https://codeload.github.com/.../tar.gz/<sha>` | None | Refused |
 
-This package is not published to the npm registry. `npm install
+This package is not published to the public npm registry. `npm install
 stuffbucket-electron` finds nothing.
 
 ## Supported
@@ -77,6 +77,20 @@ compile step, which is the whole point of the guard. Issue #100.
 `npm install --ignore-scripts` disables it, along with `prepare` for the git
 form. A consumer who installs that way gets an unbuilt package from either form
 and no warning, and that is the one case this cannot cover.
+
+### The guard is transitional
+
+It costs every consumer a `postinstall` on every install, permanently, for a
+problem that is not permanent. Distribution is moving to the GitHub Packages
+registry as `@stuffbucket/maximal-electron`. A registry install is `npm pack`
+output by construction, so it cannot reach the state the guard catches, and
+codeload becomes a legacy hazard rather than a live one.
+
+The condition for removing it is that `stuffbucket/maximal` consumes this
+package from the registry, not that the registry publish works: the guard
+protects a consumer who is on the broken path today. Issue #117 holds the
+condition and what removal touches. This document is written for what is true
+now, and the registry will supersede it.
 
 ## Why `dist/` is not committed
 

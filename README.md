@@ -69,13 +69,21 @@ Install it from a git ref, or from the tarball a release attaches:
 `dist/` is built by a lifecycle script rather than committed, and npm runs a
 different one for each form. A `codeload.github.com` archive URL runs neither,
 so that form is unsupported and refuses to install. This package is not on the
-npm registry. Read [docs/consuming.md](./docs/consuming.md).
+public npm registry. Read [docs/consuming.md](./docs/consuming.md).
 
-Either supported form exposes the secured host window at
+Either supported form exposes the main-process lifecycle at
+`stuffbucket-electron/main`, the secured host window at
+`stuffbucket-electron/host` and the generic renderer frame at
 `stuffbucket-electron/host` and the generic renderer frame at
 `stuffbucket-electron/renderer`. The renderer entry exports `ShellLayout`,
 `TitleBar`, `TabBar`, `NavRail`, `Canvas`, and `IconButton`. It does not export
 the reference application, terminal, agent, sample data, or fixtures.
+
+`runMain(runtime, options)` runs a main process on this shell's lifecycle: the
+profile directory, the single instance lock, the window, the quit policy, and a
+deferred shutdown. Every application-specific value is a callback in `options`,
+whose shape is versioned. This application's own `src/main/index.ts` runs on it.
+See [docs/embedding.md](./docs/embedding.md).
 
 Import the structural styles separately:
 

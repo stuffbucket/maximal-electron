@@ -122,6 +122,7 @@ export const RENDERER_SURFACE = [
   'TerminalTabs',
   'TerminalView',
   'TitleBar',
+  'detachedSessions',
   'getTabPanelId',
   'getTabTriggerId',
   'readTerminalTheme',
@@ -135,6 +136,53 @@ export const VERIFY_SURFACE = [
   'terminalPackageChecks',
   'terminalPrebuildDirectory',
 ];
+
+/** The names `./main` promises a consumer. Issue #15. */
+export const MAIN_SURFACE = [
+  'runMain',
+  'RUN_MAIN_OPTIONS_VERSION',
+  'RunMainOptions',
+  'MainContext',
+  'MainRuntime',
+];
+
+/**
+ * Whether `./main` promises what it says it does.
+ *
+ * Names read out of the declaration rather than an import: `run-main.js`
+ * imports `electron`, which plain `node` cannot load. The declaration is what a
+ * consumer's `tsc` reads, so checking it checks what breaks them.
+ *
+ * @param {string} packageRoot
+ * @param {unknown} declaration
+ * @returns {Promise<{ checks: Check[] }>}
+ */
+export async function mainSurfaceChecks(packageRoot, declaration) {
+  /** @type {Check[]} */
+  const checks = [];
+  const declared = typeof declaration === 'string';
+  checks.push({ name: 'the manifest declares a ./main export', ok: declared });
+  if (!declared) return { checks };
+
+  let source;
+  try {
+    source = await readFile(path.join(packageRoot, declaration), 'utf8');
+  } catch {
+    // The floor. An unreadable declaration would report every name below as
+    // missing, which is a different failure from a name that was dropped.
+    checks.push({ name: `${declaration} can be read`, ok: false });
+    return { checks };
+  }
+  checks.push({ name: `${declaration} can be read`, ok: true });
+
+  for (const name of MAIN_SURFACE) {
+    checks.push({
+      name: `the ./main declaration names ${name}`,
+      ok: new RegExp(`\\b${name}\\b`).test(source),
+    });
+  }
+  return { checks };
+}
 
 /**
  * Names a built entry re-exports, sorted.
@@ -164,7 +212,10 @@ export function reExportedNames(source) {
  * value, and this is what keeps it that way — re-adding that import puts
  * `lib/bridge.js` in the graph and fails here.
  */
-const CONTRACTS = [/(?:^|\/)lib\/terminal-transport(?:\.js)?$/];
+const CONTRACTS = [
+  /(?:^|\/)lib\/terminal-transport(?:\.js)?$/,
+  /(?:^|\/)lib\/terminal-sessions(?:\.js)?$/,
+];
 const APPLICATION_ONLY = [
   /(?:^|\/)App(?:\.js)?$/,
   /(?:^|\/)lib\//,
