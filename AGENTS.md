@@ -26,6 +26,7 @@ linked document.
 | Check the palette | `npm run check:contrast` |
 | Package | `npm run package` |
 | Verify a package | `npm run verify:package` |
+| Verify a git-ref install | `npm run verify:git-install` |
 | Verify the docs | `npm run verify:docs` |
 | Regenerate icons | `npm run icons` |
 

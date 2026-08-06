@@ -6,6 +6,14 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, URL } from 'node:url';
 
+import {
+  RENDERER_SURFACE,
+  VERIFY_SURFACE,
+  exportTargets,
+  moduleGraphChecks,
+  reExportedNames,
+} from './export-checks.mjs';
+
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const manifest = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
 const failures = [];
@@ -28,53 +36,24 @@ for (const dependency of ['react', 'react-dom']) {
 }
 
 /*
- * Read from the manifest rather than listed here.
- *
- * A hardcoded list means a new entry in `exports` is unchecked until somebody
- * remembers to add it, and an export nothing verifies is one that can ship
- * pointing at a file the build does not produce.
+ * `scripts/export-checks.mjs` holds what an export has to satisfy.
+ * `verify-git-install.mjs` asks the same questions of a package installed by
+ * git ref, which runs `prepare` where this path runs `prepack`. Issue #83.
  */
-const exportTargets = Object.values(manifest.exports ?? {}).flatMap((entry) =>
-  typeof entry === 'string' ? [entry] : Object.values(entry),
-);
+const targets = exportTargets(manifest.exports);
 
 console.log('Package export targets');
 // The floor. An empty map would report every check below as passing by
 // checking nothing.
-check(exportTargets.length > 0, 'the manifest declares at least one export');
-for (const target of exportTargets) {
-  check(
-    typeof target === 'string' && existsSync(path.join(root, target)),
-    `${String(target)} exists`,
-  );
+check(targets.length > 0, 'the manifest declares at least one export');
+for (const { subpath, condition, target } of targets) {
+  check(existsSync(path.join(root, target)), `${subpath} ${condition} -> ${target} exists`);
 }
 
 const rendererEntry = path.join(root, manifest.exports['./renderer'].default);
 const rendererSource = await readFile(rendererEntry, 'utf8');
-const expectedExports = [
-  'Canvas',
-  'IconButton',
-  'NavRail',
-  'SHELL_TERMINAL_PROPERTIES',
-  'ShellLayout',
-  'TabBar',
-  'TerminalTabs',
-  'TerminalView',
-  'TitleBar',
-  'getTabPanelId',
-  'getTabTriggerId',
-  'readTerminalTheme',
-];
-const actualExports = [
-  ...rendererSource.matchAll(/export\s*\{([^}]+)}\s*from/g),
-].flatMap((match) =>
-  (match[1] ?? '')
-    .split(',')
-    .map((name) => name.trim())
-    .filter(Boolean),
-);
 check(
-  JSON.stringify(actualExports.sort()) === JSON.stringify(expectedExports),
+  JSON.stringify(reExportedNames(rendererSource)) === JSON.stringify(RENDERER_SURFACE),
   'renderer JavaScript exposes only the approved component surface',
 );
 check(
@@ -115,60 +94,13 @@ check(
 // nothing to compare, and a bare mismatch says nothing about why.
 check(verifyNames.length > 0, 'the ./verify export loads under plain node');
 check(
-  JSON.stringify(verifyNames) ===
-    JSON.stringify([
-      'TERMINAL_CONTENT_SECURITY_POLICY',
-      'contentSecurityPolicyChecks',
-      'terminalNativeFiles',
-      'terminalPackageChecks',
-      'terminalPrebuildDirectory',
-    ]),
+  JSON.stringify(verifyNames) === JSON.stringify(VERIFY_SURFACE),
   'the ./verify export exposes the documented names',
 );
 
-/*
- * `lib/` holds this application's own things — the bridge, the sample data, the
- * palette — so reaching one from the export means the package carries the
- * application with it. The exceptions are contracts: types and pure functions a
- * consumer implements against, with no import of their own.
- *
- * An allowlist rather than a dropped rule. `TerminalView` used to be forbidden
- * outright because it imported `bridge.js`; it now takes a transport as a
- * value, and this is what keeps it that way — re-adding that import puts
- * `lib/bridge.js` in the graph and fails here.
- */
-const contracts = [/(?:^|\/)lib\/terminal-transport(?:\.js)?$/];
-const forbidden = [
-  /(?:^|\/)App(?:\.js)?$/,
-  /(?:^|\/)lib\//,
-  /(?:^|\/)native\//,
-  /demo/i,
-  /fixture/i,
-  /\.stories\./,
-];
-const visited = new Set();
-const pending = [rendererEntry];
-const importPattern = /(?:from\s*|import\s*)['"](\.[^'"]+)['"]/g;
-
-while (pending.length > 0) {
-  const file = pending.pop();
-  if (!file || visited.has(file)) continue;
-  visited.add(file);
-
-  const relative = path.relative(root, file).split(path.sep).join('/');
-  const allowed =
-    contracts.some((pattern) => pattern.test(relative)) ||
-    !forbidden.some((pattern) => pattern.test(relative));
-  check(allowed, `${relative} is generic`);
-
-  const source = await readFile(file, 'utf8');
-  for (const match of source.matchAll(importPattern)) {
-    const specifier = match[1];
-    if (!specifier) continue;
-    const dependency = path.resolve(path.dirname(file), specifier);
-    pending.push(dependency);
-  }
-}
+console.log('\nRenderer import graph');
+const { checks: graphChecks, inspected } = await moduleGraphChecks(root, rendererEntry);
+for (const { name, ok } of graphChecks) check(ok, name);
 
 /*
  * Deliberately without `--ignore-scripts`. `dist/` is built by `prepack` and
@@ -184,9 +116,9 @@ const packed = JSON.parse(
 )[0].files.map((file) => file.path);
 
 console.log('\nPacked library artifacts');
-for (const target of exportTargets) {
-  const packedPath = target?.replace(/^\.\//, '');
-  check(packed.includes(packedPath), `${String(packedPath)} is included by npm pack`);
+for (const { target } of targets) {
+  const packedPath = target.replace(/^\.\//, '');
+  check(packed.includes(packedPath), `${packedPath} is included by npm pack`);
 }
 
 /* ------------------------------------------------------- artifact freshness */
@@ -247,4 +179,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log(`\nAll exports passed (${String(visited.size)} renderer modules inspected).`);
+console.log(`\nAll exports passed (${String(inspected)} renderer modules inspected).`);
