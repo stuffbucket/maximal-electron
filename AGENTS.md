@@ -198,13 +198,16 @@ the values invalidates an existing signature, so say so in the pull request: the
 macOS build must be redone.
 
 **External native modules.** Adding one means editing three places: the Vite
-external list, the `packagerConfig.ignore` filter in `forge.config.ts`, and
+external list, `EXTERNAL_MODULES` in `forge.config.ts`, and
 `scripts/verify-package.mjs`. Miss one and the package builds, the tests pass,
-and the feature is absent for a user. `node-pty` needs a fourth:
-`prunePtyPrebuilds` in `forge.config.ts` drops the platforms a build cannot
-use, and it throws rather than skipping. It goes in `devDependencies`: this
-package declares no runtime dependencies, so that one entry would land in every
-consumer's install.
+and the feature is absent for a user. The packages npm hoisted out of it are
+**not** a fourth edit: `hoistedDependencies` in `scripts/package-contract.mjs`
+derives them from the installed tree, and both the keep-list and the check read
+that one function. `node-llama-cpp` could not load in any packaged build before
+it existed. `node-pty` needs a real fourth: `prunePtyPrebuilds` in
+`forge.config.ts` drops the platforms a build cannot use, and it throws rather
+than skipping. It goes in `devDependencies`: this package declares no runtime
+dependencies, so that one entry would land in every consumer's install.
 
 `node-llama-cpp` needs the same fourth edit and one more decision.
 `pruneLlamaBackends` drops the `@node-llama-cpp` packages the target cannot
@@ -212,6 +215,11 @@ load, and **drops the CUDA and Vulkan backends unless `STUFFBUCKET_LLAMA_BACKEND
 asks for them**. That is 630 MB on `win32-x64` and it means a CUDA machine runs
 the embedded model on its CPU. Do not change the default without changing what
 `docs/architecture.md` says about it.
+
+**The llama.cpp engine runs in a `utilityProcess`.** `src/main/llama-worker.ts`
+is the only file that loads `node-llama-cpp`, and it must stay that way: a
+native abort is not catchable, and a second loading path is a second process
+that can take the application down. See `docs/architecture.md`.
 
 **Icons.** `STUFFBUCKET_ICON_DIR` names the directory, defaults to
 `build/icons`, and is the seam a consumer swaps. The run-time file names live in

@@ -38,3 +38,14 @@ export declare function llamaPackagePlan(
   arch: string,
   backends: readonly string[],
 ): LlamaPackageDecision[];
+
+export interface PackageContractIo {
+  readPackageJson: (dir: string) => { dependencies?: Record<string, string> } | undefined;
+  join: (...parts: string[]) => string;
+}
+
+export declare function hoistedDependencies(
+  io: PackageContractIo,
+  nodeModules: string,
+  roots: readonly string[],
+): string[];

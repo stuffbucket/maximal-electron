@@ -20,7 +20,7 @@
 
 import { randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { existsSync, renameSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, renameSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -31,7 +31,28 @@ const FLAG = '--self-check=terminal';
 const TOKEN_FLAG = '--self-check-token=';
 const FAILED = 'self-check terminal: failed';
 
+/**
+ * The second check. Kept in step with `src/main/native/llama-protocol.ts` by
+ * `tests/llama-protocol.test.ts`.
+ */
+const LLAMA_FLAG = '--self-check=llama';
+const LLAMA_OK = 'self-check llama: ok';
+const LLAMA_FAILED = 'self-check llama: failed';
+const LLAMA_NO_LIBRARY = 'did not load llama.cpp';
+const LLAMA_GATED = 'self-check llama: gated';
+
 const LAUNCH_TIMEOUT_MS = 90_000;
+
+/**
+ * The llama launches get their own, longer limit.
+ *
+ * The application times itself out and prints a line naming the phase it was
+ * waiting in — `engineCheckTimeoutMs` in `src/main/native/llama-protocol.ts`,
+ * which is 180 s on Windows. A driver that killed it at 90 s would replace
+ * that diagnosis with `killed after 90000 ms`, which says nothing. This has to
+ * stay above whatever the application allows itself. Issue #133.
+ */
+const LLAMA_LAUNCH_TIMEOUT_MS = 240_000;
 
 const failures = [];
 const check = (ok, message) => {
@@ -61,6 +82,11 @@ function target() {
       resources: path.join(app, 'Contents/Resources'),
       fragile: 'spawn-helper',
       heading: 'Reproducing #88: moving spawn-helper aside',
+      // What `llama-protocol.ts` calls the fault `process.abort()` raises in
+      // the engine. Observed on this platform: Electron reports a POSIX signal
+      // death as the bare signal number, and 6 is SIGABRT.
+      abortName: 'SIGABRT',
+      engineGated: false,
     };
   }
   if (process.platform === 'win32') {
@@ -70,6 +96,15 @@ function target() {
       resources: path.join(directory, 'resources'),
       fragile: 'conpty.node',
       heading: 'The same defect as #88, one platform over: moving conpty.node aside',
+      // Windows reports a status code rather than a signal, and which one a
+      // CRT `abort()` produces has not been observed from a run. The check
+      // below still requires the supervisor to have named it as a fault, so
+      // an unrecognised code fails here with the number in the log rather
+      // than passing quietly. Issue #133.
+      abortName: undefined,
+      // The engine does not finish loading here. `embeddedEngineStatus` gates
+      // the provider off, and this check asserts that gate. Issue #149.
+      engineGated: true,
     };
   }
   return undefined;
@@ -82,8 +117,9 @@ if (!platform) {
 }
 
 const { binary: BINARY, fragile: FRAGILE, heading: HEADING } = platform;
+const RESOURCES = platform.resources;
 const NATIVE = path.join(
-  platform.resources,
+  RESOURCES,
   `app.asar.unpacked/node_modules/node-pty/prebuilds/${process.platform}-${process.arch}`,
   FRAGILE,
 );
@@ -100,10 +136,11 @@ if (!existsSync(BINARY)) {
 if (existsSync(ASIDE) && !existsSync(NATIVE)) renameSync(ASIDE, NATIVE);
 
 /** Run the packaged binary once, with a fresh token. */
-function launch() {
+function launch(args, timeoutMs = LAUNCH_TIMEOUT_MS) {
   const token = randomBytes(8).toString('hex');
   return new Promise((resolve) => {
-    const child = spawn(BINARY, [FLAG, `${TOKEN_FLAG}${token}`], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const argv = args ?? [FLAG, `${TOKEN_FLAG}${token}`];
+    const child = spawn(BINARY, argv, { stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
     let timedOut = false;
@@ -111,24 +148,27 @@ function launch() {
     const timer = setTimeout(() => {
       timedOut = true;
       child.kill('SIGKILL');
-    }, LAUNCH_TIMEOUT_MS);
+    }, timeoutMs);
 
     child.stdout.on('data', (chunk) => (stdout += chunk));
     child.stderr.on('data', (chunk) => (stderr += chunk));
     child.on('error', (error) => {
       clearTimeout(timer);
-      resolve({ token, stdout, stderr: `${stderr}${String(error)}`, code: null, signal: null, timedOut });
+      resolve({ token, stdout, stderr: `${stderr}${String(error)}`, code: null, signal: null, timedOut, timeoutMs });
     });
     child.on('close', (code, signal) => {
       clearTimeout(timer);
-      resolve({ token, stdout, stderr, code, signal, timedOut });
+      resolve({ token, stdout, stderr, code, signal, timedOut, timeoutMs });
     });
   });
 }
 
 function describe(run) {
+  // The limit comes off the run, not off the constant. The llama launches use
+  // a longer one, and a message naming the wrong number is how a reader
+  // mis-calibrates the next timeout.
   const status = run.timedOut
-    ? `killed after ${String(LAUNCH_TIMEOUT_MS)} ms`
+    ? `killed after ${String(run.timeoutMs)} ms`
     : `exit ${String(run.code)}${run.signal ? ` signal ${run.signal}` : ''}`;
   return `${status}\n${[run.stdout, run.stderr].join('').trimEnd()}`;
 }
@@ -184,10 +224,123 @@ check(
   `${FRAGILE} is back where it was`,
 );
 
+/* ------------------------------ and the engine runs, and can be survived */
+
+/**
+ * The llama.cpp half. Issue #133.
+ *
+ * `verify:package` reads names out of the archive listing, and until this ran,
+ * `docs/architecture.md` said in as many words that nothing exercised the
+ * packaged llama.cpp. A name in a listing is not a library that loads: #88 is
+ * the same shape, and it shipped.
+ *
+ * The application forks its engine as a `utilityProcess`, makes it load
+ * `node-llama-cpp` out of `app.asar.unpacked`, then makes it abort in native
+ * code. A pass means both halves: the library resolved from the child, and the
+ * main process outlived the abort well enough to print a line about it.
+ */
+console.log('\nLoading llama.cpp in the engine process, then killing it\n');
+
+const engine = await launch([LLAMA_FLAG], LLAMA_LAUNCH_TIMEOUT_MS);
+console.log(`${describe(engine)}\n`);
+
+if (platform.engineGated) {
+  /**
+   * Where the engine is gated off, the gate is what gets asserted. Issue #149.
+   *
+   * Not a skip. A skip stops examining anything, and the failure this guards
+   * is precise: a user on this platform reaching the embedded provider and
+   * getting a spinner forever. So the application has to say why, and it has
+   * to exit rather than hang.
+   */
+  check(engine.code === 0, 'the packaged application exits rather than hanging');
+  check(
+    engine.stdout.includes(LLAMA_GATED),
+    'it reports the embedded engine as gated on this platform',
+  );
+  check(
+    engine.stdout.includes('#149'),
+    'the gate names the issue that retires it',
+  );
+  check(!engine.stdout.includes(LLAMA_OK), 'it does not claim an engine that works');
+  console.log(
+    `  skip   the #113 reproduction needs a working engine, which ${process.platform} gates off`,
+  );
+} else {
+  check(engine.code === 0, 'the packaged application survives a native abort in the engine');
+  check(
+    engine.stdout.includes(LLAMA_OK),
+    'the engine loaded llama.cpp and the main process reported its death',
+  );
+  // The supervisor must have recognised the death as a fault rather than as an
+  // ordinary exit. This is the assertion that holds on every platform: an exit
+  // code `llama-protocol.ts` cannot name reads as "exited with code N", and the
+  // number is then in the log above to be pinned.
+  check(
+    engine.stdout.includes(LLAMA_OK) && !engine.stdout.includes('exited with code'),
+    'it names a native fault rather than a bare exit code',
+  );
+  check(
+    engine.stdout.includes(platform.abortName),
+    `it reports the fault as ${platform.abortName}`,
+  );
+
+  /**
+   * The floor for that one. With the prebuild scope gone, the engine cannot load
+   * llama.cpp, and the check must say so rather than pass — and the application
+   * must still exit rather than hang, because a crash the supervisor never hears
+   * about is the failure this whole change exists to remove.
+   */
+  console.log('Reproducing #113: moving the @node-llama-cpp scope aside\n');
+
+  const SCOPE = path.join(RESOURCES, 'app.asar.unpacked/node_modules/@node-llama-cpp');
+  const SCOPE_ASIDE = `${SCOPE}.aside`;
+  if (existsSync(SCOPE_ASIDE) && !existsSync(SCOPE)) renameSync(SCOPE_ASIDE, SCOPE);
+
+  if (!existsSync(SCOPE)) {
+    console.error(`No llama.cpp prebuild scope at ${path.relative(ROOT, SCOPE)}.`);
+    process.exit(1);
+  }
+  const scopeEntries = readdirSync(SCOPE).length;
+
+  let noEngine;
+  try {
+    renameSync(SCOPE, SCOPE_ASIDE);
+    noEngine = await launch([LLAMA_FLAG], LLAMA_LAUNCH_TIMEOUT_MS);
+  } finally {
+    renameSync(SCOPE_ASIDE, SCOPE);
+  }
+
+  console.log(`${describe(noEngine)}\n`);
+
+  check(noEngine.code !== 0, 'the llama check fails with no prebuild scope');
+  check(
+    noEngine.stdout.includes(LLAMA_FAILED),
+    'it fails by reporting the engine, not by dying before the check',
+  );
+  // Not merely "it failed". Removing the wait on `app.whenReady()` once made both
+  // this run and the real one die at the fork with the same message, and the two
+  // assertions above passed on it. This is the branch reached only after the
+  // engine started, so it tells a library that will not load apart from an engine
+  // that never ran.
+  check(
+    noEngine.stdout.includes(LLAMA_NO_LIBRARY),
+    'it fails because the library would not load, not because nothing started',
+  );
+  check(!noEngine.stdout.includes(LLAMA_OK), 'no pass line comes back when nothing loaded');
+  check(
+    existsSync(SCOPE) && readdirSync(SCOPE).length === scopeEntries && !existsSync(SCOPE_ASIDE),
+    'the prebuild scope is back where it was',
+  );
+}
+
 /* --------------------------------------------------------------- result */
 
 if (failures.length > 0) {
   console.error(`\n${String(failures.length)} check(s) failed.`);
   process.exit(1);
 }
-console.log('\nThe packaged application opened a shell, and cannot pass without one.');
+console.log(
+  '\nThe packaged application opened a shell, and cannot pass without one.\n' +
+    'It loaded llama.cpp out of process, and outlived it aborting.',
+);

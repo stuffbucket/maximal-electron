@@ -1,24 +1,26 @@
 import { existsSync, statSync } from 'node:fs';
-import { mkdir, rename, rm, stat } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 
 import { app } from 'electron';
 
 import type { ModelProgress } from '../../shared/ipc.js';
 
+import { listen, send } from './llama-host.js';
+
 /**
- * The embedded model: download, load, and unload. The floor under the provider
- * chain, so that the application is never useless with nothing installed. See
- * `docs/agent.md`.
+ * The embedded model: where the weights live, and how they get there. The
+ * floor under the provider chain, so that the application is never useless
+ * with nothing installed. See `docs/agent.md`.
  *
  * The weights are not in the package. They are a third of a gigabyte and
  * change on a different schedule to the application, so shipping them would pin
  * the model to the app version and put that download on every update.
  *
- * `node-llama-cpp` is ESM only while this bundle is CommonJS, and Rollup
- * rewrites a plain dynamic import into `require`, which cannot load it. The
- * `Function` constructor below hides the import from the bundler. Main process
- * only: the library crashes a renderer.
+ * **Nothing here loads `node-llama-cpp`.** The engine runs in a
+ * `utilityProcess` because a native abort is not catchable and took the whole
+ * application with it; `src/main/llama-worker.ts` is the only file that loads
+ * the library, and `llama-host.ts` supervises it. Issue #133.
  */
 
 /**
@@ -46,16 +48,6 @@ export const EMBEDDED_MODEL_MB = MODEL.approxMb;
 /** Smallest plausible weights file. Guards against a truncated download. */
 const MIN_MODEL_BYTES = 100_000_000;
 
-type EsmImport = (specifier: string) => Promise<Record<string, unknown>>;
-const esmImport = new Function(
-  's',
-  'return import(s)',
-) as unknown as EsmImport;
-
-export async function loadLlamaModule(): Promise<Record<string, unknown>> {
-  return esmImport('node-llama-cpp');
-}
-
 /* ----------------------------------------------------------------- paths */
 
 export function modelPath(): string {
@@ -65,22 +57,6 @@ export function modelPath(): string {
   const override = process.env['STUFFBUCKET_MODEL_PATH'];
   if (override) return override;
   return path.join(app.getPath('userData'), 'models', MODEL.file);
-}
-
-/**
- * Directory the weights live in.
- *
- * Derived from `modelPath` rather than computed alongside it. When the two
- * were independent, the override moved the file but not the directory, so a
- * download created the default folder and then renamed across to the override.
- */
-function modelDir(): string {
-  return path.dirname(modelPath());
-}
-
-/** Where a download lands before it is complete. */
-function partialPath(): string {
-  return `${modelPath()}.part`;
 }
 
 /**
@@ -104,11 +80,10 @@ export function isModelPresent(): boolean {
 /* -------------------------------------------------------------- download */
 
 let inFlight: Promise<ModelProgress> | undefined;
-let controller: AbortController | undefined;
 
 /** Stop a download in progress. The partial file is left for a later resume. */
 export function cancelModelDownload(): void {
-  controller?.abort();
+  if (inFlight) send({ kind: 'cancel-download' });
 }
 
 /**
@@ -116,7 +91,8 @@ export function cancelModelDownload(): void {
  *
  * Concurrent callers share one download rather than racing for the same file.
  * Progress is reported through `onProgress`, which the main process forwards
- * as `model:progress` events.
+ * as `model:progress` events. The bytes arrive in the engine process; this
+ * side only relays what it is told.
  */
 export async function ensureModel(
   onProgress: (progress: ModelProgress) => void,
@@ -126,136 +102,56 @@ export async function ensureModel(
 
   inFlight = download(onProgress).finally(() => {
     inFlight = undefined;
-    controller = undefined;
   });
   return inFlight;
 }
 
-async function download(
+function download(
   onProgress: (progress: ModelProgress) => void,
 ): Promise<ModelProgress> {
-  controller = new AbortController();
-  const target = modelPath();
-  const partial = partialPath();
+  return new Promise((resolve) => {
+    const id = randomUUID();
+    let last: ModelProgress = { state: 'downloading', received: 0, total: 0 };
 
-  try {
-    await mkdir(modelDir(), { recursive: true });
-
-    const nlc = await loadLlamaModule();
-    const createModelDownloader = nlc.createModelDownloader as (
-      options: Record<string, unknown>,
-    ) => Promise<{
-      totalSize: number;
-      download: (options?: { signal?: AbortSignal }) => Promise<string>;
-    }>;
-
-    let total = 0;
-    const downloader = await createModelDownloader({
-      modelUri: MODEL.url,
-      dirPath: modelDir(),
-      fileName: path.basename(partial),
-      // Keep a partial file on cancel so a retry resumes rather than restarts.
-      deleteTempFileOnCancel: false,
-      onProgress: ({ totalSize, downloadedSize }: {
-        totalSize: number;
-        downloadedSize: number;
-      }) => {
-        total = totalSize;
-        onProgress({
-          state: 'downloading',
-          received: downloadedSize,
-          total: totalSize,
-        });
-      },
+    const stop = listen(id, (event) => {
+      if (event.kind === 'progress') {
+        last = event.progress;
+        onProgress(last);
+        return;
+      }
+      if (event.kind === 'failed') {
+        // The engine died mid-download. The reason names the fault, so the
+        // download card says what happened rather than stalling at a
+        // percentage that will never move.
+        stop();
+        last = { state: 'error', reason: event.reason };
+        onProgress(last);
+        resolve(last);
+        return;
+      }
+      if (event.kind === 'done') {
+        stop();
+        resolve(last);
+      }
     });
 
-    onProgress({ state: 'downloading', received: 0, total: downloader.totalSize });
-    await downloader.download({ signal: controller.signal });
-
-    // Only now does the file take its real name. Anything that dies before
-    // this point leaves a `.part`, which `isModelPresent` does not accept.
-    const written = await stat(partial).catch(() => undefined);
-    if (!written || written.size < MIN_MODEL_BYTES) {
-      throw new Error(
-        `Downloaded ${String(written?.size ?? 0)} bytes of an expected ` +
-          `${String(total || downloader.totalSize)}, which is too small to be the model.`,
-      );
+    try {
+      send({
+        kind: 'ensure-model',
+        id,
+        modelPath: modelPath(),
+        url: MODEL.url,
+        minBytes: MIN_MODEL_BYTES,
+      });
+    } catch (error) {
+      // The engine has crashed too often to be started again.
+      stop();
+      const failed: ModelProgress = {
+        state: 'error',
+        reason: error instanceof Error ? error.message : String(error),
+      };
+      onProgress(failed);
+      resolve(failed);
     }
-    await rename(partial, target);
-
-    const ready: ModelProgress = { state: 'ready' };
-    onProgress(ready);
-    return ready;
-  } catch (error) {
-    const aborted = controller?.signal.aborted === true;
-    const reason = aborted
-      ? 'Download cancelled.'
-      : describeDownloadFailure(error);
-
-    // A failed attempt that is not a cancellation may have left a corrupt
-    // partial. Clear it so a retry starts clean rather than resuming garbage.
-    if (!aborted) await rm(partial, { force: true }).catch(() => undefined);
-
-    const failed: ModelProgress = { state: 'error', reason };
-    onProgress(failed);
-    return failed;
-  }
-}
-
-/** Turn a network failure into something a person can act on. */
-function describeDownloadFailure(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  if (/ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ETIMEDOUT|fetch failed/i.test(message)) {
-    return 'Could not reach the model host. Check your network connection, then try again.';
-  }
-  if (/ENOSPC/i.test(message)) {
-    return 'Not enough disk space for the model.';
-  }
-  return `Download failed: ${message}`;
-}
-
-/* ------------------------------------------------------------ model load */
-
-interface LoadedModel {
-  model: unknown;
-}
-
-let loaded: LoadedModel | undefined;
-
-/**
- * Load the weights, once.
- *
- * Loading costs seconds and holds memory, so it is cached for the life of the
- * process. The overlay is summoned briefly and often, and paying that on every
- * summon would make the embedded path feel broken.
- *
- * There is deliberately no counterpart that frees them.
- *
- * Disposal is native async work. Started while the application is quitting, it
- * completes inside `node::Environment::RunCleanup`, and the addon then calls
- * `ThrowAsJavaScriptException` against an environment that is already being
- * torn down. The exception escapes into ggml's terminate handler and the
- * process aborts. That crashed every embedded run on exit while the test suite
- * stayed green, because the abort happens after the last assertion.
- *
- * Freeing memory microseconds before the process exits buys nothing. The
- * operating system reclaims it either way, so the safe thing is to never ask.
- */
-export async function getEmbeddedModel(): Promise<unknown> {
-  if (loaded) return loaded.model;
-  if (!isModelPresent()) {
-    throw new Error('The embedded model has not been downloaded yet.');
-  }
-
-  const nlc = await loadLlamaModule();
-  const getLlama = nlc.getLlama as () => Promise<{
-    loadModel: (options: { modelPath: string }) => Promise<{
-      dispose: () => Promise<void>;
-    }>;
-  }>;
-
-  const llama = await getLlama();
-  const model = await llama.loadModel({ modelPath: modelPath() });
-  loaded = { model };
-  return model;
+  });
 }
