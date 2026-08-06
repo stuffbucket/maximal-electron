@@ -27,9 +27,9 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
  *
  * It has come down once, from 1736, and only because code was deleted on
  * purpose: `embeddedEngineStatus` and the gated result `llamaCheckLine`
- * printed went with the Windows gate in #149. Lowering it for any other reason
- * is the defect. Say which deletion paid for it.
- */export const MUTANT_FLOOR = 1736;
+ * printed went with the Windows gate in #149, which is 15 mutants. Lowering it
+ * for any other reason is the defect. Say which deletion paid for it.
+ */export const MUTANT_FLOOR = 1721;
 
 /**
  * `// Stryker disable` suppressions, counted in mutants rather than comments
