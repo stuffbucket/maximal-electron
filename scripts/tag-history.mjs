@@ -68,7 +68,7 @@ export function evaluateTag({ tag, sha, tags = [], runs = [], dryRun = false }) 
   const version = parseVersion(tag);
   if (version === null) {
     fail('the tag names a version', `\`${tag}\` is not of the form \`v1.2.3\` or \`v1.2.3-beta.4\`.`);
-    return { tag, examinedTags: tags.length, examinedRuns: runs.length, findings, notes };
+    return { tag, dryRun, examinedTags: tags.length, examinedRuns: runs.length, findings, notes };
   }
 
   // A release branch sits at the shipped version until the bump, so a dry run

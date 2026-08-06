@@ -103,8 +103,8 @@ It reports one of three states per ruleset, and never merges two of them:
 | `UNPROTECTED` | A protection is missing or weaker than the floor | 1 |
 | `UNVERIFIED` | Nothing was found weakened, and an assertion could not be computed at all | 3 |
 
-A fourth exit, 2, means the rulesets could not be read, or that the run
-examined nothing. Silence has to be earned rather than defaulted to, so an
+A fourth exit, 2, means the rulesets could not be read at all, or that the check
+itself went blind. Silence has to be earned rather than defaulted to, so an
 unreadable run files an issue rather than passing.
 
 Four codes rather than pass and fail, because three of these are not "fine" and
@@ -167,7 +167,8 @@ Two rules:
 Both stay quiet for a re-run of a failed job on the same tag at the same
 commit, which is routine and legitimate.
 
-On a dispatch run there is no tag, so only the ordering is checked and the run
+On a dispatch run there is no tag, so only the ordering is checked, the run
+history is reported as not evaluated rather than as clean, and the conclusion
 says so. A release branch sits at the shipped version until the bump, so a dry
 run finding its own tag is the normal state; it is reported as a note and not a
 failure, because a dry run cuts nothing.
@@ -178,20 +179,33 @@ remote for eight minutes before any job read it.
 
 ## Both checks fail when they have nothing to check
 
-Each carries a floor with its own message, so the output distinguishes "this
-was wrong" from "there was nothing to look at".
+Each reports every assertion through `scripts/check-scope.mjs`, which prints the
+size of the set beside the message and fails on zero whatever the assertion
+said. So a run that reads no rulesets fails three assertions with
+`nothing to check: 0 live rulesets` rather than passing on the logic, and an
+emptied `EXPECTED` fails the one assertion that remains.
 
-`verify:rulesets` prints `Examined N live ruleset(s) against M expectation(s)`
-before it says anything else, fails when either number is zero, and — before it
-opens a socket — evaluates `EXPECTED` against a gutted copy of every ruleset it
-expects and stops if any of them comes back clean.
+Both also run a control they must fail, before any I/O. `verify:rulesets`
+evaluates `EXPECTED` against a gutted copy of every ruleset it expects — right
+name, wrong enforcement, wrong target, no rules, a bypass actor — and stops if
+any comes back clean. `verify:tag` replays the `v0.0.2` incident and a backwards
+cut, and stops if either goes undetected.
 
-`verify:tag` prints the number of runs and tags it read, replays the `v0.0.2`
-incident from `MOVED_TAG_FIXTURE` and a backwards cut before it reads anything
-real, and stops if either goes undetected. Its floors on scope are positive
-controls rather than count thresholds: a first release legitimately has no
-other tag, but a tag push always has its own tag and its own run, so their
-absence means the list was not read.
+`verify:tag`'s floors on scope are positive controls rather than count
+thresholds, because a legitimate zero exists: a first release has no other tag.
+A tag push, however, always has its own tag and its own workflow run, so their
+absence means a list was not read. On a dry run the run history cannot be read
+at all, so that assertion is not registered and the output says the history was
+not evaluated. An assertion nobody could compute must not be recorded as one
+that passed.
 
 See [`.claude/skills/write-a-check/SKILL.md`](../../.claude/skills/write-a-check/SKILL.md)
 for why every one of those sentences is there.
+
+## Neither module is mutated yet
+
+`scripts/rulesets.mjs` and `scripts/tag-history.mjs` are on the `DEFERRED` map
+in `scripts/mutation-scope.mjs`, against #125, with every other check module in
+`scripts/`. Their surviving mutants are almost all `StringLiteral` over the
+prose an operator reads, and moving a file off that map means getting it to 100
+first. `docs/testing.md` holds the rule.
