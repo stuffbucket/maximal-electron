@@ -109,10 +109,15 @@ const SIGBUS: Readonly<Record<string, number>> = { darwin: 10, linux: 7 };
 /**
  * Windows reports a status code rather than a signal.
  *
- * 134 is not one. It is the POSIX `128 + SIGABRT` convention, and it is what
- * Electron reported for the engine's own `process.abort()` on `windows-latest`
- * once the packaged self check got that far. Measured, not assumed: run
- * 31108183394 printed `exited with code 134` and the check failed over it.
+ * 134 is not one. It is `node::ExitCode::kAbort`, and on Windows Node defines
+ * `ABORT_NO_BACKTRACE()` as `_exit(134)` rather than as `abort()`, so
+ * `process.abort()` there is a clean exit and raises nothing. Nothing faults,
+ * so Crashpad records nothing; the engine's self check uses `process.crash()`
+ * instead. Issue #156. The entry stays because a fatal error inside Node still
+ * ends the child this way.
+ *
+ * A Windows code here also depends on Crashpad running: the same fault reports
+ * `0xC0000005` with the handler installed and `0xffff7003` without it.
  */
 const WINDOWS_FAULTS: Readonly<Record<number, string>> = {
   134: 'SIGABRT',

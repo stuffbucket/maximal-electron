@@ -342,10 +342,12 @@ function handle(request: EngineRequest): void {
       return;
     }
     case 'crash-on-purpose':
-      // The packaged self check. `process.abort()` raises SIGABRT from native
-      // code, which is what an out-of-memory inside ggml does, and it is the
-      // one thing no `try` in this file could catch.
-      process.abort();
+      // The packaged self check, and the one thing no `try` in this file could
+      // catch. `process.crash()` writes through a null pointer, so it faults on
+      // every platform. Not `process.abort()`: Node defines that as
+      // `_exit(134)` on Windows, which is a clean exit and no crash at all.
+      // Issue #156.
+      process.crash();
   }
 }
 

@@ -64,9 +64,9 @@ describe('faultName', () => {
   });
 
   it('names the one Windows code that is not a status code', () => {
-    // The engine's own `process.abort()`. Electron reported 134 for it on
-    // `windows-latest`, which is `128 + SIGABRT` rather than an NTSTATUS, and
-    // the packaged check failed over it before this line existed.
+    // `node::ExitCode::kAbort`. Node defines `ABORT_NO_BACKTRACE()` as
+    // `_exit(134)` on Windows, so `process.abort()` exits cleanly there and
+    // Electron reported 134 on `windows-latest`. Issue #156.
     expect(faultName(134, 'win32')).toBe('SIGABRT');
     expect(faultName(134, 'darwin')).toBeUndefined();
   });

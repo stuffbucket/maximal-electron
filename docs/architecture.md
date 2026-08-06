@@ -332,9 +332,9 @@ system can reclaim by killing one process.
 `npm run smoke:packaged` now launches the installed binary with
 `--self-check=llama`, on both packaging hosts. The application forks its engine,
 makes it load `node-llama-cpp` out of `app.asar.unpacked` through a
-`utilityProcess`, and then makes it abort in native code. A pass needs both
+`utilityProcess`, and then makes it fault in native code. A pass needs both
 halves: the library resolved from the child, and the main process outlived the
-abort well enough to print a line about it. A negative control moves the
+fault well enough to print a line about it. A negative control moves the
 `@node-llama-cpp` scope aside and requires the same run to fail by reporting the
 engine.
 
@@ -366,14 +366,20 @@ either way once the Metal shader cache is warm — 206 ms relocated against
 and costs about 9.4 s, which is inside the 60 s `engineCheckTimeoutMs` allows.
 
 **The fault name is pinned per platform, from a run rather than from a table.**
-macOS reports a signal death as the bare signal number, so `SIGABRT` is
-asserted by name against 6. Windows reports 134 for the same abort, which is
-the POSIX `128 + SIGABRT` convention and not an NTSTATUS at all; that was
-measured the first time the packaged Windows check got far enough to crash,
-and it failed the run until `faultName` learned it. The assertion that holds
+macOS reports a signal death as the bare signal number, so `SIGSEGV` is
+asserted by name against 11. Windows reports the status code, so
+`access violation` is asserted against `0xC0000005`. The assertion that holds
 everywhere is that the supervisor named it as a fault: a code
 `llama-protocol.ts` cannot name reads as "exited with code N", which fails the
-check and puts the number in the log to be pinned.
+check and puts the number in the log to be pinned. That is how #154 pinned 134,
+and how #156 found out what 134 was.
+
+**On Windows the code depends on the crash reporter being up.** The same
+`process.crash()` reports `0xC0000005` with Crashpad's handler installed and
+`native fault 0xffff7003` without it, measured by suppressing
+`startCrashReports()` on a `windows-latest` run. So a `0xffff7003` in a report
+means the reporter was not running, and is not a fault worth naming in the
+table.
 
 ## The embedded engine was gated off on Windows, and is not any more
 
@@ -437,7 +443,7 @@ The rung nothing had run was `--self-check=llama` inside `Stuffbucket.exe`,
 which the gate short-circuited. `smoke:packaged` runs it now, from a copy of
 the package outside this repository, and asserts the same four things it
 asserts on macOS: that the engine named a device, that the main process
-outlived the abort, that it named a fault rather than a bare exit code, and
+outlived the fault, that it named a fault rather than a bare exit code, and
 that the `#113` control fails by reporting a library that would not load.
 
 **The half that is upstream is untouched.** A build that ships a GPU backend —
@@ -489,9 +495,10 @@ those are the runs that crash on purpose. Nothing is uploaded: there is no
 **Where the dumps land.** `app.getPath('crashDumps')`, which is
 `<userData>/Crashpad`. On macOS the database holds `settings.dat` and the
 directories `pending/`, `completed/`, `new/` and `attachments/`, and a dump
-arrives as `pending/<uuid>.dmp` at 570 KB to 815 KB. `host/crash-artifacts.ts`
-scans it recursively rather than by name, because those names are Crashpad's
-and differ by platform.
+arrives as `pending/<uuid>.dmp` at 570 KB to 815 KB. On Windows it is
+`%APPDATA%\<product>\Crashpad`, read off a packaged `windows-latest` run, and
+the engine's dump is 34 MB. `host/crash-artifacts.ts` scans it recursively
+rather than by name, because those names are Crashpad's and differ by platform.
 
 **The call is what produces the artifact, not Electron on its own.** With the
 start suppressed and everything else unchanged, the same crash left no file and
@@ -501,12 +508,12 @@ Electron 43 before any of this was written.
 | Process | Covered | Established by |
 | --- | --- | --- |
 | `utilityProcess` (the engine), macOS | yes | `npm run verify:crash-artifact` on a packaged build |
-| `utilityProcess` (the engine), Windows | **no** | The engine aborts, the application survives, and Crashpad writes nothing. Issue #156 |
+| `utilityProcess` (the engine), Windows | yes | `npm run verify:crash-artifact` on a packaged build. Issue #156 |
 | Renderer | yes | A `forcefullyCrashRenderer` run on Electron 43. No check drives it |
 | Main | yes | A `process.crash()` run on Electron 43. No check drives it |
 
 The `utilityProcess` is the one worth checking. Since #144 the application
-survives a native abort in the engine, so that crash now leaves nothing behind
+survives a native fault in the engine, so that crash now leaves nothing behind
 except a sentence that scrolls away. The other two end the process, which is at
 least visible.
 
@@ -528,21 +535,32 @@ outside this repository for the reason above. The first run is
 `--self-check=terminal`: it starts the reporter, crashes nothing, and must
 leave a database with no dump in it. The second is `--self-check=llama` —
 #144's crash, not a new one — which forks the engine, loads the packaged
-llama.cpp, and calls `process.abort()` in native code. That run must leave a
-dump where the first left none.
+llama.cpp, and calls `process.crash()` in it. That run must leave a dump where
+the first left none, on both packaging hosts.
 
 Both platforms crash now. #149's Windows gate is retired, so a run that does
 not report the engine loading and dying is a defect rather than a disposition,
 and the check demands that on both packaging hosts.
 
-**Only macOS leaves a file, and that is a finding rather than a disposition.**
-The same abort on `windows-latest` exits the utility process with 134 — the
-POSIX `128 + SIGABRT` convention, not a structured exception — and Crashpad
-writes nothing in the 30 s the check waits. The database is on disk, so the
-reporter started; the supervisor names the fault, so the engine really died.
-Nothing could have seen this before, because the engine never got far enough to
-crash on Windows. The check asserts what happens there rather than skipping, so
-a Windows dump appearing fails it. Issue #156.
+**`process.abort()` was the wrong instrument, and that is what #156 was.** Node
+defines `ABORT_NO_BACKTRACE()` as `_exit(134)` on Windows rather than as
+`abort()`, so the engine's `process.abort()` never faulted there: it exited
+cleanly with Node's own abort exit code. Nothing raised an exception, so
+Crashpad had nothing to record, and the coverage table said **no** for a
+platform whose reporter was working the whole time. The 134 in `faultName` is
+that exit code, not a signal and not an NTSTATUS.
+
+Electron's `process.crash()` writes through a null pointer, which faults on
+every platform — SIGSEGV on macOS, `STATUS_ACCESS_VIOLATION` on Windows — and
+`shell/services/node/node_service.cc` binds it into the utility process as well
+as the main one. The engine uses it, and both platforms leave a dump.
+
+**A native `abort()` from inside a loaded library is still not covered on
+Windows**, and no check here can cover it: it is
+[electron#36862](https://github.com/electron/electron/issues/36862), confirmed
+upstream and open. So a fault in ggml is recorded and an assertion failure
+inside it may not be. That is a narrower gap than #156 described, and it is
+upstream rather than here.
 
 ## The terminal a consumer gets
 

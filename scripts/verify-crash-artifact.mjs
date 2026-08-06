@@ -10,15 +10,13 @@
  * databases are compared.
  *
  * The crash is #144's, not a new one. `--self-check=llama` forks the engine as
- * a `utilityProcess`, loads the packaged library, and calls `process.abort()`
- * inside it. That is the case worth covering now: since #144 the application
- * survives it, so it is the crash least likely to be noticed and the one most
- * in need of a record.
+ * a `utilityProcess`, loads the packaged library, and faults inside it. That is
+ * the case worth covering now: since #144 the application survives it, so it is
+ * the crash least likely to be noticed and the one most in need of a record.
  *
  * This covers the engine's `utilityProcess` and nothing else. The main process
- * and the renderer use the same reporter and no check drives either. It covers
- * the artifact on macOS and only the crash on Windows, where Crashpad writes
- * nothing for this abort. See `docs/architecture.md`.
+ * and the renderer use the same reporter and no check drives either. See
+ * `docs/architecture.md`.
  *
  * The package is launched from a copy outside this repository. Issue #149.
  *
@@ -72,28 +70,14 @@ const NO_DUMP_GRACE_MS = 10_000;
  * The floor on a dump's size.
  *
  * Observed at 570 KB to 815 KB across engine, renderer and main process
- * crashes on `darwin-arm64`. This rejects a zero-length placeholder; it does
- * not pin a size, because nothing here controls what Crashpad writes.
+ * crashes on `darwin-arm64`, and at 34 MB for the engine on `win32-x64`. This
+ * rejects a zero-length placeholder; it does not pin a size, because nothing
+ * here controls what Crashpad writes.
  */
 const MIN_DUMP_BYTES = 4096;
 
 /** Where Electron puts the Crashpad database, relative to the profile. */
 const DATABASE = 'Crashpad';
-
-/**
- * Whether this platform records the engine's abort as a crash artifact.
- *
- * macOS does. `process.abort()` raises SIGABRT and Crashpad writes a minidump
- * of about 800 KB.
- *
- * Windows does not, and every other half of it works: the database is on disk,
- * the supervisor names the fault, the application survives, and Crashpad
- * writes nothing in 30 s. The abort goes through the CRT rather than through a
- * structured exception, and Electron reports it as exit code 134. Nothing
- * could have seen that until #149 let the packaged engine crash there at all.
- * Issue #156.
- */
-const DUMPS_ON_ABORT = process.platform !== 'win32';
 
 const built = packagedApp();
 if (!built) {
@@ -266,12 +250,12 @@ check(cleanDumps.length === 0, 'and it holds no minidump, because nothing crashe
 /**
  * The crash, from #144 rather than invented here.
  *
- * The engine loads the packaged llama.cpp in a `utilityProcess` and then calls
- * `process.abort()` in native code. The application survives it, which is
- * exactly why an artifact matters: nothing about the run says a fault occurred
- * once the sentence scrolls past.
+ * The engine loads the packaged llama.cpp in a `utilityProcess` and then faults
+ * in native code. The application survives it, which is exactly why an artifact
+ * matters: nothing about the run says a fault occurred once the sentence
+ * scrolls past.
  */
-console.log('A run where the engine aborts in native code\n');
+console.log('A run where the engine faults in native code\n');
 
 const crashed = await launch([LLAMA_FLAG], LLAMA_TIMEOUT_MS);
 console.log(`${describe(crashed, LLAMA_TIMEOUT_MS)}\n`);
@@ -282,8 +266,9 @@ console.log(`${describe(crashed, LLAMA_TIMEOUT_MS)}\n`);
  *
  * Every platform crashes now: #149's Windows gate is retired, so a run that
  * does not report the engine loading and dying is a defect rather than a
- * disposition. What differs by platform is only whether Crashpad records it,
- * and that is `DUMPS_ON_ABORT` above.
+ * disposition. Every platform records it too, since #156: the fault is a null
+ * dereference rather than `process.abort()`, which Node turns into a clean
+ * `_exit(134)` on Windows.
  */
 check(crashed.stdout.includes(LLAMA_OK), 'the run reports the engine as crashed', {
   count: 1,
@@ -294,40 +279,20 @@ check(crashed.code === 0, 'the application outlives whatever the engine did', {
   of: 'engine runs',
 });
 
-const crashDumps = await waitForDumps(crashed.database, DUMPS_ON_ABORT);
+const crashDumps = await waitForDumps(crashed.database, true);
 
-if (DUMPS_ON_ABORT) {
-  check(
-    crashDumps.length > cleanDumps.length,
-    'the engine crash left a minidump, where the run without a crash left none',
-    { count: crashDumps.length, of: 'minidumps' },
-  );
-  check(
-    crashDumps.every((dump) => statSync(dump).size >= MIN_DUMP_BYTES),
-    `every minidump is at least ${String(MIN_DUMP_BYTES)} bytes`,
-    { count: crashDumps.length, of: 'minidumps' },
-  );
-  for (const dump of crashDumps) {
-    console.log(`       ${path.basename(dump)}  ${String(statSync(dump).size)} bytes`);
-  }
-} else {
-  /**
-   * Not a skip, and not "nothing to check". The one thing that is true here is
-   * asserted: the reporter ran, and it wrote no minidump for the abort. The
-   * day Crashpad starts catching it, `crashDumps` stops being empty and this
-   * fails, which is how #156 gets noticed rather than remembered.
-   */
-  const entries = databaseEntries(crashed.database);
-  check(
-    crashDumps.length === 0 && entries.length > 0,
-    'the reporter ran and wrote no minidump for the abort, which is what this platform does',
-    { count: entries.length, of: 'crash database files after the abort' },
-  );
-  console.log(
-    '\n  note  no crash artifact is proven on this platform. The engine really\n' +
-      '        aborts and the application really survives; Crashpad writes\n' +
-      '        nothing for it. Issue #156.',
-  );
+check(
+  crashDumps.length > cleanDumps.length,
+  'the engine crash left a minidump, where the run without a crash left none',
+  { count: crashDumps.length, of: 'minidumps' },
+);
+check(
+  crashDumps.every((dump) => statSync(dump).size >= MIN_DUMP_BYTES),
+  `every minidump is at least ${String(MIN_DUMP_BYTES)} bytes`,
+  { count: crashDumps.length, of: 'minidumps' },
+);
+for (const dump of crashDumps) {
+  console.log(`       ${path.basename(dump)}  ${String(statSync(dump).size)} bytes`);
 }
 
 for (const run of [clean, crashed]) rmSync(run.profile, { recursive: true, force: true });
