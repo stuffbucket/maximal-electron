@@ -26,6 +26,10 @@ import { describeToolCall, needsApproval, riskOf, type ToolRisk } from './approv
 import { runEmbedded } from './embedded.js';
 import { EMBEDDED_MODEL_LABEL, EMBEDDED_MODEL_MB, isModelPresent } from './llama.js';
 import { getPreferences } from './preferences.js';
+import {
+  resolveEndpoints,
+  type Endpoints,
+} from './provider-endpoint.js';
 import { buildToolsetTools, type RiskyTool } from './toolsets.js';
 
 /**
@@ -37,8 +41,33 @@ import { buildToolsetTools, type RiskyTool } from './toolsets.js';
  * plainly. Never demand a key. See `docs/agent.md` for the ranking and why.
  */
 
-const MAXIMAL_BASE = 'http://localhost:4141';
-const OLLAMA_BASE = 'http://localhost:11434';
+/** Where the two HTTP backends listen when nothing moves them. */
+const DEFAULT_ENDPOINTS = {
+  maximal: 'http://localhost:4141',
+  ollama: 'http://localhost:11434',
+} as const;
+
+type Backend = keyof typeof DEFAULT_ENDPOINTS | 'embedded';
+
+const PINS: readonly Backend[] = ['maximal', 'ollama', 'embedded'];
+
+/**
+ * The pin and the endpoints for this process, read fresh on every call.
+ *
+ * `provider-endpoint.ts` holds the rules the two environment variables obey.
+ * The names stay here, because this file owns the chain.
+ */
+function environment(): {
+  pin: Backend | undefined;
+  base: Endpoints<keyof typeof DEFAULT_ENDPOINTS>;
+} {
+  const pin = process.env['STUFFBUCKET_PROVIDER'] ?? '';
+  const address = process.env['STUFFBUCKET_PROVIDER_URL'] ?? '';
+  return {
+    pin: PINS.find((name) => name === pin),
+    base: resolveEndpoints(DEFAULT_ENDPOINTS, pin, address),
+  };
+}
 
 /** Wiggle pins this model for maximal. Keep them in step. */
 const MAXIMAL_MODEL = 'claude-haiku-4-5';
@@ -141,23 +170,31 @@ export async function discoverProvider(): Promise<ProviderStatus> {
   // Pin a provider, for testing and for support. Without it the embedded path
   // is unreachable on any machine that has a proxy running, which is every
   // machine that develops this.
-  const pinned = process.env['STUFFBUCKET_PROVIDER'];
-  if (pinned === 'embedded') {
+  const { pin, base } = environment();
+  if (pin === 'embedded') {
     return isModelPresent()
       ? { state: 'ready', provider: 'embedded', model: EMBEDDED_MODEL_LABEL }
       : { state: 'needs-model', model: EMBEDDED_MODEL_LABEL, approxMb: EMBEDDED_MODEL_MB };
   }
 
-  if (await reachable(`${MAXIMAL_BASE}/v1/models`)) {
+  if (pin !== 'ollama' && (await reachable(`${base.maximal}/v1/models`))) {
     return { state: 'ready', provider: 'maximal', model: MAXIMAL_MODEL };
   }
 
-  const tags = await fetchJson(`${OLLAMA_BASE}/api/tags`);
-  if (tags !== undefined) {
-    const model = chooseOllamaModel(tags);
-    if (model) return { state: 'ready', provider: 'ollama', model };
-    // Ollama is running but empty. Fall through: the embedded model is a
-    // better answer than telling someone to go and pull one.
+  if (pin !== 'maximal') {
+    const tags = await fetchJson(`${base.ollama}/api/tags`);
+    if (tags !== undefined) {
+      const model = chooseOllamaModel(tags);
+      if (model) return { state: 'ready', provider: 'ollama', model };
+      // Ollama is running but empty. Fall through: the embedded model is a
+      // better answer than telling someone to go and pull one.
+    }
+  }
+
+  // A pin that did not answer says so, rather than quietly becoming a
+  // different backend. Someone who named one wants that one.
+  if (pin !== undefined) {
+    return { state: 'unavailable', reason: `No ${pin} backend answered.` };
   }
 
   if (isModelPresent()) {
@@ -178,7 +215,11 @@ export async function discoverProvider(): Promise<ProviderStatus> {
  * OpenAI-compatible endpoint under `/v1`. Costs are zeroed because both run
  * locally, and pi only uses them for reporting.
  */
-function buildModel(provider: AgentProvider, id: string) {
+function buildModel(
+  provider: AgentProvider,
+  id: string,
+  base: Endpoints<keyof typeof DEFAULT_ENDPOINTS>,
+) {
   const zero = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 
   return provider === 'maximal'
@@ -187,7 +228,7 @@ function buildModel(provider: AgentProvider, id: string) {
         name: id,
         api: 'anthropic-messages' as const,
         provider: 'anthropic' as const,
-        baseUrl: MAXIMAL_BASE,
+        baseUrl: base.maximal,
         reasoning: false,
         input: ['text' as const],
         cost: zero,
@@ -199,7 +240,7 @@ function buildModel(provider: AgentProvider, id: string) {
         name: id,
         api: 'openai-completions' as const,
         provider: 'openai' as const,
-        baseUrl: `${OLLAMA_BASE}/v1`,
+        baseUrl: `${base.ollama}/v1`,
         reasoning: false,
         input: ['text' as const],
         cost: zero,
@@ -529,7 +570,7 @@ async function execute(prompt: string, sink: AgentSink): Promise<void> {
     },
 
     initialState: {
-      model: buildModel(status.provider, status.model),
+      model: buildModel(status.provider, status.model, environment().base),
       systemPrompt: SYSTEM_PROMPT,
       tools: built.tools,
     },

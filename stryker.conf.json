@@ -13,6 +13,7 @@
     "src/renderer/lib/data.ts",
     "src/renderer/lib/theme.ts",
     "src/main/native/approval.ts",
+    "src/main/native/provider-endpoint.ts",
     "src/main/native/grammar.ts",
     "src/main/native/ffmpeg.ts",
     "src/main/native/icons.ts",
