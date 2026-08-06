@@ -10,7 +10,9 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import process from 'node:process';
 
-const { flipFuses, FuseVersion, FuseV1Options } = await import('@electron/fuses');
+const { flipFuses, getCurrentFuseWire, FuseVersion, FuseV1Options } = await import(
+  '@electron/fuses'
+);
 
 const ROOT = process.cwd();
 const SOURCE = path.join(ROOT, 'node_modules', 'electron', 'dist');
@@ -33,6 +35,8 @@ await flipFuses(layout.app, {
   [FuseV1Options.RunAsNode]: false,
 });
 console.log(`[fuse-electron] RunAsNode burned off on ${layout.app}`);
+const wire = await getCurrentFuseWire(layout.app);
+console.log(`[fuse-electron] fuse wire now ${JSON.stringify(wire)}`);
 
 // The other half of the theory: it is the GPU prebuild that makes
 // node-llama-cpp fork a test process at all. With no vulkan package to

@@ -53,10 +53,12 @@ jobs:
             binary: out/Stuffbucket-win32-x64/Stuffbucket.exe
             unpacked: out/Stuffbucket-win32-x64/resources/app.asar.unpacked
             asar: out/Stuffbucket-win32-x64/resources/app.asar
+            package: out/Stuffbucket-win32-x64
           - os: macos-latest
             binary: out/Stuffbucket-darwin-arm64/Stuffbucket.app/Contents/MacOS/Stuffbucket
             unpacked: out/Stuffbucket-darwin-arm64/Stuffbucket.app/Contents/Resources/app.asar.unpacked
             asar: out/Stuffbucket-darwin-arm64/Stuffbucket.app/Contents/Resources/app.asar
+            package: out/Stuffbucket-darwin-arm64
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v5
@@ -106,3 +108,14 @@ jobs:
           PROBE_BOUND_MS: '90000'
           PROBE_HIDE_VULKAN: '1'
         run: node probe/fuse-electron.mjs .vite/build/llama-worker.js
+
+      - name: rung 4g, does the scratch Electron refuse to run as node
+        if: runner.os == 'Windows'
+        timeout-minutes: 5
+        run: node probe/fuse-fork.mjs probe-electron/electron.exe
+
+      - name: rung 4h, the package moved out of the repository tree
+        timeout-minutes: 10
+        env:
+          ELECTRON_ENABLE_LOGGING: '1'
+        run: node probe/relocate.mjs "${{ matrix.package }}"
