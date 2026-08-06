@@ -370,7 +370,7 @@ was wrong. Building the environment one rung at a time on `windows-latest`,
 | The same bundle read out of `app.asar` | `device=cpu loadMs=943` |
 
 The last two are the application's own engine, driven the way
-`src/main/native/llama-supervisor.ts` drives it. So the engine loads llama.cpp on
+`src/main/native/llama-host.ts` drives it. So the engine loads llama.cpp on
 Windows, and what remains is the packaged binary itself: the one rung nothing
 has run is `--self-check=llama` inside `Stuffbucket.exe`, which the gate
 short-circuits. Issue #149 carries the runs.
