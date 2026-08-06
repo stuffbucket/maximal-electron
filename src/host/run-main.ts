@@ -1,5 +1,6 @@
-import type { App, BrowserWindow } from 'electron';
+import type { App, BrowserWindow, CrashReporter } from 'electron';
 
+import { startCrashArtifacts } from './crash-artifacts.js';
 import { createHostWindow } from './host-window.js';
 import {
   RUN_MAIN_OPTIONS_VERSION,
@@ -21,6 +22,8 @@ export type { MainContext, RunMainOptions };
  */
 export interface MainRuntime {
   app: App;
+  /** Needed only by `collectCrashDumps`, and injected for the same reason. */
+  crashReporter?: CrashReporter;
   /** Defaults to `process.platform`. */
   platform?: string;
 }
@@ -46,6 +49,17 @@ export async function runMain(
 
   if (options.userDataDirectory !== undefined) {
     app.setPath('userData', options.userDataDirectory);
+  }
+
+  // After the profile, never before it. Crashpad reads `userData` once, when
+  // it starts, so a reporter started first files its dumps under the directory
+  // this application is about to stop using. Issue #134.
+  if (options.collectCrashDumps === true) {
+    const reporter = runtime.crashReporter;
+    if (!reporter) {
+      throw new Error('collectCrashDumps needs runtime.crashReporter.');
+    }
+    startCrashArtifacts({ app, crashReporter: reporter });
   }
 
   let window: BrowserWindow | undefined;
