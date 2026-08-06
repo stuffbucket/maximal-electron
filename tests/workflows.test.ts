@@ -157,8 +157,9 @@ describe('the release workflow', () => {
   });
 
   /**
-   * `stuffbucket/maximal` consumes the tarball and signs its own application,
-   * so a failed installer must not hold a release. See `docs/release.md`.
+   * The tarball is the only asset a release carries, and `stuffbucket/maximal`
+   * is what consumes it. Nothing else may gate the publish. See
+   * `docs/release.md`.
    */
   it('gates publish on the tarball alone', () => {
     expect(needsOf(release?.jobs?.['publish'] ?? {})).toEqual(['package-tarball']);
