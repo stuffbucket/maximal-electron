@@ -30,10 +30,24 @@ lesson learned. Prose next to the code did not stop it.
 
 ### Report how many things you examined
 
-`scripts/verify-docs.mjs` is the model. It prints
-`Verifying 16 documents against 194 files` before it says anything about pass
-or fail. A reader who knows there are seventeen documents can see the defect in
-that line. A bare `ok` line cannot carry that information.
+`scripts/check-scope.mjs` is the runner. `check(ok, message, { count, of })`
+prints the count beside the message, and fails on zero whatever `ok` says:
+
+```
+  ok   every documented script is in package.json  [58 `npm run` mentions]
+ FAIL  :root is legible  [nothing to check: 0 pairs judged]
+```
+
+It throws when a caller states no scope, so the third argument is not a
+convention anyone has to remember. `of` is a noun the caller picks, because the
+sets differ: a file scan counts files, a selector parser counts selectors, a
+package check counts targets. One abstraction over all three would fit none.
+
+`tests/check-scope.test.ts` reads `package.json`, takes every `verify:*` and
+`check:*` script, and requires each to use the runner. A script not moved over
+yet is named in `PENDING` there with the issue that will move it, and the test
+fails if an entry stops being true. A new check script is caught the day it is
+added, because it is in neither set.
 
 One count per assertion, not one per script. Instance 6 was a script with a
 correct total that hid a per-pattern zero.
@@ -89,20 +103,20 @@ dry run exists for the first half and `dry-run-artifacts` for the second.
 
 ## Still unfloored
 
-All three are known, and all three are the same shape as the six above.
-
-- `scripts/verify-docs.mjs` filters its roots by `existsSync` and reports the
-  surviving count. Rename `docs/` and it verifies `README.md` and `AGENTS.md`
-  alone, prints a smaller number, and exits zero.
-- `scripts/verify-docs.mjs` ends by printing `All documented names exist`, and
-  it checks three claim kinds: `npm run <script>`, a screaming-case constant,
-  and a markdown link. A file path in backticks is not one of them, so a
-  document may name a script that was deleted and still pass. Measured by
-  adding a reference to a `scripts/` file that does not exist: the run stayed
-  green.
 - `scripts/storybook-check.mjs:152` gives up on axe after twelve attempts and
   carries on with an empty violation list. A story that never lets axe run
   reads as clean.
+- The five `verify:*` scripts named in `PENDING` in `tests/check-scope.test.ts`
+  print bare `ok` lines. Their scopes are unstated, so an empty one is still
+  invisible.
+
+## What a scope does not catch
+
+A scoped-rename change broke `git archive --prefix`, and the check reported one
+of three assertions as passing. It had a scope, the scope was not zero, and it
+failed for the wrong reason. Counting the set an assertion ran over says
+nothing about whether the assertion measures what its message claims. That is a
+separate defect, and nothing here addresses it.
 
 ## Where this is written down
 

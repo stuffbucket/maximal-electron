@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  codeSpans,
   constants,
   links,
   npmScripts,
+  npmScriptsOutOfScope,
+  repoPaths,
   withoutFences,
 } from '../scripts/docs-claims.mjs';
 
@@ -62,6 +65,86 @@ describe('npmScripts', () => {
 
   it('ignores an unbackticked mention', () => {
     expect(npmScripts('You can npm run whatever you like.')).toEqual([]);
+  });
+
+  it('finds both halves of a compound command in one span', () => {
+    // The commands table writes this in a single pair of backticks. An
+    // anchored rule matched the first and dropped the second in silence, so
+    // `test:e2e` was named in three documents and checked in none.
+    expect(npmScripts('`npm run package && npm run test:e2e`')).toEqual([
+      'package',
+      'test:e2e',
+    ]);
+  });
+
+  it('finds a script named with an argument after it', () => {
+    expect(npmScripts('`npm run compose -- <name>`')).toEqual(['compose']);
+  });
+
+  it('still refuses a mention that only looks like one', () => {
+    // Widening the rule inside a span must not widen what counts as a span.
+    expect(npmScripts('`the npm running joke`')).toEqual([]);
+  });
+});
+
+describe('npmScriptsOutOfScope', () => {
+  it('counts what the fence rule deliberately drops', () => {
+    const text = ['`npm run lint`', '```bash', 'npm run other', '```'].join('\n');
+    expect(npmScriptsOutOfScope(text)).toBe(1);
+  });
+
+  it('is zero when every mention is a claim', () => {
+    expect(npmScriptsOutOfScope('`npm run lint`')).toBe(0);
+  });
+});
+
+describe('codeSpans', () => {
+  it('returns the contents of each span, fences removed', () => {
+    const text = ['`a` and `b`', '```', '`c`', '```'].join('\n');
+    expect(codeSpans(text)).toEqual(['a', 'b']);
+  });
+
+  it('does not join two spans across a line break', () => {
+    expect(codeSpans('`a`\ntext\n`b`')).toEqual(['a', 'b']);
+  });
+});
+
+describe('repoPaths', () => {
+  const roots = ['scripts', 'src', 'docs'];
+
+  it('finds a backticked path under a declared root', () => {
+    expect(repoPaths('See `scripts/verify-docs.mjs`.', roots)).toEqual([
+      'scripts/verify-docs.mjs',
+    ]);
+  });
+
+  it('trims a line reference to the file it points at', () => {
+    expect(repoPaths('`scripts/storybook-check.mjs:152` gives up.', roots)).toEqual([
+      'scripts/storybook-check.mjs',
+    ]);
+  });
+
+  it('keeps a glob, because a pattern matching nothing is the defect', () => {
+    expect(repoPaths('`src/renderer/*.html`', roots)).toEqual(['src/renderer/*.html']);
+  });
+
+  it('ignores a span that is a command rather than a path', () => {
+    // `npm run x` and a sentence in backticks both start with no root, and a
+    // span with a space in it is prose however it starts.
+    expect(repoPaths('`npm run package` and `scripts/a.mjs and more`', roots)).toEqual([]);
+  });
+
+  it('ignores a bare root, which is an English word', () => {
+    expect(repoPaths('The `scripts` directory and `src`.', roots)).toEqual([]);
+  });
+
+  it('ignores a path under a root that was not declared', () => {
+    expect(repoPaths('`node_modules/foo/index.js`', roots)).toEqual([]);
+  });
+
+  it('ignores a path inside a fenced block', () => {
+    const text = ['```', 'scripts/from-another-project.mjs', '```'].join('\n');
+    expect(repoPaths(text, roots)).toEqual([]);
   });
 });
 
