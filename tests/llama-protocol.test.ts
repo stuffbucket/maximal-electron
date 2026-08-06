@@ -5,11 +5,13 @@ import { describe, expect, it } from 'vitest';
 import {
   CRASH_LIMIT,
   CRASH_WINDOW_MS,
+  ENGINE_LIFECYCLE,
   LLAMA_CHECK_FAILED,
   LLAMA_CHECK_FLAG,
   LLAMA_CHECK_OK,
   LLAMA_NO_LIBRARY,
   describeEngineExit,
+  describeEngineWait,
   exhaustedMessage,
   faultName,
   llamaCheckLine,
@@ -175,6 +177,48 @@ describe('the restart budget', () => {
     expect(message).toContain('The model engine crashed.');
     expect(message).toContain(String(CRASH_LIMIT));
     expect(message).toContain('restarts');
+  });
+});
+
+describe('describeEngineWait', () => {
+  /**
+   * The first Windows run of the packaged self check ended in `no answer in
+   * 60000 ms`, which is consistent with a child that never forked, one whose
+   * port never carried the request, and one that is merely slow. Every phase
+   * has to read differently or the message is worth nothing.
+   */
+  const phases = ['not started', 'forked', 'running', 'loaded'] as const;
+
+  it('says something different for every phase', () => {
+    const said = phases.map((phase) => describeEngineWait(phase, 60_000));
+    expect(new Set(said).size).toBe(phases.length);
+  });
+
+  it('names the phase and the wait in each', () => {
+    for (const phase of phases) {
+      const message = describeEngineWait(phase, 60_000);
+      expect(message, phase).toContain('60000 ms');
+      expect(message, phase).toContain(`phase ${phase}`);
+    }
+  });
+
+  it('separates a child that never started from one that never answered', () => {
+    expect(describeEngineWait('not started', 1)).toContain('never forked');
+    expect(describeEngineWait('forked', 1)).toContain('may not have reached it');
+    expect(describeEngineWait('running', 1)).toContain('loading llama.cpp');
+    expect(describeEngineWait('loaded', 1)).toContain('had loaded llama.cpp');
+  });
+
+  it('reports the milliseconds it was given', () => {
+    expect(describeEngineWait('forked', 5)).toContain('5 ms');
+    expect(describeEngineWait('forked', 5)).not.toContain('60000');
+  });
+});
+
+describe('the lifecycle id', () => {
+  it('is not a value any operation would choose', () => {
+    // Operations key on a `randomUUID`, so this cannot collide with one.
+    expect(ENGINE_LIFECYCLE).toBe('engine');
   });
 });
 

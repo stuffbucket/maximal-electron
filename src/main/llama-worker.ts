@@ -2,6 +2,7 @@ import { mkdir, rename, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 
 import { toGrammarSchema } from './native/grammar.js';
+import { ENGINE_LIFECYCLE } from './native/llama-protocol.js';
 import type { EngineEvent, EngineRequest } from './native/llama-protocol.js';
 
 /**
@@ -311,3 +312,8 @@ function handle(request: EngineRequest): void {
 process.parentPort.on('message', (event: { data: unknown }) => {
   handle(event.data as EngineRequest);
 });
+
+// Last, and before any work. The supervisor uses its absence to tell a child
+// that never started from one that started and is slow, which is the only
+// thing that makes a timeout diagnosable. Issue #133.
+post({ kind: 'hello', id: ENGINE_LIFECYCLE, pid: process.pid });

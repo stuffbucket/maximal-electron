@@ -3,9 +3,10 @@ import { writeSync } from 'node:fs';
 
 import { app } from 'electron';
 
-import { listen, send } from './native/llama-host.js';
+import { enginePhase, listen, send } from './native/llama-host.js';
 import {
   LLAMA_NO_LIBRARY,
+  describeEngineWait,
   llamaCheckLine,
   type LlamaCheckResult,
 } from './native/llama-protocol.js';
@@ -50,7 +51,7 @@ export function runLlamaCheck(): void {
   }
 
   const timer = setTimeout(() => {
-    report({ reason: `no answer in ${String(TIMEOUT_MS)} ms`, ok: false });
+    report({ ok: false, reason: describeEngineWait(enginePhase(), TIMEOUT_MS) });
   }, TIMEOUT_MS);
 
   const id = randomUUID();

@@ -8,6 +8,7 @@ import {
   mayRestart,
   parseEngineEvent,
   type EngineEvent,
+  type EnginePhase,
   type EngineRequest,
 } from './llama-protocol.js';
 
@@ -32,6 +33,16 @@ let child: UtilityProcess | undefined;
 let crashes: number[] = [];
 let lastFailure = '';
 
+/**
+ * How far the engine got. Read by the packaged self check, so a wait that ends
+ * in a timeout says which of the three ways it can hang happened.
+ */
+let phase: EnginePhase = 'not started';
+
+export function enginePhase(): EnginePhase {
+  return phase;
+}
+
 type Listener = (event: EngineEvent) => void;
 
 /** One entry per outstanding operation, keyed by the id the caller chose. */
@@ -48,8 +59,13 @@ function enginePath(): string {
   return path.join(__dirname, 'llama-worker.js');
 }
 
-/** Deliver to the operation that asked. */
+/** Deliver to the operation that asked, once the lifecycle events are read. */
 function fanOut(event: EngineEvent): void {
+  if (event.kind === 'hello') {
+    phase = 'running';
+    return;
+  }
+  if (event.kind === 'loaded') phase = 'loaded';
   listeners.get(event.id)?.(event);
 }
 
@@ -62,6 +78,7 @@ function failAll(reason: string): void {
 
 function onExit(code: number): void {
   child = undefined;
+  phase = 'not started';
 
   const reason = describeEngineExit(code, process.platform);
   if (code !== 0) {
@@ -106,6 +123,9 @@ function engine(): UtilityProcess {
     const event = parseEngineEvent(message);
     if (event) fanOut(event);
   });
+  forked.on('spawn', () => {
+    if (phase === 'not started') phase = 'forked';
+  });
   forked.on('exit', onExit);
 
   child = forked;
@@ -133,6 +153,7 @@ export function stopEngine(): void {
   const running = child;
   if (!running) return;
   child = undefined;
+  phase = 'not started';
   listeners.clear();
   running.kill();
 }

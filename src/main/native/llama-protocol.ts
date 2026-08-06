@@ -44,6 +44,12 @@ export type EngineRequest =
 
 /** Engine to main process. */
 export type EngineEvent =
+  /**
+   * The engine's entry ran and its port is wired. Posted before any work, so
+   * the absence of it separates a child that never started from one that
+   * started and is slow.
+   */
+  | { kind: 'hello'; id: string; pid: number }
   /** The engine loaded `node-llama-cpp`. `device` is whatever it chose. */
   | { kind: 'loaded'; id: string; device: string }
   | { kind: 'progress'; id: string; progress: ModelProgress }
@@ -70,6 +76,12 @@ export function parseEngineEvent(value: unknown): EngineEvent | undefined {
   if (typeof message.id !== 'string') return undefined;
   return message as unknown as EngineEvent;
 }
+
+/**
+ * The id `hello` carries. It belongs to the engine rather than to any one
+ * operation, so the supervisor intercepts it instead of routing it.
+ */
+export const ENGINE_LIFECYCLE = 'engine';
 
 /* -------------------------------------------------------- how it went down */
 
@@ -142,7 +154,6 @@ export function describeEngineExit(code: number, platform: string): string {
 }
 
 /* ---------------------------------------------------------- restart budget */
-
 /** How long a crash counts against the budget. */
 export const CRASH_WINDOW_MS = 60_000;
 
@@ -172,6 +183,39 @@ export function exhaustedMessage(last: string): string {
     `${last} It has crashed ${String(CRASH_LIMIT)} times, so it will not be ` +
     'started again until the application restarts.'
   );
+}
+
+/* --------------------------------------------------------- where it got to */
+
+/**
+ * How far the engine got, in order.
+ *
+ * A wait that ends in a timeout is otherwise undiagnosable, and the first
+ * Windows run of the packaged self check ended in exactly that: `no answer in
+ * 60000 ms`, which is consistent with a child that never forked, one whose
+ * port never carried the request, and one that is merely slow. Naming the
+ * phase separates the three. Issue #133.
+ */
+export type EnginePhase =
+  /** `utilityProcess.fork` has not been called, or threw. */
+  | 'not started'
+  /** Electron says the process exists. Nothing has been heard from it. */
+  | 'forked'
+  /** Its entry ran and its port is wired: `hello` arrived. */
+  | 'running'
+  /** `getLlama()` returned and named a device. */
+  | 'loaded';
+
+const PHASE_DETAIL: Readonly<Record<EnginePhase, string>> = {
+  'not started': 'the engine process was never forked',
+  forked: 'the engine process started but never answered, so the request may not have reached it',
+  running: 'the engine is running and had not finished loading llama.cpp',
+  loaded: 'the engine had loaded llama.cpp and did not answer',
+};
+
+/** The timeout message, naming what it was waiting on. */
+export function describeEngineWait(phase: EnginePhase, ms: number): string {
+  return `no answer in ${String(ms)} ms: ${PHASE_DETAIL[phase]} (phase ${phase})`;
 }
 
 /* ------------------------------------------------------ the packaged check */
