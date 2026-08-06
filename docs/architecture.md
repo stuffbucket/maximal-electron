@@ -661,7 +661,7 @@ contrast. An unreadable pair is never counted as a pass.
 | Splash | `windows/splash.ts` | Self-contained HTML. A timer closes it, so a missed signal cannot strand it. |
 | Application menu | `native/menu.ts` | Sends typed events. It never mutates renderer state directly. |
 | Menu bar or tray | `native/tray.ts` | Optional, driven by a preference. macOS needs a `Template` image. |
-| Icons | `native/icons.ts`, `native/app-icon.ts` | One directory, named by `STUFFBUCKET_ICON_DIR`. Resolution is pure and mutation tested. |
+| Icons | `native/icons.ts`, `native/app-icon.ts` | One directory, named by `STUFFBUCKET_ICON_DIR`. Resolution is pure, takes the platform as an argument, and is mutation tested. |
 | Notifications | `native/notifications.ts` | Also owns the dock bounce. |
 | Dock badge | `native/notifications.ts` | The renderer reports a count; the main process decides whether to show it. |
 | Preferences | `native/preferences.ts` | One JSON file under `userData`. |
@@ -702,16 +702,25 @@ Two halves, and they answer different questions.
 
 **Build time** is what a user sees after installing. `forge.config.ts` sets
 `packagerConfig.icon` from `STUFFBUCKET_ICON_DIR`, which defaults to
-`build/icons`. macOS reads the bundle, Windows reads the executable.
+`build/icons`. macOS reads the bundle, Windows reads the executable. `bundleIcon`
+in `scripts/package-contract.mjs` names the format each one needs, and
+`forge.config.ts` then checks that file is present, because a missing bundle icon
+is silent: packager warns and ships the Electron default.
 
 **Run time** is what the developer sees, and what the tray needs. The main
 process loads `icon.png` for the dock and for the `BrowserWindow` icon, and the
 tray images for the menu bar. Those files ship beside `app.asar` rather than
 inside it, because they are read as files.
 
-`src/main/native/icons.ts` decides which directory that is, and imports no
-Electron, so the decision is unit and mutation tested.
-`src/main/native/app-icon.ts` is the thin part that touches `nativeImage`.
+`src/main/native/icons.ts` decides which directory that is and which file each
+platform takes, and imports no Electron, so both decisions are unit and mutation
+tested. `windowIconName`, `dockIconName` and `trayIconChoice` each read a
+`platform` argument rather than `process.platform`, so a run on any host answers
+for all three targets. `src/main/native/app-icon.ts` is the thin part that
+touches `nativeImage`, and `tests/app-icon.test.ts` mocks Electron to check the
+decision reaches it. Issue #49: before that, the taskbar icon and the
+full-colour tray image had only ever been selected on macOS, where neither is
+used.
 
 **A development run on macOS shows Electron's dock icon.** Packaging cannot
 change that, because there is no bundle. `app.dock.setIcon` is the only way to
