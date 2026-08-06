@@ -1,8 +1,10 @@
 # Continuous integration
 
 Three workflows build. `ci.yml` is the blocking gate, `release.yml` builds and
-ships a tag, and `merge-preview.yml` tests what a merge would produce. A
-fourth, `triage.yml`, only labels issues and is described in its own header.
+ships a tag, and `merge-preview.yml` tests what a merge would produce. Two more
+build nothing: `triage.yml` labels issues, and `watch-rulesets.yml` reads the
+repository settings that no pull request can see change. Each is described in
+its own header.
 
 ## What each one runs
 
@@ -11,13 +13,13 @@ fourth, `triage.yml`, only labels issues and is described in its own header.
 | `ci.yml` | pull request, push to `main` and `release/**` | Lint, types, unit and mutation tests, a git-ref install, packaging and the end-to-end suite on macOS and Windows, and the packaged smoke test on macOS |
 | `merge-preview.yml` | push to `main` and `release/**` | Replays every open pull request against the new tip |
 | `release.yml` | tag `v*.*.*`, or a dispatch for a dry run | The draft release, the tarball, the registry publish, publish |
+| `watch-rulesets.yml` | daily, or a dispatch | Reads the live repository rulesets and files one issue when a protection drops below its floor |
 
 This repository ships no installer. `npm run package`, `npm run
 verify:package` and `npm run smoke:packaged` still run in `ci.yml`, because
 packaging is a property of the shell and it is where the defects were found.
 What was removed was the MSI and the dmg built on top of it, and
 `windows-msi-dev.yml` with them. See `docs/release.md`.
->>>>>>> origin/release/0.0.5
 
 ## The problem this page exists for
 
@@ -139,6 +141,27 @@ nor about whether the file that crossed the boundary has any bytes in it.
 `DRY_RUN` is the shell-visible form of the same condition, used inside
 `tag-check`. Job and step conditions spell it out as an event name, because the
 `env` context is not available to a job-level condition.
+
+## The tag gate, and the setting it cannot replace
+
+`tag-check` runs `npm run verify:tag` after it matches the tag against
+`package.json`. That refuses a tag that is not above every tag that exists, and
+refuses a ref that has already been built at another commit — the second is
+what `v0.0.2` was, and the workflow runs on a tag ref survive the tag being
+deleted, which is what makes them readable at all.
+
+It runs before a tag as well as on one. With no `--sha` it takes the version
+from `package.json`, checks the ordering, and says that the run history was not
+read, which is the rule at the top of this page applied to itself.
+
+What it cannot do is stop the tag moving in the first place. That needs a
+repository ruleset with a `tag` target, which no pull request can create and
+which does not exist. `npm run verify:rulesets` reports that gap, and
+`watch-rulesets.yml` runs it daily and files one issue rather than reddening a
+branch nobody touched — a required check no pull request can turn green is a
+merge freeze, not a gate.
+[`docs/admin/repository-settings.md`](admin/repository-settings.md) holds the
+floor, the three states the check reports, and what the owner has to click.
 
 ## The merge race
 

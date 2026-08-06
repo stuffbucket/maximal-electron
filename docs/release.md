@@ -71,12 +71,25 @@ happened, and deleting the tag deletes that record too.
 `stuffbucket/maximal-core` reached the same rule from the other direction. Their
 #60 refuses a tag that is not above every tag that already exists, checked
 against `git ls-remote --tags origin` rather than the local checkout, because a
-checkout is stale by default. Here that ordering has held so far: `v0.0.1` is an
-ancestor of `v0.0.2`, and `v0.0.2` of `v0.0.3`.
+checkout is stale by default.
 
-Nothing enforces any of this. `main` carries two branch rulesets,
-`main-no-force-delete` and `main-require-pr`. There is no ruleset with a tag
-target, so `git push --delete origin v0.0.3` succeeds today.
+`npm run verify:tag` is that gate here, and it runs in `tag-check` before the
+rest of the pipeline spends a minute. It refuses a tag that is not above every
+tag that exists, and it refuses a ref that has already been built at another
+commit. The second rule is the one that would have stopped `v0.0.2`: a tag
+deletion erases the ref and nothing else, so both runs are still listed on
+`refs/tags/v0.0.2`, at `e983b74` and at `441df8a`. Asking whether the tag
+already exists would have caught nothing, because the tag was deleted first.
+
+The gate refuses to build a moved tag. It cannot refuse to move one. Only a
+repository ruleset does that, and there is none: `main` carries two branch
+rulesets, `main-no-force-delete` and `main-require-pr`, and nothing targets a
+tag, so `git push --delete origin v0.0.5` succeeds today.
+
+That gap is now machine-checked rather than only written down.
+`npm run verify:rulesets` reports it, `watch-rulesets.yml` files one issue for
+it daily, and [`docs/admin/repository-settings.md`](admin/repository-settings.md)
+states exactly what the owner has to click to close it.
 
 ## The shape
 

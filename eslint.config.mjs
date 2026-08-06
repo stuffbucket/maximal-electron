@@ -27,6 +27,7 @@ export default tseslint.config(
         Buffer: 'readonly',
         clearTimeout: 'readonly',
         console: 'readonly',
+        fetch: 'readonly',
         process: 'readonly',
         setTimeout: 'readonly',
       },

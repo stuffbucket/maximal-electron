@@ -46,6 +46,12 @@ jobs:
   # Fail before the matrix spends any minutes. Mirrors codex's `tag-check`.
   tag-check:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # `verify:tag` reads the workflow runs on this ref. A tag deletion does
+      # not remove them, which is what makes them the record a re-cut cannot
+      # hide from.
+      actions: read
     outputs:
       tag: ${{ steps.resolve.outputs.tag }}
     steps:
@@ -74,6 +80,23 @@ jobs:
 
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "Tag and package.json agree (${pkg_ver})"
+
+      # A published tag is immutable, and nothing enforced that: `v0.0.2` was
+      # deleted and re-pushed onto another commit eight minutes later, and both
+      # runs are still listed on the ref. This refuses the second one. A dry
+      # run has no tag, so it checks the ordering alone and says so.
+      - name: Refuse a tag that has already been cut
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.resolve.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${DRY_RUN}" == "true" ]]; then
+            node scripts/verify-tag.mjs --tag "$TAG"
+          else
+            node scripts/verify-tag.mjs --tag "$TAG" --sha "$GITHUB_SHA"
+          fi
 
   release:
     needs: tag-check
