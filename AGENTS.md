@@ -138,6 +138,7 @@ only background.
 | Area | Document |
 | --- | --- |
 | Processes, the IPC contract, terminals, build output | `docs/architecture.md` |
+| The `--shell-*` contract the renderer package reads from its host | `docs/shell-variables.md` |
 | The overlay agent, the provider chain, the approval gate | `docs/agent.md` |
 | Random order, mutation testing, layout evidence, the off-screen suite | `docs/testing.md` |
 | Stories, the a11y run, what is deliberately not in CI | `docs/storybook.md` |
