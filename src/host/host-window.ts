@@ -20,6 +20,12 @@ export interface HostWindowOptions {
   titleBarStyle?: BrowserWindowConstructorOptions['titleBarStyle'];
   titleBarOverlay?: BrowserWindowConstructorOptions['titleBarOverlay'];
   trafficLightPosition?: BrowserWindowConstructorOptions['trafficLightPosition'];
+  /**
+   * Show the window on `ready-to-show`. Default true. A consumer that reveals
+   * the window itself — after moving it, or after a splash closes — sets this
+   * false, and the ordering is then its own.
+   */
+  showWhenReady?: boolean;
   /** Load the renderer (dev-server URL or built index.html) into the window. */
   loadRenderer: (window: BrowserWindow) => void;
 }
@@ -68,7 +74,9 @@ export function createHostWindow(options: HostWindowOptions): BrowserWindow {
     }
   });
 
-  window.once('ready-to-show', () => window.show());
+  if (options.showWhenReady ?? true) {
+    window.once('ready-to-show', () => window.show());
+  }
   options.loadRenderer(window);
   return window;
 }
