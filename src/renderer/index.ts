@@ -19,6 +19,7 @@ export {
 } from './components/TabBar.js';
 export {
   TerminalTabs,
+  type TerminalTabsProps,
 } from './components/TerminalTabs.js';
 export {
   TerminalView,
@@ -26,11 +27,15 @@ export {
   type TerminalViewProps,
 } from './components/TerminalView.js';
 export { TitleBar } from './components/TitleBar.js';
+export { detachedSessions } from './lib/terminal-sessions.js';
 export {
   readTerminalTheme,
   SHELL_TERMINAL_PROPERTIES,
+  type DetachableTerminalTransport,
   type TerminalDescriptor,
+  type TerminalDisposition,
   type TerminalEvent,
+  type TerminalSession,
   type TerminalTransport,
 } from './lib/terminal-transport.js';
 export { IconButton } from './components/controls/Button.js';
