@@ -1,6 +1,6 @@
 # The `--shell-*` contract
 
-`stuffbucket-electron/renderer/styles.css` ships no palette. Every colour,
+`@stuffbucket/maximal-electron/renderer/styles.css` ships no palette. Every colour,
 space, radius, and height in it comes from a custom property the host defines,
 and this document is the list of them.
 
@@ -102,7 +102,7 @@ CSS kind.
 
 ## Assert against it from a consuming application
 
-`stuffbucket-electron/verify/shell-variables` is pure and imports no
+`@stuffbucket/maximal-electron/verify/shell-variables` is pure and imports no
 `electron`, so it runs under plain `node`. Point it at the stylesheet the
 package ships and at whatever your application defines. Nothing is
 hand-transcribed on either side, so the two cannot drift.
@@ -114,10 +114,10 @@ import { createRequire } from 'node:module';
 import {
   failedShellVariableChecks,
   shellVariableContract,
-} from 'stuffbucket-electron/verify/shell-variables';
+} from '@stuffbucket/maximal-electron/verify/shell-variables';
 
 const require = createRequire(import.meta.url);
-const css = readFileSync(require.resolve('stuffbucket-electron/renderer/styles.css'), 'utf8');
+const css = readFileSync(require.resolve('@stuffbucket/maximal-electron/renderer/styles.css'), 'utf8');
 
 const contract = shellVariableContract({
   stylesheets: [{ name: 'styles.css', css }],
@@ -138,7 +138,7 @@ if (missing.length > 0) throw new Error(`unset: ${missing.join(', ')}`);
 ```
 
 `shellVariableChecks` is the stricter form, and returns a `{ name, ok }` list in
-the shape `stuffbucket-electron/verify` uses. `failedShellVariableChecks` names
+the shape `@stuffbucket/maximal-electron/verify` uses. `failedShellVariableChecks` names
 the ones that did not hold.
 
 Both start with floors: an empty stylesheet list, an empty derived contract, or

@@ -216,8 +216,8 @@ loads.
 published tarball — the binaries and the seven `lib/*.js` files hash
 identically — and adds a single maintainer with no continuous integration.
 Microsoft ships every platform in one 26 MB package instead of a prebuild per
-platform (their issue #864), so `prunePrebuilds` in `forge.config.ts` drops the
-ones a given build cannot use. It runs as `packageAfterCopy` rather than in
+platform (their issue #864), so `prunePtyPrebuilds` in `forge.config.ts` drops
+the ones a given build cannot use. It runs as `packageAfterCopy` rather than in
 `packagerConfig.ignore`, because the `ignore` predicate is handed a path and
 not the target platform, and a cross-platform build would otherwise keep the
 build host's prebuild.
@@ -232,6 +232,60 @@ not appear anywhere in this repository. A registry install runs
 Every runtime dependency is pinned to an exact version. `^1.2.0-beta.14`
 admitted every later beta on a prerelease line, plus every 1.x release.
 `tests/package-exports.test.ts` holds that rule.
+
+## What llama.cpp backend the package ships
+
+`node-llama-cpp` keeps its prebuilt binaries in the `@node-llama-cpp` scope,
+one package per target and backend, named `<os>-<arch>[-<backend>]`. npm
+selects them by the `os` and `cpu` fields alone, and those are wider than one
+build. Several packages declare `cpu: ["arm64", "x64"]` so that one host can
+build for the other, so a `win32-x64` install also receives `win-arm64` and a
+`linux-x64` install also receives `linux-arm64`. Neither can ever load:
+`node-llama-cpp` resolves a package from `process.arch` at run time.
+
+`pruneLlamaBackends` in `forge.config.ts` drops what the target cannot use. The
+plan is `llamaPackagePlan` in `scripts/package-contract.mjs`, which
+`scripts/verify-package.mjs` reads as well, so the packages the build deletes
+are the packages the check stops expecting.
+
+**A GPU backend is dropped unless the build asks for it.** On `win32-x64` that
+is 505 MB of CUDA across two packages and 94 MB of Vulkan, against 45 MB for
+the CPU package. `linux-x64` is the same shape and 630 MB. The application
+ships no weights and its embedded model is Qwen3 0.6B, a floor under the
+provider chain rather than the performance path, so nine tenths of the packaged
+application existed to accelerate the smallest thing it runs.
+
+The consequence is real and is the reason this is a stated behaviour rather
+than a size fix: **a machine with a CUDA GPU runs the embedded model on its
+CPU.** `node-llama-cpp` logs the fallback and carries on. To ship the backend,
+set `STUFFBUCKET_LLAMA_BACKENDS` when packaging:
+
+```bash
+STUFFBUCKET_LLAMA_BACKENDS=cuda npm run package
+STUFFBUCKET_LLAMA_BACKENDS=cuda,vulkan npm run package
+STUFFBUCKET_LLAMA_BACKENDS=all npm run package
+```
+
+A name the list does not know throws rather than being ignored, because the
+failure it prevents is a CPU-only package built by someone who wrote `CUDA` and
+believes otherwise. `cuda` keeps both `win-x64-cuda` and `win-x64-cuda-ext`:
+the `-ext` package holds a fallback `ggml-cuda.dll` reachable only through the
+cuda branch of the resolver, so it travels with that backend or not at all.
+
+`metal` is not on the optional list. `mac-arm64-metal` is the only `mac-arm64`
+package, so dropping it would leave that target with no llama.cpp rather than
+with a slower one.
+
+A cross-platform `npm run package -- --platform=<other>` now fails instead of
+building, because npm installed only the host's prebuild packages and the plan
+keeps none of them. Before this, `--platform=linux` on a mac produced a Linux
+package whose only llama.cpp backend was 12 MB of macOS `.dylib` files, and
+nothing said so. CI packages natively on each runner, so no job changes.
+
+Nothing exercises the packaged llama.cpp. `npm run smoke:packaged` launches the
+application and spawns a shell; it does not load a model. `e2e/embedded.spec.ts`
+does, against the unpackaged build and the repository's own `node_modules`,
+which is the tree before the prune. Issue #113.
 
 ## The terminal a consumer gets
 
@@ -253,7 +307,7 @@ drift.
 ```js
 import { readdirSync } from 'node:fs';
 import { listPackage } from '@electron/asar';
-import { terminalPackageChecks } from 'stuffbucket-electron/verify';
+import { terminalPackageChecks } from '@stuffbucket/maximal-electron/verify';
 
 const resources = 'dist/mac-arm64/YourApp.app/Contents/Resources';
 const checks = terminalPackageChecks({

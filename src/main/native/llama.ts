@@ -11,7 +11,7 @@ import type { ModelProgress } from '../../shared/ipc.js';
  * chain, so that the application is never useless with nothing installed. See
  * `docs/agent.md`.
  *
- * The weights are not in the installer. They are a third of a gigabyte and
+ * The weights are not in the package. They are a third of a gigabyte and
  * change on a different schedule to the application, so shipping them would pin
  * the model to the app version and put that download on every update.
  *

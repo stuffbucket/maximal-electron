@@ -1,16 +1,20 @@
 ---
 name: cut-release
-description: Tag and ship a release across macOS and Windows
+description: Tag a release and ship the npm tarball
 ---
 
 # Cut a release
+
+A release carries one asset: the npm tarball. This repository builds no
+installer. See `docs/release.md`.
 
 ## Before you tag
 
 ```bash
 npm ci
 npm run lint && npm run typecheck && npm test
-npm run package && npm run verify:package && npm run test:e2e
+npm run package && npm run verify:package && npm run smoke:packaged
+npm run test:e2e
 npm run verify:git-install
 ```
 
@@ -24,10 +28,11 @@ tag has shipped with only one of them wired.
 Set the version in `package.json`. The tag must match it exactly, or the
 `tag-check` job fails before anything builds.
 
-Then dispatch `release.yml` from the branch. A dispatch is always a dry run: it
-builds the MSI, installs and removes it, packs the tarball, and attaches
-nothing. Every release defect this repository has shipped was in a job that had
-never run. See `docs/ci.md`.
+Then dispatch `release.yml` from the branch. With the `publish` input left at
+its default it rehearses: it packs the tarball, installs the commit by git ref,
+runs the registry publish with `--dry-run` and no valid token, asserts the
+artifact exists, and attaches nothing. Every release defect this repository has
+shipped was in a job that had never run. See `docs/ci.md`.
 
 ```bash
 gh workflow run release.yml --ref release/0.1.0
@@ -42,33 +47,39 @@ git push origin v0.1.0
 Accepted tag shapes: `v1.2.3`, `v1.2.3-alpha`, `v1.2.3-alpha.1`, `v1.2.3-beta`,
 `v1.2.3-beta.4`.
 
+## When the tag's run does not complete
+
+An outage, a cancelled queue, a runner that never arrived. The tag is not
+spent. Dispatch the same workflow against the **tag**, asking it to publish:
+
+```bash
+gh workflow run release.yml --ref v0.1.0 -f publish=true
+```
+
+Every job is re-runnable, so this picks up wherever the last attempt stopped.
+Read the log for which of the two outcomes each step reported: `CREATED` or
+`REUSED`, `ATTACHED` or `ALREADY ATTACHED`, `PUBLISHED` or `ALREADY PUBLISHED`.
+
+Two things this does not fix. A release that is already published and does not
+carry the tarball cannot gain one — HTTP 422, so cut the next patch. And the
+workflow that runs is the one at the dispatched ref, so a tag cut before #162
+landed does not carry the input.
+
 ## What the workflow does
 
 | Job | What it does |
 | --- | --- |
 | `tag-check` | Asserts the tag matches `package.json`. Fails fast. |
-| `release` | Creates a **draft** release with generated notes. |
-| `windows-msi` | Packages, builds the MSI with WiX, attaches it and a checksum. |
-| `windows-msi-verify` | Installs silently, asserts, uninstalls, asserts clean. |
-| `macos-dmg` | Dispatches the private builder, polls the draft for the dmg. |
+| `release` | Creates a **draft** release with generated notes, or reuses one. |
 | `package-tarball` | Packs what a consumer installs, installs the commit by git ref, and attaches the tarball. |
 | `publish` | Flips the draft to published, once, at the end. |
+| `publish-package` | Publishes to GitHub Packages, or reports the version as already there. |
+| `dry-run-artifacts` | Rehearsals only. Asserts the run produced a tarball. |
 
-`publish` gates on `package-tarball` alone. An installer that fails costs an
-installer, not the release.
+`publish` gates on `package-tarball`.
 
 Every asset lands on the **draft**. GitHub immutable releases reject an asset
 added after publish with HTTP 422, so there is no second chance.
-
-## If the macOS build fails
-
-The release publishes without a dmg. `stuffbucket/maximal` consumes the
-tarball and signs its own application, so a missing installer does not hold it
-up. See `docs/release.md`.
-
-1. Open the run in `stuffbucket/macos-builder`. That is where the real log is.
-2. Fix the cause, then cut a patch release. A published release cannot take a
-   new asset.
 
 ## Verify what shipped
 
@@ -76,26 +87,20 @@ up. See `docs/release.md`.
 gh release view v0.1.0 --json assets --jq '.assets[].name'
 ```
 
-Expect four assets: the dmg, the MSI, and a `.sha256` beside each.
+Expect one asset: `stuffbucket-electron-<version>.tgz`.
 
 The release tarball is a supported install specifier, so install it once from
 its published URL and resolve every export:
 
 ```bash
 node scripts/verify-git-install.mjs --tarball \
-  https://github.com/stuffbucket/maximal-electron/releases/download/v0.1.0/stuffbucket-electron-0.1.0.tgz
+  https://github.com/stuffbucket/maximal-electron/releases/download/v0.1.0/stuffbucket-maximal-electron-0.1.0.tgz
 ```
 
 No job does this. The asset exists only after `publish`, which is after every
 job has run. See `docs/consuming.md`.
 
-Check the macOS signature on a Mac:
-
-```bash
-spctl -a -t open --context context:primary-signature -v <path to dmg>
-```
-
 ## Known gaps
 
-Neither installer carries an update channel. See `docs/release.md` for the
-reason and for the builder change that would unblock macOS.
+No installer, nothing signed, and no update channel. See `docs/release.md` for
+the reasons and `docs/signing.md` for what restoring signing would take.

@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import {
+  baseStyledClasses,
   exportedModules,
   isPackageToken,
   packageReads,
@@ -30,6 +31,22 @@ import {
 const STYLES = new URL('../src/renderer/styles/', import.meta.url);
 const structural = readFileSync(new URL('structural.css', STYLES), 'utf8');
 const reads = packageReads(structural);
+
+/** The class every rule the package ships sits under. */
+const SHELL_ROOT = '.sb-shell';
+
+/**
+ * The reference application's stylesheet, which is the oracle for a rule the
+ * package owes. It is the one an eye is on: `npm start` renders it and
+ * `npm run stills` photographs it.
+ */
+function reference(): string {
+  const found = stylesheets().find(([name]) => name === 'shell.css');
+  // The floor. A rename here would leave every comparison below over an empty
+  // string, which reports a clean package stylesheet by reading nothing.
+  if (!found) throw new Error('shell.css is not in the style directory');
+  return found[1];
+}
 
 /** The table in README.md that tells a consumer what to define. */
 function documented(): string[] {
@@ -117,7 +134,7 @@ describe('the exported components', () => {
     expect(modules.map(([name]) => name)).toContain('components/TabBar');
   });
 
-  it('render only classes structural.css styles', () => {
+  it('render only classes structural.css writes a rule for', () => {
     /*
      * The second tripwire.
      *
@@ -130,7 +147,15 @@ describe('the exported components', () => {
      * Found `nav__break`, added to the exported `NavRail` and styled only in
      * `shell.css`, and `icon-button--danger`, which had never been in the
      * package stylesheet.
+     *
+     * `styledClasses` reads the parsed selectors. It used to match `.name`
+     * anywhere in the text, so a class surviving in a comment counted. Issue
+     * #118.
      */
+    // The floor. A parse that returned nothing would report every class
+    // rendered as styled by finding none of them missing.
+    expect(styled.size).toBeGreaterThan(30);
+
     const missing = modules
       .flatMap(([name, source]) =>
         renderedClasses(source)
@@ -140,5 +165,38 @@ describe('the exported components', () => {
       .sort();
 
     expect(missing).toEqual([]);
+  });
+
+  it('carry every base rule the reference stylesheet gives them', () => {
+    /*
+     * The third tripwire, and the one a mention cannot satisfy.
+     *
+     * A class keeps its name in `structural.css` for as long as one selector
+     * anywhere still writes it, so the test above passes while the rule that
+     * lays the element out is gone. Renaming `.sb-shell .tab__emphasis` and
+     * leaving the two `[data-emphasis]` descendants alone strips the marker of
+     * `position: absolute` and shifts the whole tab, and nothing said so.
+     * Issue #118.
+     *
+     * `shell.css` is the comparison rather than a list here, for the reason
+     * `scripts/shell-variables.mjs` gives about the `--shell-*` contract: a
+     * hand-written list drifts, and this one is already maintained by the
+     * application the screenshots are taken of. A class the reference styles on
+     * its own and the package styles only in a descendant or a state is a rule
+     * a consumer never gets.
+     */
+    const referenceBase = baseStyledClasses(reference(), '');
+    const packageBase = baseStyledClasses(structural, SHELL_ROOT);
+    const rendered = [...new Set(modules.flatMap(([, source]) => renderedClasses(source)))].sort();
+
+    // The floors, one per set. Any of the three coming back empty satisfies the
+    // comparison below by comparing nothing.
+    expect(referenceBase.size).toBeGreaterThan(20);
+    expect(packageBase.size).toBeGreaterThan(20);
+    expect(rendered.length).toBeGreaterThan(20);
+
+    expect(
+      rendered.filter((className) => referenceBase.has(className) && !packageBase.has(className)),
+    ).toEqual([]);
   });
 });

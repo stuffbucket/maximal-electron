@@ -19,11 +19,32 @@ import { describe, expect, it } from 'vitest';
 
 const WORKFLOWS = new URL('../.github/workflows/', import.meta.url);
 
-/** The condition that makes a step or a job tag-only. */
-const TAG_ONLY = "github.event_name != 'workflow_dispatch'";
+/**
+ * The rail that decides whether a run may touch anything.
+ *
+ * A tag push used to be the only way to publish, which made the tag a one-shot
+ * fuse: an outage that cancelled the run spent the version. A dispatch can
+ * publish now, so the rail is a conjunction and both halves are required — a
+ * tag ref, and either a tag push or an input that defaults to false.
+ *
+ * It is written out once here and compared for equality rather than by
+ * substring. A near-miss guard is the failure this file exists to catch, and
+ * `if: github.ref_type == 'tag'` alone would pass a `contains` test while
+ * letting any dispatch of a tag publish.
+ */
+const RAIL = "github.ref_type == 'tag' && (github.event_name == 'push' || inputs.publish == true)";
+const LIVE = `\${{ ${RAIL} }}`;
+const REHEARSAL = `\${{ !(${RAIL}) }}`;
 
 /** Calls that create, move, or destroy a release. `view` and `download` read. */
 const MUTATES_A_RELEASE = /\bgh release (create|upload|edit|delete)\b/;
+
+/**
+ * The one script that talks to a registry. A published version cannot be
+ * replaced, moved, or withdrawn, so the call is in a single place with its own
+ * rail in `scripts/publish-decision.mjs` rather than spelled into a step.
+ */
+const PUBLISH_SCRIPT = 'scripts/publish-package.mjs';
 
 interface Step {
   name?: string;
@@ -36,10 +57,13 @@ interface Step {
 interface Job {
   if?: string;
   needs?: string | string[];
+  permissions?: Record<string, string> | string;
   steps?: Step[];
 }
 
 interface Workflow {
+  on?: Record<string, unknown>;
+  env?: Record<string, string>;
   jobs?: Record<string, Job>;
 }
 
@@ -91,8 +115,8 @@ describe('the workflow files', () => {
 
 /**
  * An artifact passes between jobs by name, and nothing checks the pair.
- * `windows-msi-verify` reads the MSI this way since #81, so a rename on one
- * side leaves a download that finds nothing.
+ * `dry-run-artifacts` reads the tarball this way, and a rename on one side
+ * leaves a download that finds nothing. #81 was that failure.
  */
 describe('artifact hand-off', () => {
   const pairs: string[] = [];
@@ -157,16 +181,18 @@ describe('the release workflow', () => {
   });
 
   /**
-   * `stuffbucket/maximal` consumes the tarball and signs its own application,
-   * so a failed installer must not hold a release. See `docs/release.md`.
+   * The tarball is the only asset a release carries, and `stuffbucket/maximal`
+   * is what consumes it. Nothing else may gate the publish. See
+   * `docs/release.md`.
    */
   it('gates publish on the tarball alone', () => {
     expect(needsOf(release?.jobs?.['publish'] ?? {})).toEqual(['package-tarball']);
   });
 
   /**
-   * A dispatch run is a dry run. Nothing else distinguishes it, so every call
-   * that would touch a release has to carry the condition.
+   * The rail, on every step that would touch a release. Nothing else
+   * distinguishes a run that may from a run that may not, so a step without it
+   * is a step that publishes from a branch.
    */
   const unguarded: string[] = [];
   const guarded: string[] = [];
@@ -176,7 +202,7 @@ describe('the release workflow', () => {
       if (!MUTATES_A_RELEASE.test(step.run ?? '')) continue;
 
       const where = `${id}: ${step.name ?? step.run?.slice(0, 40) ?? ''}`;
-      const isGuarded = [job.if, step.if].some((condition) => condition?.includes(TAG_ONLY) === true);
+      const isGuarded = [job.if, step.if].includes(LIVE);
       (isGuarded ? guarded : unguarded).push(where);
     }
   }
@@ -185,20 +211,138 @@ describe('the release workflow', () => {
     expect(guarded.length + unguarded.length).toBeGreaterThan(0);
   });
 
-  it('never mutates a release on a dispatch run', () => {
+  it('carries the whole rail on every step that touches a release', () => {
     expect(unguarded).toEqual([]);
   });
 
   /**
-   * Every attach step is skipped on a dispatch, so a dry run that built
-   * nothing would end green. This job is what asserts otherwise, and it is the
-   * one thing in the dry run whose deletion nothing else would notice.
+   * The half of the rail the old one was made of. `github.ref_type == 'tag'`
+   * is what stops a dispatch of a branch reaching anything, whatever input it
+   * passes, and it is the property "a dispatch is always a dry run" used to
+   * provide. Asserted on the string rather than inferred from it.
    */
-  it('ends a dry run with a job that asserts the artifacts exist', () => {
+  it('requires a tag ref in the rail, so no input makes a branch publishable', () => {
+    expect(RAIL.startsWith("github.ref_type == 'tag' &&")).toBe(true);
+  });
+
+  /**
+   * The input that has to be asked for. A boolean that defaults to true, or a
+   * string, would turn the rail into a formality: GitHub casts a string to a
+   * number for `== true`, so `'true'` would compare false and a `type: string`
+   * input could never publish — but a `default: true` boolean would always.
+   */
+  it('takes an explicit publish input that defaults to false', () => {
+    const dispatch = (release?.on?.['workflow_dispatch'] ?? {}) as {
+      inputs?: Record<string, { type?: string; default?: unknown }>;
+    };
+    const input = dispatch.inputs?.['publish'];
+    expect(input?.type).toBe('boolean');
+    expect(input?.default).toBe(false);
+  });
+
+  /**
+   * `DRY_RUN` is the shell-visible form of the same decision, and `tag-check`
+   * branches on it. Two expressions that can disagree is how a rehearsal ends
+   * up resolving a tag it was never given.
+   */
+  it('derives DRY_RUN from the same rail, negated', () => {
+    expect(release?.env?.['DRY_RUN']).toBe(REHEARSAL);
+  });
+
+  /**
+   * Every attach step is skipped on a rehearsal, so a run that built nothing
+   * would end green. This job is what asserts otherwise, and it is the one
+   * thing in the rehearsal whose deletion nothing else would notice.
+   */
+  it('ends a rehearsal with a job that asserts the artifacts exist', () => {
     const job = release?.jobs?.['dry-run-artifacts'];
-    expect(job?.if).toContain("github.event_name == 'workflow_dispatch'");
-    expect(needsOf(job ?? {})).toEqual(
-      expect.arrayContaining(['windows-msi-verify', 'package-tarball']),
+    expect(job?.if).toBe(REHEARSAL);
+    expect(needsOf(job ?? {})).toEqual(expect.arrayContaining(['package-tarball']));
+  });
+
+  /**
+   * The registry publish needs the token permission, and nothing else in the
+   * pipeline does. Dropping it turns the one irreversible step into a 403 on a
+   * tag, which is the run that cannot be repeated.
+   */
+  it('gives the publishing job packages: write', () => {
+    const permissions = release?.jobs?.['publish-package']?.permissions;
+    expect(typeof permissions === 'object' ? permissions : {}).toMatchObject({
+      packages: 'write',
+    });
+  });
+
+  /**
+   * The rehearsal's half of the publish. Without a step that runs the same
+   * script in the mode that uploads nothing, the whole registry path would be
+   * exercised for the first time on a tag, which is how three release defects
+   * shipped.
+   */
+  it('rehearses the publish on a run that is not publishing', () => {
+    const rehearsals = (release?.jobs?.['publish-package']?.steps ?? []).filter(
+      (step) => (step.run ?? '').includes('--mode rehearse') && step.if === REHEARSAL,
     );
+    expect(rehearsals).toHaveLength(1);
+  });
+});
+
+/**
+ * A published version cannot be replaced, moved, or withdrawn. Every other
+ * guard in this file protects something a second run can repair; this one does
+ * not, so it scans every workflow rather than `release.yml` alone.
+ */
+describe('publishing to a registry', () => {
+  const runSteps: Step[] = [];
+  const invocations: { where: string; step: Step; job: Job }[] = [];
+  const rawPublishes: string[] = [];
+
+  for (const [name, workflow] of parsed) {
+    for (const [id, job] of jobs(workflow)) {
+      for (const step of job.steps ?? []) {
+        const run = step.run ?? '';
+        if (run === '') continue;
+        runSteps.push(step);
+
+        const where = `${name} ${id}: ${step.name ?? run.slice(0, 40)}`;
+        if (run.includes(PUBLISH_SCRIPT)) invocations.push({ where, step, job });
+        if (/\bnpm publish\b/.test(run)) rawPublishes.push(where);
+      }
+    }
+  }
+
+  it('found run steps to scan, so an empty scan cannot pass', () => {
+    expect(runSteps.length).toBeGreaterThan(0);
+  });
+
+  /**
+   * One door. `npm publish` spelled into a step would carry none of the rails
+   * in `scripts/publish-decision.mjs` — not the tag-ref refusal, not the
+   * already-published outcome, and not the absolute-path argument that a bare
+   * `a/b` turns into an `owner/repo` git clone over SSH.
+   */
+  it('routes every registry publish through the one script', () => {
+    expect(rawPublishes).toEqual([]);
+  });
+
+  it('found a publish invocation to check', () => {
+    expect(invocations.length).toBeGreaterThan(0);
+  });
+
+  /**
+   * The mode is what the script acts on, so the rail belongs on the step that
+   * passes it. A `--mode publish` step without the exact rail is a publish
+   * from a branch.
+   */
+  for (const { where, step, job } of invocations) {
+    const wanted = (step.run ?? '').includes('--mode publish') ? LIVE : REHEARSAL;
+    it(`${where} carries the rail its mode requires`, () => {
+      expect([job.if, step.if]).toContain(wanted);
+    });
+  }
+
+  /** Neither mode may be left implicit: the default is the caller's, not the workflow's. */
+  it('states the mode on every invocation', () => {
+    const implicit = invocations.filter(({ step }) => !/--mode (publish|rehearse)\b/.test(step.run ?? ''));
+    expect(implicit).toEqual([]);
   });
 });

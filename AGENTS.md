@@ -26,11 +26,14 @@ linked document.
 | Check the palette | `npm run check:contrast` |
 | Package | `npm run package` |
 | Verify a package | `npm run verify:package` |
+| Verify a publish | `npm run verify:publish` |
 | Launch a package | `npm run smoke:packaged` |
 | Verify the exports | `npm run verify:exports` |
 | Verify an install by specifier | `npm run verify:git-install` |
 | Verify the shell stays agnostic | `npm run verify:neutral` |
 | Verify the docs | `npm run verify:docs` |
+| Verify the repository rulesets | `npm run verify:rulesets` |
+| Verify a tag has never been cut | `npm run verify:tag` |
 | Regenerate icons | `npm run icons` |
 
 Run `npm run lint:fix` after you change code. Do not ask first.
@@ -56,6 +59,9 @@ Each of these is load-bearing. Do not relax one to make a change fit.
   worked example: it is configuration the host owns, through
   `STUFFBUCKET_ICON_DIR`, not a request the renderer makes.
 - **Never lower the mutation threshold.** `npm run mutate` breaks below 100.
+  It also breaks when a module the criterion selects is on neither the mutate
+  list nor its deferred list, and when the mutant count falls. See
+  `docs/testing.md`.
 - **Never turn a fuse back on to make a test pass.**
   `EnableNodeCliInspectArguments: false` is why the end-to-end tests drive the
   unpackaged build, and why `npm run smoke:packaged` drives the packaged one
@@ -65,14 +71,29 @@ Each of these is load-bearing. Do not relax one to make a change fit.
 
 ## Report what you verified
 
-State the command you ran and what it printed. A check that greps for an error
-string and matches nothing is not a pass; that has produced two false reports
-here. If you did not run something, say so. If a step was skipped or a test
-failed, say that first.
+State the command you ran and what it printed. If you did not run something, say
+so. If a step was skipped or a test failed, say that first.
 
 Green unit tests are not sufficient for a layout change, and a screenshot is
 not an oracle. See `docs/testing.md` before you claim a visual change is
 neutral.
+
+### A check must fail when it has nothing to check
+
+Six checks here have passed while examining an empty set, and one of them
+shipped a broken terminal. A check you add or change reports how many things it
+examined and fails on zero. `scripts/check-scope.mjs` is the runner that does
+it: `check(ok, message, { count, of })` prints the count beside the message and
+fails on zero whatever `ok` says. It throws without a scope, so the convention
+is not something to remember.
+
+`tests/check-scope.test.ts` discovers every `verify:*` and `check:*` script from
+`package.json` and requires it to use the runner. A script not on it yet is
+named there with the issue that will move it, and the list may only shrink.
+
+Commit your own work first, then break it on purpose and put the failure
+message in the pull request. See
+`.claude/skills/write-a-check/SKILL.md`.
 
 ## Writing code
 
@@ -123,10 +144,20 @@ checks names, not prose.
   that is not the current release.
 - Every issue and every pull request carries a milestone. If it does not have
   one, it has not been triaged.
-- **Never delete a branch that another pull request targets.** GitHub closes the
-  children rather than retargeting them, and a closed pull request whose base is
-  gone cannot be reopened. Retarget every child first. This has cost a rebuild
-  twice.
+- **Run `gh pr list --base <branch> --state open` before you delete a branch.**
+  GitHub closes the children rather than retargeting them, and a closed pull
+  request whose base is gone cannot be reopened. Retarget every child first.
+  This has cost a rebuild twice, both times with a prohibition already written
+  here, so the line is a command now.
+- **A pushed tag is immutable.** If the build on a tag fails, cut the next patch
+  rather than moving the tag. A consumer installs this package from a git ref,
+  so a moved tag changes what they install without changing anything they can
+  see. `v0.0.2` was deleted and re-pushed eight minutes later. A tag now also
+  publishes `@stuffbucket/maximal-electron` to the GitHub Packages registry,
+  and a published version cannot be replaced at all. `npm run verify:tag` runs
+  in `tag-check` and refuses a ref that has already been built at another
+  commit. No ruleset stops the tag moving; see
+  `docs/admin/repository-settings.md` for the setting that would.
 - Bump the patch version on the release branch when the train reaches a stable
   state, so `main` never claims a version that has not shipped.
 
@@ -147,13 +178,14 @@ only background.
 | Stories, the a11y run, what is deliberately not in CI | `docs/storybook.md` |
 | Capture and compose, the pacing constants | `docs/recording.md` |
 | Trains, the draft release, macOS signing | `docs/release.md` |
-| The install specifiers a consumer may write | `docs/consuming.md` |
-| The workflows, the release dry run, the merge race | `docs/ci.md` |
+| The install specifiers a consumer may write, and the registry | `docs/consuming.md` |
+| The workflows, the release rehearsal and retry, the merge race | `docs/ci.md` |
+| The rulesets, what only the owner can set, and what no check can see | `docs/admin/repository-settings.md` |
 | Code signing | `docs/signing.md` |
 | What is planned and what is deliberately not | `docs/roadmap.md` |
 
-Skills carry the walk-throughs: `.claude/skills/add-ipc-channel/SKILL.md`,
-`.claude/skills/verify-ui/SKILL.md`, and `.claude/skills/cut-release/SKILL.md`.
+Skills carry the walk-throughs. Read `.claude/skills/`. A list written out here
+goes stale; the one this replaces named three of the five that existed.
 
 ## Two rules that live outside those documents
 
@@ -167,10 +199,18 @@ macOS build must be redone.
 **External native modules.** Adding one means editing three places: the Vite
 external list, the `packagerConfig.ignore` filter in `forge.config.ts`, and
 `scripts/verify-package.mjs`. Miss one and the package builds, the tests pass,
-and the feature is absent for a user. `node-pty` needs a fourth: `prunePrebuilds`
-in `forge.config.ts` drops the platforms a build cannot use, and it throws
-rather than skipping. It goes in `devDependencies`: this package declares no
-runtime dependencies, so that one entry would land in every consumer's install.
+and the feature is absent for a user. `node-pty` needs a fourth:
+`prunePtyPrebuilds` in `forge.config.ts` drops the platforms a build cannot
+use, and it throws rather than skipping. It goes in `devDependencies`: this
+package declares no runtime dependencies, so that one entry would land in every
+consumer's install.
+
+`node-llama-cpp` needs the same fourth edit and one more decision.
+`pruneLlamaBackends` drops the `@node-llama-cpp` packages the target cannot
+load, and **drops the CUDA and Vulkan backends unless `STUFFBUCKET_LLAMA_BACKENDS`
+asks for them**. That is 630 MB on `win32-x64` and it means a CUDA machine runs
+the embedded model on its CPU. Do not change the default without changing what
+`docs/architecture.md` says about it.
 
 **Icons.** `STUFFBUCKET_ICON_DIR` names the directory, defaults to
 `build/icons`, and is the seam a consumer swaps. The run-time file names live in

@@ -1,6 +1,8 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 
+import { baseStyledClassNames, styledClassNames } from '../scripts/css-selectors.mjs';
+
 /**
  * What the two stylesheet contracts are, and how to tell them apart.
  *
@@ -132,5 +134,16 @@ export function renderedClasses(source: string): string[] {
 
 /** Every class a stylesheet writes a rule for. */
 export function styledClasses(css: string): Set<string> {
-  return new Set([...css.matchAll(/\.([a-z][a-z0-9_-]*)/gi)].map((match) => match[1] ?? ''));
+  return new Set(styledClassNames(css));
+}
+
+/**
+ * Every class a stylesheet styles on its own, under `root` and nothing else.
+ *
+ * The distinction `styledClasses` cannot draw. A class named in a surviving
+ * descendant rule is still mentioned by a selector after its own rule is gone,
+ * and the element it names is then laid out by nothing. Issue #118.
+ */
+export function baseStyledClasses(css: string, root: string): Set<string> {
+  return new Set(baseStyledClassNames(css, root));
 }

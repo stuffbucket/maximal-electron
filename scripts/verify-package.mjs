@@ -21,7 +21,13 @@ import { fileURLToPath } from 'node:url';
 import { listPackage, extractFile } from '@electron/asar';
 import { FuseV1Options, getCurrentFuseWire } from '@electron/fuses';
 
-import { PACKAGE_FUSES, RUNTIME_ICONS } from './package-contract.mjs';
+import {
+  LLAMA_BACKENDS_VARIABLE,
+  PACKAGE_FUSES,
+  RUNTIME_ICONS,
+  llamaPackagePlan,
+  parseLlamaBackends,
+} from './package-contract.mjs';
 import { terminalPackageChecks } from './terminal-package.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -255,11 +261,11 @@ check(
 // fails to load with an error that reads like a bad model file rather than a
 // packaging fault.
 //
-// The expectation is read from the dependency rather than restated, because
-// the set is platform specific in both name and size: mac-arm64 installs nine
-// under one scope package, and Windows installs four scope packages whose
-// `.dll` names collide across them. A count written here would be wrong on the
-// next target.
+// The expectation is derived rather than restated, because the set is platform
+// specific in both name and size. It is derived through the plan
+// `forge.config.ts` prunes with, not from the whole installed scope: npm
+// selects by `os` and `cpu`, which puts `win-arm64` and 505 MB of CUDA on a
+// `win32-x64` host that ships neither. Issue #113.
 //
 // Compared by path inside the scope, never by file name. Windows ships
 // `ggml-base.dll` in four directories, so a name-keyed comparison reports the
@@ -268,21 +274,77 @@ check(
 const LIBRARY_EXTENSIONS = ['.dylib', '.so', '.dll'];
 const LLAMA_SCOPE = 'node_modules/@node-llama-cpp';
 const llamaScope = path.join(ROOT, LLAMA_SCOPE);
-const shippedLibraries = existsSync(llamaScope)
-  ? readdirSync(llamaScope, { recursive: true, encoding: 'utf8' })
-      .map((entry) => entry.split(path.sep).join('/'))
-      .filter((entry) => LIBRARY_EXTENSIONS.includes(path.extname(entry)))
-  : [];
+const installed = existsSync(llamaScope) ? readdirSync(llamaScope) : [];
 
-// The floor. An empty expectation asserts nothing, which is the shape this
-// replaced: two globs flat-mapped into one non-empty assertion, where losing
-// all seven `libggml*` still passed on the two `libllama*`. Issue #92.
-check(shippedLibraries.length > 0, 'the dependency ships llama.cpp shared libraries');
+// The first floor. With no scope installed the plan is empty, every loop below
+// runs zero times, and the run is green over a package with no llama.cpp in it.
+check(installed.length > 0, 'the dependency installs llama.cpp prebuild packages');
+
+const plan =
+  installed.length > 0
+    ? llamaPackagePlan(
+        installed,
+        process.platform,
+        process.arch,
+        parseLlamaBackends(process.env[LLAMA_BACKENDS_VARIABLE]),
+      )
+    : [];
+const kept = plan.filter((entry) => entry.keep).map((entry) => entry.name);
+const dropped = plan.filter((entry) => !entry.keep);
+
+console.log(
+  `  ${String(plan.length)} prebuild package(s) installed, ${String(kept.length)} shipped: ` +
+    `${kept.join(', ') || 'none'}`,
+);
+for (const entry of dropped) {
+  console.log(`  dropped ${entry.name}: ${entry.reason}`);
+}
+
+// The second floor. A plan that keeps nothing is a package with no llama.cpp
+// backend at all, which every per-file check below would report as clean.
+check(kept.length > 0, 'the plan keeps a llama.cpp prebuild package for this target');
+
+const shippedLibraries = kept.flatMap((name) =>
+  readdirSync(path.join(llamaScope, name), { recursive: true, encoding: 'utf8' })
+    .map((entry) => entry.split(path.sep).join('/'))
+    .filter((entry) => LIBRARY_EXTENSIONS.includes(path.extname(entry)))
+    .map((entry) => `${name}/${entry}`),
+);
+
+// The third floor. An empty expectation asserts nothing, which is the shape
+// this replaced: two globs flat-mapped into one non-empty assertion, where
+// losing all seven `libggml*` still passed on the two `libllama*`. Issue #92.
+check(shippedLibraries.length > 0, 'the shipped packages carry llama.cpp shared libraries');
+console.log(`  ${String(shippedLibraries.length)} shared librar(ies) expected in the package`);
 
 const unpackedPaths = new Set(unpackedFiles);
 for (const library of shippedLibraries) {
   check(unpackedPaths.has(`${LLAMA_SCOPE}/${library}`), `${library} is unpacked`);
 }
+
+// The other half, and the one the per-file checks cannot make: nothing under
+// the scope belongs to a package the plan dropped. Without it a prune that
+// silently did nothing still passes, because every kept library is present
+// either way.
+//
+// One assertion over the whole scope rather than one per dropped package,
+// because a target may legitimately drop none: `mac-arm64` installs a single
+// package. The entry count beneath it is the floor, so a scope that vanished
+// from the package fails rather than passing with no strays.
+const scopePrefix = `${LLAMA_SCOPE}/`;
+const shippedScopeEntries = unpackedFiles.filter((entry) => entry.startsWith(scopePrefix));
+check(shippedScopeEntries.length > 0, 'the package carries the @node-llama-cpp scope');
+
+const keptNames = new Set(kept);
+const strays = shippedScopeEntries.filter(
+  (entry) => !keptNames.has(entry.slice(scopePrefix.length).split('/')[0]),
+);
+check(
+  strays.length === 0,
+  strays.length === 0
+    ? `all ${String(shippedScopeEntries.length)} scope entries belong to a shipped package`
+    : `${String(strays.length)} scope entr(ies) belong to a dropped package, first ${strays[0]}`,
+);
 
 /* ---------------------------------------------------------------- icons */
 

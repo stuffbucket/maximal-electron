@@ -86,6 +86,32 @@ export function targetPresent(root, target) {
 export const INSTALLED_WITHOUT_BUILD = 'installed without a build step';
 
 /**
+ * A package name flattened to the shape npm uses in a file name.
+ *
+ * A scoped name is a path, and every place one is interpolated into a file
+ * name, a URL, or a `git archive --prefix` has to flatten it first. Three did
+ * not, and one of them printed a 404 URL to a consumer whose install had just
+ * failed.
+ *
+ * @param {string} name
+ * @returns {string}
+ */
+export function packedName(name) {
+  return name.replace('@', '').replace('/', '-');
+}
+
+/**
+ * The file name `npm pack` writes for a package.
+ *
+ * @param {string} name
+ * @param {string} version
+ * @returns {string}
+ */
+export function packedTarballName(name, version) {
+  return `${packedName(name)}-${version}.tgz`;
+}
+
+/**
  * Every distinct file an `exports` map names. One entry per file rather than
  * per condition, because `types` and `default` often name the same one.
  *
@@ -300,9 +326,13 @@ export function importedPackages(source) {
  * `optionalDependencies` install by default, and npm 7 and later auto-installs
  * a peer that is not marked optional.
  *
+ * Returns the walk as well as the checks. `scripts/peer-table.mjs` judges the
+ * table in `README.md` against the same map, so the prose and the checks above
+ * cannot be measuring two different import graphs. Issue #121.
+ *
  * @param {string} root
  * @param {Record<string, any>} manifest
- * @returns {Promise<Check[]>}
+ * @returns {Promise<{ checks: Check[], reached: Map<string, string[]> }>}
  */
 export async function dependencyContractChecks(root, manifest) {
   /** @type {Check[]} */
@@ -389,7 +419,7 @@ export async function dependencyContractChecks(root, manifest) {
     });
   }
 
-  return checks;
+  return { checks, reached };
 }
 
 /**

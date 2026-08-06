@@ -22,30 +22,88 @@ still works.
 ## Mutation testing
 
 `npm run mutate` reports what the tests actually catch, which coverage does not.
-It is scoped to pure-logic modules, and **it breaks below 100**.
+**It breaks below 100.** It is three commands, and the two either side of
+Stryker exist because a percentage on its own is a weak claim: it says nothing
+about how many mutants there were, which files produced them, or what did the
+killing.
 
-Stryker cannot mutate anything importing `electron`: that code needs a real
-Electron runtime, not Node. Extend `mutate` in `stryker.conf.json` only with
-modules that run under plain Node.
+| Step | What it decides |
+| --- | --- |
+| `scripts/mutation-scope.mjs` | Which modules Stryker should sweep, from a criterion |
+| `stryker run` | The score, against `break: 100` |
+| `scripts/mutation-report.mjs` | Whether the run measured what it claims to have measured |
 
 A surviving mutant is a real gap. It found one here: `src/renderer/lib/data.ts`
 scored 0 with 77 untouched mutants, because it had no unit tests at all.
 
-### Reaching 100 again after you add code
+### Which modules to sweep: a criterion, not a hand-list
 
-The threshold is 100, so a new module has to get there before it lands. Three
-moves, in order of preference:
+`mutate` in `stryker.conf.json` is a list, but it is no longer maintained by
+hand. `scripts/mutation-scope.mjs` derives the set it should hold: **every file
+under `src/` and `scripts/` whose import closure reaches neither `electron` nor
+React for a value.** Anything that does needs a real Electron runtime or a
+browser, not Node, and Stryker cannot run it at all.
 
-1. **Write the test.** Most survivors are real. If a mutant lives, ask what
-   behaviour it changed and whether anything asserts that behaviour.
-2. **Delete the unreachable branch.** `noUncheckedIndexedAccess` forces a
-   fallback on every index read, and a fallback that can never run is dead code
-   that reads as untested. `cycle` in `data.ts` and `firstLine` in `ffmpeg.ts`
-   both exist to remove one. Prefer this to a suppression.
-3. **Suppress, with the reason.** Only for a mutant that provably cannot change
-   behaviour. Use `// Stryker disable next-line <Mutator>: why`, and state the
-   evidence, not the conclusion. There are two in the repository. Read them
-   before you write a third.
+The criterion counts value imports only. `import type { BrowserWindow }` does
+not put a module out of reach, because TypeScript erases it and the emitted
+module never loads Electron. `src/host/main-options.ts` is the worked example,
+and it is mutated.
+
+A file the criterion selects that is on neither `mutate` nor the `DEFERRED` map
+fails the check. That is the whole point: #102 records two modules landing with
+fixture tests and no mutation coverage while the headline stayed 100.00, because
+nobody remembered to name them.
+
+`DEFERRED` is the backlog, one entry per file with the issue that closes it, and
+#125 holds the measurement: applying the criterion to everything scores **38.44
+over 4391 mutants**, of which 2449 have no coverage at all. Moving a file off
+that map means getting it to 100 first.
+
+### What the score does not say
+
+Three things move Stryker's denominator without moving its percentage, and
+`scripts/mutation-report.mjs` reads the JSON report back to catch each one.
+
+- A mutant that **crashes the runner** is scored `RuntimeError` and leaves the
+  denominator entirely. It is not a false kill — Stryker keeps it out of the
+  score rather than counting it — but nothing failed the build over it either.
+  See #116.
+- A mutant nothing imports is scored `NoCoverage`.
+- A file that quietly drops off `mutate` produces no mutants, and its absence
+  looks exactly like success.
+
+So the check asserts the shape of the run: every kill names a test that
+reported, every file on the list produced at least one mutant, the total is at
+or above `MUTANT_FLOOR`, and nothing ended in `RuntimeError`, `NoCoverage` or a
+timeout. `IGNORED_CEILING` holds the suppression count, so a fourth
+`// Stryker disable` has to be added on purpose.
+
+Raise `MUTANT_FLOOR` when the count rises. A fall is the defect it exists to
+catch.
+
+### Reaching 100 after you add code
+
+The threshold is 100, so a new module has to get there before it lands. A
+survivor is one of exactly three things, and **"documented-equivalent" as a
+catch-all is not acceptable**:
+
+1. **Killable.** Write the test, and show the mutant going Survived to Killed.
+   Most survivors are this. If a mutant lives, ask what behaviour it changed
+   and whether anything asserts that behaviour.
+2. **Dead.** Delete the code, or encode the impossibility in the type system.
+   `noUncheckedIndexedAccess` forces a fallback on every index read, and a
+   fallback that can never run is dead code that reads as untested. `cycle` in
+   `data.ts` and `firstLine` in `ffmpeg.ts` both exist to remove one. Prefer
+   this to a suppression.
+3. **A deliberately-retained equivalent, with a written proof** over the
+   reachable input domain. Use `// Stryker disable next-line <Mutator>: why`,
+   and state the evidence, not the conclusion. There are three in the
+   repository. Read them before you write a fourth, and raise
+   `IGNORED_CEILING`.
+
+The rule comes from `stuffbucket/maximal-core`'s testing strategy, which states
+it better than anything written here before.
+
 
 Never lower the threshold to make a change fit.
 
@@ -198,3 +256,80 @@ fixture is absent proves nothing if the fixture was never made.
 `STUFFBUCKET_SKIP_FIXTURE=1` drops it. CI sets that on the end-to-end job only,
 where no spec reaches the fixture and `verify:package` does not run. Leave it
 unset anywhere `npm run stills` or `npm run record` follows.
+
+## Techniques rejected, with the reason
+
+Each of these was investigated against this repository and turned down. They
+are recorded because the argument is the expensive part, and because a
+technique with no stated rejection gets proposed again every six months.
+
+Each one would also run, print green, and check less than what is already
+here. That is worse than not having it, because a green run reads as verified.
+
+- **Do not diff `demo/stills` for equality**, in Playwright's
+  `toHaveScreenshot` or anything else, and call it a regression gate. A pixel
+  diff reads as "layout unchanged" on a still that is bistable for reasons
+  unrelated to the change under review. That is the empty-scope failure wearing
+  a different tool: a check that returns green because it quietly stopped
+  checking the thing that matters. See "A still is not an oracle" above.
+- **Do not put Storybook in CI**, through the test runner or its successor the
+  Vitest addon. Both turn every story into a gating test, which reopens the
+  choice `docs/storybook.md` already made and defended: a workshop tool does
+  not gate a pull request, and a story broken by a refactor is allowed to rot
+  until somebody opens it. The newer tool is the same decision by another name.
+- **Do not adopt Playwright component testing** as a second mounting harness.
+  The components worth protecting are the ones with `play` functions — the
+  roving keyboard navigation on the tab strip and the title bar, and the
+  generic dialog pattern. Porting each specific assertion into the end-to-end
+  suite that already runs closes the same gap without a second framework that
+  knows how to render them.
+- **Do not add a coverage percentage gate on top of `npm run mutate`.** Line
+  coverage answers "did this execute", which a 100 mutation score subsumes and
+  exceeds. It is a second number to chase carrying less information than the
+  first. It could mean something on the modules Stryker cannot reach, but that
+  is a different scope, and even there it proves execution rather than
+  correctness.
+- **Do not turn on Stryker's incremental mode.** It works, and its own
+  documentation is explicit that it can carry a stale "killed" result forward
+  when a change falls into one of its blind spots: an environment change, a
+  dependency bump, or a runner that reports coverage per file rather than per
+  test location, which Vitest does. A mode that can report 100 against data it
+  did not re-run is the same failure in a faster package. The minute this step
+  costs is the honest price of a gate that means what it says.
+- **Do not run `fast-check` over a domain the tests already enumerate.**
+  `escapeAction` takes two booleans and its whole input domain is four values.
+  Generating inputs for that is exhaustive testing done slower, with a
+  dependency to show for it. The numeric core of `src/renderer/lib/contrast.ts`
+  is the one place a continuous domain makes it pay.
+
+### Infrastructure rejected for the same question
+
+A run drives a real application on the developer's desktop, and the answer was
+two guards in this repository rather than a machine. These were the
+alternatives.
+
+- **A separate macOS Space is not reachable.** `NSWindow` exposes a collection
+  behaviour for a window the process already shows, and nothing in AppKit lets
+  a process open a window on a Space it is not on. Every tool that does this
+  reaches a private, undocumented API, and some of those commands need System
+  Integrity Protection turned off. That is not a foundation for a test suite.
+- **A container or a Linux virtual machine tests the wrong platform.** Every
+  option available here runs a Linux guest only. The overlay's non-activating
+  panel, the dock, and the packaging assertions are all macOS behaviour a Linux
+  guest cannot exercise at all, so this trades "off the desktop" for "untested
+  on the platform most of the native code targets".
+- **A virtual display driver changes nothing that matters.** It adds a monitor
+  inside the session the developer is already logged into. It is a fancier
+  version of `quietBounds`, at the cost of a third-party dependency, and it
+  leaves the dock and the activation alone because it is the same user.
+- **Offscreen rendering was not tried, and is not free.** An offscreen window
+  is always frameless, so the traffic lights the stills exist partly to show
+  would never appear, and it needs a second window-construction path kept in
+  step with the real one. Whether the debugger capture path can read an
+  offscreen surface at all is unknown.
+
+A second macOS user account, logged in through Fast User Switching, is the one
+alternative that was not ruled out: it has its own fully composited session,
+independent of the primary user. It was never tried here, and it stopped being
+worth trying once `focusWindow` and `setDockVisible` learned to return early.
+Treat it as a spike rather than a fix if the question comes back.

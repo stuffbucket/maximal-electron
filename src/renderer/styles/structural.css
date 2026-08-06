@@ -425,6 +425,14 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The rail narrows to an icon column, so the horizontal padding narrows with
+   it. `shell.css` has carried this rule since the rail landed and the package
+   stylesheet never did, which left a consumer's collapsed rail padded for a
+   label that is no longer drawn. Issue #118. */
+.sb-shell .nav--collapsed {
+  padding: var(--shell-space-3, 12px) var(--shell-space-1, 4px);
+}
+
 .sb-shell .nav--collapsed .nav__item {
   justify-content: center;
   padding: 0;

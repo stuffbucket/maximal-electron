@@ -5,7 +5,8 @@ A reference Electron application. It exists to be forked.
 It answers two questions that every desktop project has to answer, and that
 most templates leave out:
 
-1. How does this build and ship on macOS and Windows, with real signing?
+1. How does this build and package on macOS and Windows, and how is the package
+   proved correct?
 2. How does an agent work in this repository without breaking it?
 
 Screenshot of the shell: `test-results/shell.png`, after `npm run stills`.
@@ -19,8 +20,8 @@ Screenshot of the shell: `test-results/shell.png`, after `npm run stills`.
 | Layout | Radix and `react-resizable-panels`. |
 | Terminal | `ghostty-web` over `node-pty`. |
 | Agent | pi coding agent, or an embedded model. |
-| macOS | Signed dmg from a private builder. |
-| Windows | Per-user MSI from WiX 5. |
+| Packaging | Forge `package` on macOS and Windows, verified in CI. |
+| Release | An npm tarball on a GitHub release. No installer. |
 | Tests | Vitest and Playwright. |
 | Demos | A scripted screen recorder that drives the real app. |
 | Harness | `AGENTS.md` and `.claude/skills/`. |
@@ -59,25 +60,35 @@ A dock badge tracks real application state.
 
 ## Consume the shell frame
 
-Install it from a git ref, or from the tarball a release attaches:
+The package is `@stuffbucket/maximal-electron`, on the GitHub Packages npm
+registry:
 
 ```json
-"stuffbucket-electron": "github:stuffbucket/maximal-electron#<ref>"
-"stuffbucket-electron": "https://github.com/stuffbucket/maximal-electron/releases/download/v0.0.3/stuffbucket-electron-0.0.3.tgz"
+"@stuffbucket/maximal-electron": "^0.0.5"
+```
+
+Installing from that registry needs an `.npmrc` and a token, for a public
+package as much as a private one. The git ref and the release tarball still
+work and need neither:
+
+```json
+"@stuffbucket/maximal-electron": "github:stuffbucket/maximal-electron#<ref>"
+"@stuffbucket/maximal-electron": "https://github.com/stuffbucket/maximal-electron/releases/download/v0.0.5/stuffbucket-maximal-electron-0.0.5.tgz"
 ```
 
 `dist/` is built by a lifecycle script rather than committed, and npm runs a
 different one for each form. A `codeload.github.com` archive URL runs neither,
-so that form is unsupported and refuses to install. This package is not on the
-public npm registry. Read [docs/consuming.md](./docs/consuming.md).
+so that form is unsupported and refuses to install. Read
+[docs/consuming.md](./docs/consuming.md), which states the token cost and the
+migration from the old unscoped name.
 
-Either supported form exposes the main-process lifecycle at
-`stuffbucket-electron/main`, the secured host window at
-`stuffbucket-electron/host` and the generic renderer frame at
-`stuffbucket-electron/host` and the generic renderer frame at
-`stuffbucket-electron/renderer`. The renderer entry exports `ShellLayout`,
-`TitleBar`, `TabBar`, `NavRail`, `Canvas`, and `IconButton`. It does not export
-the reference application, terminal, agent, sample data, or fixtures.
+Every supported form exposes the main-process lifecycle at
+`@stuffbucket/maximal-electron/main`, the secured host window at
+`@stuffbucket/maximal-electron/host`, and the generic renderer frame at
+`@stuffbucket/maximal-electron/renderer`. The renderer entry exports
+`ShellLayout`, `TitleBar`, `TabBar`, `NavRail`, `Canvas`, and `IconButton`. It
+does not export the reference application, terminal, agent, sample data, or
+fixtures.
 
 `runMain(runtime, options)` runs a main process on this shell's lifecycle: the
 profile directory, the single instance lock, the window, the quit policy, and a
@@ -86,24 +97,28 @@ whose shape is versioned. This application's own `src/main/index.ts` runs on it.
 See [docs/embedding.md](./docs/embedding.md).
 
 The package declares no runtime dependencies. Every package an export imports is
-an optional peer, so installing it for `stuffbucket-electron/host` adds nothing
+an optional peer, so installing it for `@stuffbucket/maximal-electron/host` adds nothing
 to `node_modules` beyond the package itself. Install the peers for the entries
 you use:
 
 | Entry | Peers |
 | --- | --- |
-| `stuffbucket-electron/main` | `electron` |
-| `stuffbucket-electron/host` | `electron` |
-| `stuffbucket-electron/host/terminal` | `node-pty` |
-| `stuffbucket-electron/renderer` | `react`, `react-dom`, `ghostty-web`, `lucide-react`, `react-resizable-panels`, `@radix-ui/react-collapsible`, `@radix-ui/react-tabs`, `@radix-ui/react-tooltip`, `@radix-ui/react-visually-hidden` |
-| `stuffbucket-electron/verify` | none |
-| `stuffbucket-electron/verify/shell-variables` | none |
+| `@stuffbucket/maximal-electron/main` | `electron` |
+| `@stuffbucket/maximal-electron/host` | `electron` |
+| `@stuffbucket/maximal-electron/host/terminal` | `node-pty` |
+| `@stuffbucket/maximal-electron/renderer` | `react`, `react-dom`, `ghostty-web`, `lucide-react`, `react-resizable-panels`, `@radix-ui/react-collapsible`, `@radix-ui/react-tabs`, `@radix-ui/react-tooltip`, `@radix-ui/react-visually-hidden` |
+| `@stuffbucket/maximal-electron/verify` | none |
+| `@stuffbucket/maximal-electron/verify/shell-variables` | none |
 
 npm says nothing about a missing optional peer at install time. The failure
 lands later: a bundler stops on the unresolved import and names the package,
-and a main-process entry throws when it loads. `npm run verify:exports` reads
-the peers back out of the built import graph, so the table above cannot drift
-from what the code imports without failing a check.
+and a main-process entry throws when it loads. `npm run verify:exports` parses
+the rows above and compares each one against the packages that entry point's
+built import graph reaches, so a peer the table leaves out and a peer the table
+invents both fail the check. `react-dom` is the one name no import reaches: a
+React component does not import a renderer, the consumer mounting these
+components needs one, and `scripts/peer-table.mjs` names it as the single
+exception rather than allowing any.
 
 Import the structural styles separately:
 
@@ -114,8 +129,8 @@ import {
   ShellLayout,
   TabBar,
   TitleBar,
-} from 'stuffbucket-electron/renderer';
-import 'stuffbucket-electron/renderer/styles.css';
+} from '@stuffbucket/maximal-electron/renderer';
+import '@stuffbucket/maximal-electron/renderer/styles.css';
 ```
 
 The stylesheet ships no palette and scopes every rule under `.sb-shell`.
@@ -141,7 +156,7 @@ Sixteen more variables have structural fallbacks in the CSS, and two are read
 by JavaScript rather than by any rule. `docs/shell-variables.md` holds the whole
 contract, derived from the stylesheet and checked against it in both directions.
 Set the ones your design system disagrees with.
-`stuffbucket-electron/verify/shell-variables` exports the derivation so an
+`@stuffbucket/maximal-electron/verify/shell-variables` exports the derivation so an
 application can assert its own adapter against the stylesheet it installed.
 
 `TitleBar` accepts caller-owned `leading` and `actions` nodes. Direct `TitleBar`
@@ -157,8 +172,9 @@ and verify that every export target appears in `npm pack`.
 
 ## Package the terminal
 
-`stuffbucket-electron/host/terminal` and `stuffbucket-electron/renderer` give a
-working terminal and leave two packaging traps behind.
+`@stuffbucket/maximal-electron/host/terminal` and
+`@stuffbucket/maximal-electron/renderer` give a working terminal and leave two
+packaging traps behind.
 
 - `ghostty-web` inlines its WebAssembly as a data URL and fetches it at startup.
   The content policy needs `'wasm-unsafe-eval'` in `script-src` and `data:` in
@@ -168,8 +184,8 @@ working terminal and leave two packaging traps behind.
   `spawn-helper`, which has no extension and is executed from outside the
   archive.
 
-`stuffbucket-electron/verify` exports those assertions as a function to run
-against a built application. `docs/architecture.md` has the call.
+`@stuffbucket/maximal-electron/verify` exports those assertions as a function
+to run against a built application. `docs/architecture.md` has the call.
 
 ## Your own icon
 
@@ -235,16 +251,20 @@ See [docs/recording.md](./docs/recording.md).
 
 ## Release
 
-Push a tag. Every asset lands on a draft release, and one job publishes it.
+Push a tag. The npm tarball lands on a draft release, and one job publishes it.
 
 ```bash
 git tag -a v0.1.0 -m "Release 0.1.0"
 git push origin v0.1.0
 ```
 
-macOS signing runs in the private `stuffbucket/macos-builder`. **No Apple
-credential belongs in this repository.** Windows ships unsigned, which is an
-organisation-wide decision.
+**There is no installer.** No MSI and no dmg. `npm run package` produces an
+unsigned `.app` and an unsigned `win32` directory, `ci.yml` runs it on both
+platforms, `npm run verify:package` proves the result is correct, and `npm run
+smoke:packaged` launches it. Nothing wraps it. `docs/release.md` says why, and
+what a fork adds to change that.
+
+Nothing here is signed, and **no Apple credential belongs in this repository**.
 
 Read [docs/release.md](./docs/release.md) and
 [docs/signing.md](./docs/signing.md).
@@ -253,22 +273,21 @@ Read [docs/release.md](./docs/release.md) and
 
 Stated here rather than discovered later.
 
-- **No auto-update.** An MSI has no update feed, and the macOS builder's
-  updater artifact is in Tauri's format, which Electron cannot read.
-  `docs/release.md` gives the exact change that would unblock it.
+- **No installer, on either platform.** A release carries the library tarball
+  and nothing else. See `docs/release.md`.
+- **No auto-update.** There is no delivered artifact for an updater to replace.
+- **Nothing is signed.** macOS Gatekeeper refuses an unsigned bundle it did not
+  build, and Windows SmartScreen warns on first run.
 - **The overlay agent has shell access when tools are on.** That is what makes
   it a coding agent. It asks before it runs anything that can change the
   machine, and the "Ask before running" setting controls how much it asks.
   Turn the tools off entirely with the "Agent tools" switch.
 - **The summon accelerator is not a double tap of Ctrl.** Electron cannot bind
   a bare modifier without a native monitor.
-- **No Linux release.** The makers are configured but no job builds them.
 - **The concierge model downloads on first use.** About 610 MB, once, into the
-  user data directory. The installer stays small and the model can be upgraded
+  user data directory. The package stays smaller and the model can be upgraded
   without a new build, but a first run with no network and no proxy cannot
   answer.
-- **macOS is arm64 only.** The build runner is Apple Silicon.
-- **Windows is unsigned.** SmartScreen warns on first run.
 - **Placeholder icons.** `scripts/gen-icons.mjs` draws them. Replace the output
   with designer assets before a public release, or point
   `STUFFBUCKET_ICON_DIR` at your own set.
@@ -277,9 +296,9 @@ Stated here rather than discovered later.
 
 Read [.claude/skills/port-to-project/SKILL.md](./.claude/skills/port-to-project/SKILL.md).
 
-The short version: rename the app, and mint a new WiX `UpgradeCode`. Point
-`.macos-builder/config` at your build output, and `STUFFBUCKET_ICON_DIR` at
-your icons. Then do the two manual onboarding steps in the GitHub interface.
+The short version: rename the app, and point `STUFFBUCKET_ICON_DIR` at your own
+icons. If you distribute an application rather than a library, adding a maker
+and a release job is your first change.
 
 ## Credits
 
@@ -289,6 +308,5 @@ The release mechanics and the agent harness follow two existing projects.
   the prescriptive `AGENTS.md`, and the self-contained skill format. It
   contains no Electron; only these patterns transfer.
 - `stuffbucket/maximal` contributes the draft-then-publish release shape, the
-  private macOS builder contract, the WiX installer, the design token scale,
-  and the layout-verification discipline in
+  design token scale, and the layout-verification discipline in
   `.claude/skills/verify-ui/SKILL.md`.

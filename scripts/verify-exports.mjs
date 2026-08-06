@@ -16,6 +16,7 @@ import {
   moduleGraphChecks,
   reExportedNames,
 } from './export-checks.mjs';
+import { PEER_TABLE_EXCEPTIONS, peerTable, peerTableChecks } from './peer-table.mjs';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const manifest = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
@@ -26,7 +27,30 @@ const check = (condition, message) => {
 };
 
 console.log('Package dependency contract');
-for (const { name, ok } of await dependencyContractChecks(root, manifest)) check(ok, name);
+const dependencies = await dependencyContractChecks(root, manifest);
+for (const { name, ok } of dependencies.checks) check(ok, name);
+
+/*
+ * The peer table in `README.md`. Issue #121.
+ *
+ * `README.md` said the table could not drift from what the code imports without
+ * failing a check, and no check read it. It is the first thing a consumer reads
+ * to decide what to install, and it was maintained by hand.
+ */
+const readme = await readFile(path.join(root, 'README.md'), 'utf8');
+const table = peerTable(readme, manifest.name);
+console.log(
+  `\nPeer table in README.md (${String(table.size)} rows against ${String(dependencies.reached.size)} entry points)`,
+);
+for (const { name, ok, detail } of peerTableChecks({
+  table,
+  reached: dependencies.reached,
+  peers: Object.keys(manifest.peerDependencies ?? {}),
+  exceptions: PEER_TABLE_EXCEPTIONS,
+})) {
+  check(ok, name);
+  if (!ok && detail !== '') console.log(`         ${detail}`);
+}
 
 /*
  * `scripts/export-checks.mjs` holds what an export has to satisfy.
@@ -35,7 +59,7 @@ for (const { name, ok } of await dependencyContractChecks(root, manifest)) check
  */
 const targets = exportTargets(manifest.exports);
 
-console.log('Package export targets');
+console.log('\nPackage export targets');
 // The floor. An empty map would report every check below as passing by
 // checking nothing.
 check(targets.length > 0, 'the manifest declares at least one export');

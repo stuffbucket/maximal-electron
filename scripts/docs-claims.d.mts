@@ -8,6 +8,9 @@
  */
 
 export declare function withoutFences(text: string): string;
+export declare function codeSpans(text: string): string[];
 export declare function npmScripts(text: string): string[];
+export declare function npmScriptsOutOfScope(text: string): number;
+export declare function repoPaths(text: string, roots: string[]): string[];
 export declare function constants(text: string): string[];
 export declare function links(text: string): string[];
