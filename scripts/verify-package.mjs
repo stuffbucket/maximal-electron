@@ -256,15 +256,22 @@ check(
 // packaging fault.
 //
 // The expectation is read from the dependency rather than restated, because
-// the set is platform specific in both name and size: mac-arm64-metal installs
-// nine, and Windows builds neither prefix `lib` nor end in `.dylib`. A count
-// written here would be wrong on the next target.
+// the set is platform specific in both name and size: mac-arm64 installs nine
+// under one scope package, and Windows installs four scope packages whose
+// `.dll` names collide across them. A count written here would be wrong on the
+// next target.
+//
+// Compared by path inside the scope, never by file name. Windows ships
+// `ggml-base.dll` in four directories, so a name-keyed comparison reports the
+// CUDA backend as present because the CPU one is — the same widened scope this
+// script exists to catch.
 const LIBRARY_EXTENSIONS = ['.dylib', '.so', '.dll'];
-const llamaScope = path.join(ROOT, 'node_modules/@node-llama-cpp');
+const LLAMA_SCOPE = 'node_modules/@node-llama-cpp';
+const llamaScope = path.join(ROOT, LLAMA_SCOPE);
 const shippedLibraries = existsSync(llamaScope)
   ? readdirSync(llamaScope, { recursive: true, encoding: 'utf8' })
+      .map((entry) => entry.split(path.sep).join('/'))
       .filter((entry) => LIBRARY_EXTENSIONS.includes(path.extname(entry)))
-      .map((entry) => path.basename(entry))
   : [];
 
 // The floor. An empty expectation asserts nothing, which is the shape this
@@ -272,9 +279,9 @@ const shippedLibraries = existsSync(llamaScope)
 // all seven `libggml*` still passed on the two `libllama*`. Issue #92.
 check(shippedLibraries.length > 0, 'the dependency ships llama.cpp shared libraries');
 
-const unpackedNames = new Set(unpackedFiles.map((entry) => path.basename(entry)));
+const unpackedPaths = new Set(unpackedFiles);
 for (const library of shippedLibraries) {
-  check(unpackedNames.has(library), `${library} is unpacked`);
+  check(unpackedPaths.has(`${LLAMA_SCOPE}/${library}`), `${library} is unpacked`);
 }
 
 /* ---------------------------------------------------------------- icons */
