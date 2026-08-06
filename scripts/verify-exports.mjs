@@ -127,6 +127,37 @@ check(
 );
 
 /*
+ * The main-process seam. Issue #15.
+ *
+ * Names rather than an import: `dist/host/run-main.js` imports `electron`,
+ * which plain `node` cannot load. The declaration is what a consumer's `tsc`
+ * reads, so checking the declaration checks what breaks them.
+ */
+console.log('\nMain-process seam');
+const mainTypes = manifest.exports['./main']?.types;
+check(typeof mainTypes === 'string', 'the manifest declares a ./main export');
+
+const mainDeclaration =
+  typeof mainTypes === 'string' && existsSync(path.join(root, mainTypes))
+    ? await readFile(path.join(root, mainTypes), 'utf8')
+    : '';
+// The floor. An unreadable declaration would report every name below as
+// missing, which is a different failure from a name that was dropped.
+check(mainDeclaration !== '', 'the ./main declaration is readable');
+for (const name of [
+  'runMain',
+  'RUN_MAIN_OPTIONS_VERSION',
+  'RunMainOptions',
+  'MainContext',
+  'MainRuntime',
+]) {
+  check(
+    new RegExp(`\\b${name}\\b`).test(mainDeclaration),
+    `the ./main declaration names ${name}`,
+  );
+}
+
+/*
  * `lib/` holds this application's own things — the bridge, the sample data, the
  * palette — so reaching one from the export means the package carries the
  * application with it. The exceptions are contracts: types and pure functions a
