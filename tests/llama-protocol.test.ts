@@ -12,6 +12,7 @@ import {
   LLAMA_NO_LIBRARY,
   describeEngineExit,
   describeEngineWait,
+  engineCheckTimeoutMs,
   exhaustedMessage,
   faultName,
   llamaCheckLine,
@@ -204,9 +205,18 @@ describe('describeEngineWait', () => {
 
   it('separates a child that never started from one that never answered', () => {
     expect(describeEngineWait('not started', 1)).toContain('never forked');
-    expect(describeEngineWait('forked', 1)).toContain('may not have reached it');
-    expect(describeEngineWait('running', 1)).toContain('loading llama.cpp');
+    expect(describeEngineWait('forked', 1)).toContain('entry never ran');
     expect(describeEngineWait('loaded', 1)).toContain('had loaded llama.cpp');
+  });
+
+  it('admits that `running` cannot tell a slow load from a lost request', () => {
+    // Both halves matter. The first Windows run was read as a slow load, and
+    // the negative control timing out identically said it was a lost request.
+    // A message naming only one of the two invites the same wrong reading.
+    const message = describeEngineWait('running', 1);
+    expect(message).toContain('never named a device');
+    expect(message).toContain('llama.cpp was still loading');
+    expect(message).toContain('the request never reached it');
   });
 
   it('reports the milliseconds it was given', () => {
@@ -219,6 +229,22 @@ describe('the lifecycle id', () => {
   it('is not a value any operation would choose', () => {
     // Operations key on a `randomUUID`, so this cannot collide with one.
     expect(ENGINE_LIFECYCLE).toBe('engine');
+  });
+});
+
+describe('engineCheckTimeoutMs', () => {
+  it('gives Windows longer, because nothing has measured it there', () => {
+    expect(engineCheckTimeoutMs('win32')).toBe(180_000);
+  });
+
+  it('leaves the measured platforms at the value that fits them', () => {
+    // getLlama() is 0.4 s warm and 9.3 s on a cold Metal shader cache.
+    expect(engineCheckTimeoutMs('darwin')).toBe(60_000);
+    expect(engineCheckTimeoutMs('linux')).toBe(60_000);
+  });
+
+  it('is longer on Windows than anywhere else', () => {
+    expect(engineCheckTimeoutMs('win32')).toBeGreaterThan(engineCheckTimeoutMs('darwin'));
   });
 });
 
@@ -243,11 +269,12 @@ describe('the packaged llama check', () => {
     expect(llamaCheckRequested([])).toBe(false);
   });
 
-  it('names the backend and the crash it walked away from', () => {
-    // "ok" alone would also be printed by a check that forked nothing.
-    expect(llamaCheckLine({ ok: true, device: 'metal', survived: 'SIGABRT' })).toBe(
-      `${LLAMA_CHECK_OK} device=metal survived=SIGABRT`,
-    );
+  it('names the backend, what loading cost, and the crash it walked away from', () => {
+    // "ok" alone would also be printed by a check that forked nothing, and the
+    // cost is the only measurement anyone has of a platform they cannot run.
+    expect(
+      llamaCheckLine({ ok: true, device: 'metal', loadMs: 418, survived: 'SIGABRT' }),
+    ).toBe(`${LLAMA_CHECK_OK} device=metal loadMs=418 survived=SIGABRT`);
   });
 
   it('says why it failed', () => {
@@ -257,7 +284,7 @@ describe('the packaged llama check', () => {
   });
 
   it('keeps the two lines apart', () => {
-    const pass = llamaCheckLine({ ok: true, device: 'cpu', survived: 'x' });
+    const pass = llamaCheckLine({ ok: true, device: 'cpu', loadMs: 1, survived: 'x' });
     expect(pass.startsWith(LLAMA_CHECK_FAILED)).toBe(false);
     expect(llamaCheckLine({ ok: false, reason: 'x' }).startsWith(LLAMA_CHECK_OK)).toBe(false);
   });

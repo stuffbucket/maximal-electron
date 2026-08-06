@@ -42,6 +42,17 @@ const LLAMA_NO_LIBRARY = 'did not load llama.cpp';
 
 const LAUNCH_TIMEOUT_MS = 90_000;
 
+/**
+ * The llama launches get their own, longer limit.
+ *
+ * The application times itself out and prints a line naming the phase it was
+ * waiting in — `engineCheckTimeoutMs` in `src/main/native/llama-protocol.ts`,
+ * which is 180 s on Windows. A driver that killed it at 90 s would replace
+ * that diagnosis with `killed after 90000 ms`, which says nothing. This has to
+ * stay above whatever the application allows itself. Issue #133.
+ */
+const LLAMA_LAUNCH_TIMEOUT_MS = 240_000;
+
 const failures = [];
 const check = (ok, message) => {
   console.log(`${ok ? '  ok  ' : ' FAIL '} ${message}`);
@@ -120,7 +131,7 @@ if (!existsSync(BINARY)) {
 if (existsSync(ASIDE) && !existsSync(NATIVE)) renameSync(ASIDE, NATIVE);
 
 /** Run the packaged binary once, with a fresh token. */
-function launch(args) {
+function launch(args, timeoutMs = LAUNCH_TIMEOUT_MS) {
   const token = randomBytes(8).toString('hex');
   return new Promise((resolve) => {
     const argv = args ?? [FLAG, `${TOKEN_FLAG}${token}`];
@@ -132,24 +143,27 @@ function launch(args) {
     const timer = setTimeout(() => {
       timedOut = true;
       child.kill('SIGKILL');
-    }, LAUNCH_TIMEOUT_MS);
+    }, timeoutMs);
 
     child.stdout.on('data', (chunk) => (stdout += chunk));
     child.stderr.on('data', (chunk) => (stderr += chunk));
     child.on('error', (error) => {
       clearTimeout(timer);
-      resolve({ token, stdout, stderr: `${stderr}${String(error)}`, code: null, signal: null, timedOut });
+      resolve({ token, stdout, stderr: `${stderr}${String(error)}`, code: null, signal: null, timedOut, timeoutMs });
     });
     child.on('close', (code, signal) => {
       clearTimeout(timer);
-      resolve({ token, stdout, stderr, code, signal, timedOut });
+      resolve({ token, stdout, stderr, code, signal, timedOut, timeoutMs });
     });
   });
 }
 
 function describe(run) {
+  // The limit comes off the run, not off the constant. The llama launches use
+  // a longer one, and a message naming the wrong number is how a reader
+  // mis-calibrates the next timeout.
   const status = run.timedOut
-    ? `killed after ${String(LAUNCH_TIMEOUT_MS)} ms`
+    ? `killed after ${String(run.timeoutMs)} ms`
     : `exit ${String(run.code)}${run.signal ? ` signal ${run.signal}` : ''}`;
   return `${status}\n${[run.stdout, run.stderr].join('').trimEnd()}`;
 }
@@ -222,7 +236,7 @@ check(
  */
 console.log('\nLoading llama.cpp in the engine process, then killing it\n');
 
-const engine = await launch([LLAMA_FLAG]);
+const engine = await launch([LLAMA_FLAG], LLAMA_LAUNCH_TIMEOUT_MS);
 console.log(`${describe(engine)}\n`);
 
 check(engine.code === 0, 'the packaged application survives a native abort in the engine');
@@ -268,7 +282,7 @@ const scopeEntries = readdirSync(SCOPE).length;
 let noEngine;
 try {
   renameSync(SCOPE, SCOPE_ASIDE);
-  noEngine = await launch([LLAMA_FLAG]);
+  noEngine = await launch([LLAMA_FLAG], LLAMA_LAUNCH_TIMEOUT_MS);
 } finally {
   renameSync(SCOPE_ASIDE, SCOPE);
 }

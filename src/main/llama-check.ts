@@ -7,6 +7,7 @@ import { enginePhase, listen, send } from './native/llama-host.js';
 import {
   LLAMA_NO_LIBRARY,
   describeEngineWait,
+  engineCheckTimeoutMs,
   llamaCheckLine,
   type LlamaCheckResult,
 } from './native/llama-protocol.js';
@@ -27,7 +28,7 @@ import {
  * abort. Issue #133.
  */
 
-const TIMEOUT_MS = 60_000;
+const TIMEOUT_MS = engineCheckTimeoutMs(process.platform);
 
 function announce(result: LlamaCheckResult): number {
   // `app.exit` does not drain an asynchronous pipe, and the driver reads this
@@ -42,6 +43,8 @@ export function runLlamaCheck(): void {
 
   let settled = false;
   let device: string | undefined;
+  let loadMs = 0;
+  const started = Date.now();
 
   function report(result: LlamaCheckResult): void {
     if (settled) return;
@@ -51,7 +54,7 @@ export function runLlamaCheck(): void {
   }
 
   const timer = setTimeout(() => {
-    report({ ok: false, reason: describeEngineWait(enginePhase(), TIMEOUT_MS) });
+    report({ ok: false, reason: describeEngineWait(enginePhase(), Date.now() - started) });
   }, TIMEOUT_MS);
 
   const id = randomUUID();
@@ -59,6 +62,7 @@ export function runLlamaCheck(): void {
   listen(id, (event) => {
     if (event.kind === 'loaded') {
       device = event.device;
+      loadMs = event.ms;
       return;
     }
     if (event.kind === 'failed') {
@@ -69,7 +73,7 @@ export function runLlamaCheck(): void {
         report({ ok: false, reason: `the engine ${LLAMA_NO_LIBRARY}: ${event.reason}` });
         return;
       }
-      report({ ok: true, device, survived: event.reason });
+      report({ ok: true, device, loadMs, survived: event.reason });
       return;
     }
     if (event.kind === 'done') {

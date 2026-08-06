@@ -51,7 +51,7 @@ export type EngineEvent =
    */
   | { kind: 'hello'; id: string; pid: number }
   /** The engine loaded `node-llama-cpp`. `device` is whatever it chose. */
-  | { kind: 'loaded'; id: string; device: string }
+  | { kind: 'loaded'; id: string; device: string; ms: number }
   | { kind: 'progress'; id: string; progress: ModelProgress }
   | { kind: 'delta'; id: string; text: string }
   | { kind: 'tool-call'; id: string; callId: string; name: string; args: unknown }
@@ -208,12 +208,20 @@ export type EnginePhase =
 
 const PHASE_DETAIL: Readonly<Record<EnginePhase, string>> = {
   'not started': 'the engine process was never forked',
-  forked: 'the engine process started but never answered, so the request may not have reached it',
-  running: 'the engine is running and had not finished loading llama.cpp',
+  forked: 'the engine process started but its entry never ran',
+  running:
+    'the engine started and never named a device, so llama.cpp was still ' +
+    'loading or the request never reached it',
   loaded: 'the engine had loaded llama.cpp and did not answer',
 };
 
-/** The timeout message, naming what it was waiting on. */
+/**
+ * The timeout message, naming what it was waiting on and for how long.
+ *
+ * The elapsed time is separate from the limit because they stop being the same
+ * number the moment anyone raises the limit for one platform. Whoever reads a
+ * Windows log next needs both to calibrate.
+ */
 export function describeEngineWait(phase: EnginePhase, ms: number): string {
   return `no answer in ${String(ms)} ms: ${PHASE_DETAIL[phase]} (phase ${phase})`;
 }
@@ -250,7 +258,7 @@ export const LLAMA_CHECK_FAILED = 'self-check llama: failed';
 export const LLAMA_NO_LIBRARY = 'did not load llama.cpp';
 
 export type LlamaCheckResult =
-  | { ok: true; device: string; survived: string }
+  | { ok: true; device: string; loadMs: number; survived: string }
   | { ok: false; reason: string };
 
 export function llamaCheckRequested(argv: readonly string[]): boolean {
@@ -258,13 +266,33 @@ export function llamaCheckRequested(argv: readonly string[]): boolean {
 }
 
 /**
+ * How long the packaged check waits for the engine to load llama.cpp.
+ *
+ * macOS is measured: `getLlama()` costs 0.4 s warm and 9.3 s on a cold Metal
+ * shader cache, so 60 s is ample.
+ *
+ * **Windows is not measured.** No run has yet loaded llama.cpp there, and a
+ * runner with no GPU takes a CPU path macOS never exercises. The value is a
+ * ceiling generous enough to get one successful measurement, not a number
+ * anyone has justified. `loadMs` on the pass line is what replaces it: the
+ * first green Windows run says what the load actually cost, and this comes
+ * down to fit. Issue #133.
+ */
+export function engineCheckTimeoutMs(platform: string): number {
+  return platform === 'win32' ? 180_000 : 60_000;
+}
+
+/**
  * The one line the driver reads.
  *
- * A pass names the backend the engine chose and the crash it walked away from,
- * because "ok" alone would also be printed by a check that forked nothing.
+ * A pass names the backend the engine chose, what loading it cost, and the
+ * crash it walked away from. "ok" alone would also be printed by a check that
+ * forked nothing, and the cost is the only measurement anyone has of a
+ * platform they cannot run locally.
  */
 export function llamaCheckLine(result: LlamaCheckResult): string {
   return result.ok
-    ? `${LLAMA_CHECK_OK} device=${result.device} survived=${result.survived}`
+    ? `${LLAMA_CHECK_OK} device=${result.device} loadMs=${String(result.loadMs)} ` +
+      `survived=${result.survived}`
     : `${LLAMA_CHECK_FAILED}: ${result.reason}`;
 }

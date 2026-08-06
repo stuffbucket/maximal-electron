@@ -28,8 +28,26 @@ import {
  * this repository would then own.
  */
 
-/** Restarted on demand, never on a timer. See `mayRestart`. */
-let child: UtilityProcess | undefined;
+/**
+ * The engine, and whether its port is usable yet.
+ *
+ * **A request posted before the `spawn` event is lost on Windows.** macOS
+ * delivers it, which is why the first Windows run of the packaged self check
+ * was the thing that found it: the child said `hello`, and then waited sixty
+ * seconds for a `probe` that had already been thrown away. With the prebuild
+ * scope moved aside the same run timed out identically, where a child that had
+ * received the request would have failed in milliseconds — that asymmetry is
+ * what identified the direction. Electron's own example posts straight after
+ * `fork`; it is not a documented guarantee. Issue #133.
+ */
+interface Engine {
+  process: UtilityProcess;
+  spawned: boolean;
+  /** Requests made before `spawn`, in order. Flushed once, then never used. */
+  queue: EngineRequest[];
+}
+
+let child: Engine | undefined;
 let crashes: number[] = [];
 let lastFailure = '';
 
@@ -96,7 +114,7 @@ function onExit(code: number): void {
  * Throws rather than returning undefined when the budget is spent, so a caller
  * cannot carry on with no engine and a silent absence of tokens.
  */
-function engine(): UtilityProcess {
+function engine(): Engine {
   if (child) return child;
 
   if (!mayRestart(crashes, Date.now())) {
@@ -125,11 +143,17 @@ function engine(): UtilityProcess {
   });
   forked.on('spawn', () => {
     if (phase === 'not started') phase = 'forked';
+    const started = child;
+    if (!started || started.process !== forked) return;
+    started.spawned = true;
+    const waiting = started.queue;
+    started.queue = [];
+    for (const request of waiting) forked.postMessage(request);
   });
   forked.on('exit', onExit);
 
-  child = forked;
-  return forked;
+  child = { process: forked, spawned: false, queue: [] };
+  return child;
 }
 
 /**
@@ -143,9 +167,20 @@ export function listen(id: string, listener: Listener): () => void {
   return () => listeners.delete(id);
 }
 
-/** Send one request. Starts the engine if it is not running. */
+/**
+ * Send one request. Starts the engine if it is not running.
+ *
+ * Held until `spawn` when the child is not up yet. Posting before then is
+ * silently dropped on Windows, and a dropped request is a hang rather than an
+ * error: the caller waits for an answer to something the engine never read.
+ */
 export function send(request: EngineRequest): void {
-  engine().postMessage(request);
+  const target = engine();
+  if (!target.spawned) {
+    target.queue.push(request);
+    return;
+  }
+  target.process.postMessage(request);
 }
 
 /** Stop the engine. It is started again by the next request. */
@@ -155,7 +190,7 @@ export function stopEngine(): void {
   child = undefined;
   phase = 'not started';
   listeners.clear();
-  running.kill();
+  running.process.kill();
 }
 
 /** For tests and for the packaged self check: forget the crash history. */

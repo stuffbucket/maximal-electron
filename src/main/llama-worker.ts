@@ -55,13 +55,16 @@ interface ChatSessionCtor {
 
 let loaded: { path: string; model: LoadedModel } | undefined;
 
-/** Load the library and report the backend it chose. */
+/** Load the library and report the backend it chose, and what it cost. */
 async function probe(id: string): Promise<string> {
+  const started = Date.now();
   const nlc = await library();
   const getLlama = nlc.getLlama as () => Promise<{ gpu: string | false }>;
   const llama = await getLlama();
   const device = llama.gpu === false ? 'cpu' : llama.gpu;
-  post({ kind: 'loaded', id, device });
+  // The number, not a round guess, is what a timeout on a platform nobody has
+  // measured should be derived from. Issue #133.
+  post({ kind: 'loaded', id, device, ms: Date.now() - started });
   return device;
 }
 
