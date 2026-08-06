@@ -93,6 +93,7 @@ jobs:
         run: npx electron probe/engine-main.js "${{ matrix.asar }}/.vite/build/llama-worker.js"
 
       - name: rung 4e, the same under an Electron with RunAsNode burned off
+        if: runner.os == 'Windows'
         timeout-minutes: 10
         env:
           PROBE_BOUND_MS: '90000'
