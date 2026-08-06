@@ -48,6 +48,12 @@ describe('reading selectors out of a stylesheet', () => {
     expect(selectors('@keyframes spin {\n  from { opacity: 0; }\n  to { opacity: 1; }\n}')).toEqual(
       [],
     );
+    // The percentage form, and a comma-separated offset list. `sb-tab-busy` in
+    // `structural.css` names its resting position at both ends, so `0%, 100%`
+    // is the shape the package stylesheet actually ships.
+    expect(
+      selectors('@keyframes x {\n  0%,\n  100% { top: 0; }\n\n  50% { top: 1px; }\n}'),
+    ).toEqual([]);
   });
 
   it('does not mistake a declaration-only at-rule for a selector', () => {
