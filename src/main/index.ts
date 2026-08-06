@@ -19,6 +19,7 @@ import {
   quietBounds,
 } from './native/preferences.js';
 import { configurePty, killAllPtys } from './native/pty.js';
+import { showCrashReports, startCrashReports } from './native/crash-reports.js';
 import { llamaCheckRequested } from './native/llama-protocol.js';
 import { selfCheckRequested } from './native/self-check.js';
 import { runLlamaCheck } from './llama-check.js';
@@ -32,10 +33,10 @@ import { closeSplashWindow, createSplashWindow } from './windows/splash.js';
 /*
  * Pick the profile before anything else touches it.
  *
- * `runMain` applies this before it takes the single instance lock, because the
- * lock is derived from the profile directory. Two builds pointing at the same
- * directory are the same application as far as Chromium is concerned, and the
- * second one to start will not get a window.
+ * It is applied before the single instance lock, because the lock is derived
+ * from the profile directory. Two builds pointing at the same directory are
+ * the same application as far as Chromium is concerned, and the second one to
+ * start will not get a window.
  *
  * - Under test: a throwaway directory, so a run never clobbers a developer's
  *   real preferences.
@@ -200,6 +201,7 @@ function bootstrap(): void {
     },
     onCheckForUpdates: () => void runUpdateCheck(),
     onOpenPreferences: () => activate(),
+    onShowCrashReports: showCrashReports,
   });
 
   // The tray is a plain click target: it activates the application.
@@ -246,6 +248,18 @@ function shutdown(): Promise<void> | undefined {
 
 /* ------------------------------------------------------------- lifecycle */
 
+/*
+ * Crash artifacts, before the branch below rather than inside it.
+ *
+ * Crashpad derives its database from the profile directory at the moment it
+ * starts, so the profile is chosen here and `runMain` is handed the same one.
+ * It sits above the branch because the self-check paths never reach `runMain`,
+ * and those are the runs that crash on purpose. Issue #134.
+ */
+const userDataDirectory = profileDirectory();
+if (userDataDirectory !== undefined) app.setPath('userData', userDataDirectory);
+startCrashReports();
+
 if (selfCheckRequested(process.argv)) {
   /*
    * The packaged smoke test, ahead of `runMain` because `runMain` takes the
@@ -263,7 +277,7 @@ if (selfCheckRequested(process.argv)) {
     { app },
     {
       version: RUN_MAIN_OPTIONS_VERSION,
-      userDataDirectory: profileDirectory(),
+      userDataDirectory,
       keepRunningWithoutWindows: () => getPreferences().menuBarIcon,
       window: mainWindowOptions,
       onReady: (context) => {

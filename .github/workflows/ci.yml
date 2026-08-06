@@ -142,6 +142,12 @@ jobs:
       # shell inside the package. Issue #89.
       - run: npm run smoke:packaged
 
+      # Crashes the packaged application's engine on purpose and reads the
+      # minidump back off disk, against a control run that crashes nothing.
+      # Where #149 gates the engine off, the gate is asserted and the artifact
+      # is not proven. Issue #134.
+      - run: npm run verify:crash-artifact
+
   e2e:
     name: end-to-end (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

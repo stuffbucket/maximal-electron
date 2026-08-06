@@ -395,6 +395,62 @@ the closure from the installed tree, `forge.config.ts` keeps it, and
 `verify-package.mjs` asserts it arrived — 64 packages and 13 MB on
 `darwin-arm64`. Issue #133.
 
+## Crash artifacts
+
+`crashReporter.start({ uploadToServer: false })` runs before anything else in
+`src/main/index.ts`, above the branch that dispatches the self checks, because
+those are the runs that crash on purpose. Nothing is uploaded: there is no
+`submitURL`, no service, and no credential. Issue #134.
+
+**Where the dumps land.** `app.getPath('crashDumps')`, which is
+`<userData>/Crashpad`. On macOS the database holds `settings.dat` and the
+directories `pending/`, `completed/`, `new/` and `attachments/`, and a dump
+arrives as `pending/<uuid>.dmp` at 570 KB to 815 KB. `host/crash-artifacts.ts`
+scans it recursively rather than by name, because those names are Crashpad's
+and differ by platform.
+
+**The call is what produces the artifact, not Electron on its own.** With the
+start suppressed and everything else unchanged, the same crash left no file and
+no directory — not an empty database, an absent one. That was measured on
+Electron 43 before any of this was written.
+
+| Process | Covered | Established by |
+| --- | --- | --- |
+| `utilityProcess` (the engine) | yes | `npm run verify:crash-artifact` on a packaged build |
+| Renderer | yes | A `forcefullyCrashRenderer` run on Electron 43. No check drives it |
+| Main | yes | A `process.crash()` run on Electron 43. No check drives it |
+
+The `utilityProcess` is the one worth checking. Since #144 the application
+survives a native abort in the engine, so that crash now leaves nothing behind
+except a sentence that scrolls away. The other two end the process, which is at
+least visible.
+
+**What a developer can do with the file.** Not much on its own: a minidump
+needs a symbol-aware reader, and this repository publishes no symbols. What it
+buys is that the fault is recorded at all, with a time and a process, so a
+report of "it crashed and carried on" has something attached to it. The Help
+menu has **Show Crash Reports**, which opens the directory, because a user
+attaching the file to an issue is the only route it has while nothing is
+uploaded.
+
+**Nothing prunes the database.** Crashpad's own retention is what bounds it.
+
+### What proves it
+
+`npm run verify:crash-artifact` launches the packaged binary twice, each into a
+throwaway profile given by `--user-data-dir`, and compares the two crash
+databases. The first run is `--self-check=terminal`: it starts the reporter,
+crashes nothing, and must leave a database with no dump in it. The second is
+`--self-check=llama` — #144's crash, not a new one — which forks the engine,
+loads the packaged llama.cpp, and calls `process.abort()` in native code. That
+run must leave a dump where the first left none.
+
+Which of the two it demands is read off the line the application printed rather
+than off a platform table. Where #149 gates the engine off, the gated run
+crashes nothing, so the check asserts the gate and **the artifact is not proven
+on that platform**. The day a Windows run names a device, the same check starts
+demanding the dump there without anyone editing it.
+
 ## The terminal a consumer gets
 
 Four exports, and they are deliberately separate.
@@ -505,6 +561,7 @@ contrast. An unreadable pair is never counted as a pass.
 | Embedded run | `native/embedded.ts` | The main-process half of a turn: the gate and the sink. |
 | Engine supervisor | `native/llama-host.ts` | Forks the engine process, and turns its death into a sentence. |
 | Engine wire | `native/llama-protocol.ts` | The messages and the crash policy. Pure, and mutation tested. |
+| Crash artifacts | `native/crash-reports.ts`, `host/crash-artifacts.ts` | Starts Crashpad, finds the dumps, opens the directory. Resolution is pure and mutation tested. |
 | Engine process | `llama-worker.ts` | The only file that loads `node-llama-cpp`. Runs as a `utilityProcess`. |
 | Tool approval | `native/approval.ts` | Decides what the agent must ask about. Pure, and mutation tested. |
 | Toolsets | `native/toolsets.ts` | Named groups of tools. Each tool declares its own risk, so the gate cannot go stale. |
