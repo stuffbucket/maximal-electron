@@ -18,6 +18,8 @@ import {
   quietBounds,
 } from './native/preferences.js';
 import { configurePty, killAllPtys } from './native/pty.js';
+import { selfCheckRequested } from './native/self-check.js';
+import { runSelfCheck } from './self-check.js';
 import { destroyTray, setTrayEnabled } from './native/tray.js';
 import { checkForUpdates } from './native/updates.js';
 import { createMainWindow } from './windows/main-window.js';
@@ -215,7 +217,12 @@ function bootstrap(): void {
 // A second instance should activate the first, not open another window. Say
 // so, because the alternative is a developer watching a clean build produce a
 // window that belongs to a process they started an hour ago.
-if (!app.requestSingleInstanceLock()) {
+if (selfCheckRequested(process.argv)) {
+  // Ahead of the lock. An instance the developer already has open would
+  // otherwise turn a mistyped flag into an activation and an exit code of 0,
+  // which is a green run of a check that launched nothing.
+  runSelfCheck(process.argv);
+} else if (!app.requestSingleInstanceLock()) {
   console.error(
     `Another instance already holds ${app.getPath('userData')}. ` +
       'Bringing it forward instead of opening a second window.',

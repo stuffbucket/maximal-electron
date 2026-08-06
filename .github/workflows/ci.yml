@@ -121,6 +121,13 @@ jobs:
       # attaching to a packaged build.
       - run: npm run verify:package
 
+      # Launches the artifact and makes it open a shell, which is what an
+      # archive listing cannot check. macOS only: on Windows verify-msi.ps1
+      # checks that the installed executable survives, which is liveness and
+      # not work.
+      - if: runner.os == 'macOS'
+        run: npm run smoke:packaged
+
   e2e:
     name: end-to-end (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

@@ -26,6 +26,7 @@ linked document.
 | Check the palette | `npm run check:contrast` |
 | Package | `npm run package` |
 | Verify a package | `npm run verify:package` |
+| Launch a package | `npm run smoke:packaged` |
 | Verify the exports | `npm run verify:exports` |
 | Verify a git-ref install | `npm run verify:git-install` |
 | Verify the shell stays agnostic | `npm run verify:neutral` |
@@ -57,7 +58,8 @@ Each of these is load-bearing. Do not relax one to make a change fit.
 - **Never lower the mutation threshold.** `npm run mutate` breaks below 100.
 - **Never turn a fuse back on to make a test pass.**
   `EnableNodeCliInspectArguments: false` is why the end-to-end tests drive the
-  unpackaged build.
+  unpackaged build, and why `npm run smoke:packaged` drives the packaged one
+  through an argument the application answers itself.
 - **Never add an asset to a published release.** GitHub rejects it with HTTP
   422. Everything attaches to the draft.
 
