@@ -105,6 +105,53 @@ export class Generations {
 }
 
 /**
+ * Managers, one per owner.
+ *
+ * A flat registry of sessions cannot answer "which window asked for this", so
+ * one window closing while another stays open leaves its shells running. The
+ * requirement is owner-scoped cleanup, from `#37`.
+ *
+ * Keying by owner makes reaping one owner a lookup rather than a search, and
+ * leaves a session id from one owner unable to name another owner's session.
+ */
+export class Owners<Owner, Manager> {
+  private readonly managers = new Map<Owner, Manager>();
+
+  constructor(
+    private readonly create: (owner: Owner) => Manager,
+    private readonly dispose: (manager: Manager) => void,
+  ) {}
+
+  /** This owner's manager, creating one on first use. */
+  for(owner: Owner): Manager {
+    const existing = this.managers.get(owner);
+    if (existing !== undefined) return existing;
+
+    const manager = this.create(owner);
+    this.managers.set(owner, manager);
+    return manager;
+  }
+
+  /** This owner's manager, if it has ever asked for one. */
+  get(owner: Owner): Manager | undefined {
+    return this.managers.get(owner);
+  }
+
+  /** Dispose one owner's manager. Every other owner keeps its own. */
+  release(owner: Owner): void {
+    const manager = this.managers.get(owner);
+    if (manager === undefined) return;
+    this.managers.delete(owner);
+    this.dispose(manager);
+  }
+
+  /** Dispose every manager. Call on quit. */
+  releaseAll(): void {
+    for (const owner of [...this.managers.keys()]) this.release(owner);
+  }
+}
+
+/**
  * How much output to hold before dropping.
  *
  * Output is batched and flushed on a timer. A process that writes faster than

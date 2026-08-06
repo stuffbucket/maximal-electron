@@ -7,6 +7,7 @@ import {
   emptyBuffer,
   Generations,
   MAX_PENDING_BYTES,
+  Owners,
   resolveCwd,
 } from '../src/main/native/pty-session.js';
 
@@ -120,6 +121,90 @@ describe('Generations', () => {
     generations.release('a', first);
     const second = generations.next('a');
     expect(second).not.toBe(first);
+  });
+});
+
+describe('Owners', () => {
+  /** A manager that records what was done to it. */
+  const manager = () => ({ disposed: false });
+  type Manager = ReturnType<typeof manager>;
+
+  const registry = () => {
+    const created: string[] = [];
+    const owners = new Owners<string, Manager>(
+      (owner) => {
+        created.push(owner);
+        return manager();
+      },
+      (target) => {
+        target.disposed = true;
+      },
+    );
+    return { owners, created };
+  };
+
+  it('creates one manager per owner, and reuses it', () => {
+    const { owners, created } = registry();
+    const first = owners.for('window-a');
+
+    expect(owners.for('window-a')).toBe(first);
+    expect(owners.for('window-b')).not.toBe(first);
+    expect(created).toEqual(['window-a', 'window-b']);
+  });
+
+  it('reports a manager only for an owner that has one', () => {
+    const { owners } = registry();
+    expect(owners.get('window-a')).toBeUndefined();
+    expect(owners.get('window-a')).toBe(undefined);
+
+    const made = owners.for('window-a');
+    expect(owners.get('window-a')).toBe(made);
+  });
+
+  it('reaps the closing owner and leaves every other owner running', () => {
+    // This is the whole point. A window closing must not reach another
+    // window's sessions, and must not leave its own behind.
+    const { owners } = registry();
+    const closing = owners.for('window-a');
+    const staying = owners.for('window-b');
+
+    owners.release('window-a');
+
+    expect(closing.disposed).toBe(true);
+    expect(staying.disposed).toBe(false);
+    expect(owners.get('window-a')).toBeUndefined();
+    expect(owners.get('window-b')).toBe(staying);
+  });
+
+  it('disposes nothing for an owner it does not hold', () => {
+    // A window can be destroyed before it ever asks for a session, and
+    // `closed` fires anyway.
+    const { owners, created } = registry();
+    const held = owners.for('window-a');
+
+    owners.release('window-b');
+    owners.release('window-a');
+    owners.release('window-a');
+
+    expect(held.disposed).toBe(true);
+    expect(created).toEqual(['window-a']);
+  });
+
+  it('disposes every manager on release-all, and forgets them', () => {
+    const { owners } = registry();
+    const managers = ['window-a', 'window-b', 'window-c'].map((owner) =>
+      owners.for(owner),
+    );
+
+    owners.releaseAll();
+
+    expect(managers.map((target) => target.disposed)).toEqual([true, true, true]);
+    // The floor: an empty registry would report the line above as passing by
+    // checking nothing.
+    expect(managers).toHaveLength(3);
+    expect(owners.get('window-a')).toBeUndefined();
+    // A later request builds a new manager rather than handing back a dead one.
+    expect(owners.for('window-a')).not.toBe(managers[0]);
   });
 });
 

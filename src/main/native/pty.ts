@@ -1,21 +1,12 @@
-import { statSync } from 'node:fs';
+import { app, type BrowserWindow } from 'electron';
 
-import { spawn, type IPty } from '@lydell/node-pty';
-import { app } from 'electron';
-
+import { TerminalHost } from '../../host/terminal-host.js';
 import type { PtySpawnRequest } from '../../shared/ipc.js';
-import {
-  append,
-  cwdMessage,
-  drain,
-  emptyBuffer,
-  Generations,
-  resolveCwd,
-  type Buffered,
-} from './pty-session.js';
+
+import { Owners } from './pty-session.js';
 
 /**
- * Pseudo-terminal sessions, one per document tab.
+ * Pseudo-terminal sessions, one manager per window.
  *
  * The shell runs here, in the main process. The renderer holds a `ghostty-web`
  * terminal, which is a view and an input encoder, not a process host. Bytes
@@ -24,33 +15,15 @@ import {
  *
  * This split is what keeps `sandbox: true` on the renderer. The renderer never
  * spawns anything.
- */
-
-interface Session {
-  pty: IPty;
-  /** Buffered output, flushed on a timer. See `FLUSH_MS`. */
-  pending: Buffered;
-  timer: NodeJS.Timeout | undefined;
-  /** Distinguishes this session from a later one with the same id. */
-  generation: number;
-}
-
-const sessions = new Map<string, Session>();
-const generations = new Generations();
-
-/**
- * Output is batched before it crosses the process boundary.
  *
- * A build log can emit thousands of small writes per second. One IPC message
- * each would swamp the channel and stall the renderer. Coalescing on a short
- * timer turns that into a few messages per frame, which is the same approach
- * a terminal in an editor takes.
+ * The manager is `TerminalHost`, the same class `./host/terminal` exports.
+ * This file is the Electron half of it: which window owns a session, where a
+ * session starts, and where its output goes.
  */
-const FLUSH_MS = 8;
 
-/** Emit batched output. The main entry point supplies this. */
-type Emit = (id: string, chunk: string) => void;
-type Exit = (id: string, exitCode: number) => void;
+/** Emit batched output, and the end of a session, to the owning window. */
+type Emit = (owner: BrowserWindow, id: string, chunk: string) => void;
+type Exit = (owner: BrowserWindow, id: string, exitCode: number) => void;
 
 let emit: Emit = () => undefined;
 let onExit: Exit = () => undefined;
@@ -68,106 +41,73 @@ export function defaultShell(): string {
   return process.env['SHELL'] ?? '/bin/zsh';
 }
 
-function flush(id: string, session: Session): void {
-  session.timer = undefined;
-  const { text, dropped } = drain(session.pending);
-  if (text === '' && dropped === 0) return;
-  const notice =
-    dropped > 0
-      ? `\r\n\x1b[2m[${String(dropped)} characters dropped: output outran the display]\x1b[0m\r\n`
-      : '';
-  emit(id, notice + text);
-}
-
-function schedule(id: string, session: Session): void {
-  if (session.timer) return;
-  session.timer = setTimeout(() => flush(id, session), FLUSH_MS);
-}
-
-export function spawnPty(request: PtySpawnRequest): void {
-  // Replacing an existing session would leak the old process.
-  if (sessions.has(request.id)) return;
-
-  const shell = request.shell ?? defaultShell();
-  const home = app.getPath('home');
-  const resolved = resolveCwd(request.cwd, home, (target) => {
-    try {
-      return { isDirectory: statSync(target).isDirectory() };
-    } catch {
-      return undefined;
-    }
-  });
-
-  // A refused directory is reported into the terminal rather than thrown. The
-  // renderer asked for a shell; it gets one, in a place it can see named.
-  const generation = generations.next(request.id);
-  if (!resolved.ok) {
-    const reason = cwdMessage(resolved.reason, request.cwd ?? '');
-    queueMicrotask(() => {
-      emit(request.id, `\r\n\x1b[31m${reason}. Starting in ${home}.\x1b[0m\r\n`);
+const hosts = new Owners<BrowserWindow, TerminalHost>(
+  (owner) => {
+    // A destroyed window can no longer be asked to clean up, so its own
+    // destruction is what ends its sessions.
+    owner.once('closed', () => {
+      hosts.release(owner);
     });
-  }
-  const cwd = resolved.ok ? resolved.cwd : home;
 
-  const pty = spawn(shell, [], {
-    name: 'xterm-256color',
-    cols: Math.max(1, request.cols),
-    rows: Math.max(1, request.rows),
-    cwd,
-    env: {
-      ...(process.env as Record<string, string>),
-      // Tell programs they are on a capable terminal. Ghostty's own emulator
-      // is what actually interprets the escape sequences.
-      TERM: 'xterm-256color',
-      COLORTERM: 'truecolor',
-      TERM_PROGRAM: 'Stuffbucket',
-    },
-  });
+    return new TerminalHost({
+      homeDirectory: app.getPath('home'),
+      defaultShell: defaultShell(),
+      // Programs read this to name the terminal they are running under.
+      env: { TERM_PROGRAM: 'Stuffbucket' },
+      emit: (id, chunk) => {
+        emit(owner, id, chunk);
+      },
+      onExit: (id, exitCode) => {
+        onExit(owner, id, exitCode);
+      },
+    });
+  },
+  (host) => {
+    host.terminateAll();
+  },
+);
 
-  const session: Session = { pty, pending: emptyBuffer(), timer: undefined, generation };
-  sessions.set(request.id, session);
-
-  pty.onData((data) => {
-    append(session.pending, data);
-    schedule(request.id, session);
-  });
-
-  pty.onExit(({ exitCode }) => {
-    flush(request.id, session);
-    // A killed session's exit can arrive after the same id was reused. Acting
-    // on it then would delete the live session and silence a running shell.
-    if (!generations.release(request.id, generation)) return;
-    sessions.delete(request.id);
-    onExit(request.id, exitCode);
-  });
+function hostFor(owner: BrowserWindow | undefined): TerminalHost | undefined {
+  return owner ? hosts.get(owner) : undefined;
 }
 
-export function writePty(id: string, data: string): void {
-  sessions.get(id)?.pty.write(data);
+/**
+ * Open a shell for a window.
+ *
+ * A request that arrives without a window is dropped. Nothing would reap the
+ * session, and an unreapable shell is a process the user cannot see and did
+ * not ask to keep.
+ */
+export function spawnPty(
+  owner: BrowserWindow | undefined,
+  request: PtySpawnRequest,
+): void {
+  if (!owner) return;
+  hosts.for(owner).spawn(request);
 }
 
-export function resizePty(id: string, cols: number, rows: number): void {
-  const session = sessions.get(id);
-  if (!session) return;
-  // node-pty throws on a zero or negative dimension, which happens whenever a
-  // tab is measured while hidden.
-  session.pty.resize(Math.max(1, cols), Math.max(1, rows));
+export function writePty(
+  owner: BrowserWindow | undefined,
+  id: string,
+  data: string,
+): void {
+  hostFor(owner)?.write(id, data);
 }
 
-export function killPty(id: string): void {
-  const session = sessions.get(id);
-  if (!session) return;
-  if (session.timer) clearTimeout(session.timer);
-  generations.release(id, session.generation);
-  sessions.delete(id);
-  try {
-    session.pty.kill();
-  } catch {
-    // Already gone. Nothing to do.
-  }
+export function resizePty(
+  owner: BrowserWindow | undefined,
+  id: string,
+  cols: number,
+  rows: number,
+): void {
+  hostFor(owner)?.resize(id, cols, rows);
 }
 
-/** Kill every session. Call on quit, so no shell outlives the application. */
+export function killPty(owner: BrowserWindow | undefined, id: string): void {
+  hostFor(owner)?.terminate(id);
+}
+
+/** Kill every window's sessions. Call on quit, so no shell outlives the app. */
 export function killAllPtys(): void {
-  for (const id of [...sessions.keys()]) killPty(id);
+  hosts.releaseAll();
 }
