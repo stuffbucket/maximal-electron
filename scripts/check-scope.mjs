@@ -63,9 +63,6 @@ export function scopedChecks({ log = console.log, fail = console.error } = {}) {
   return {
     check,
 
-    /** Everything asserted so far, for a caller that reports its own way. */
-    results: () => [...results],
-
     /**
      * Print the totals and return an exit code.
      *

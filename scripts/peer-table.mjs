@@ -68,12 +68,10 @@ export function peerTable(readme, packageName) {
   const rows = new Map();
 
   for (const match of readme.matchAll(ROW)) {
-    const entry = match[1] ?? '';
+    const entry = match[1];
     if (entry !== packageName && !entry.startsWith(`${packageName}/`)) continue;
 
-    const peers = [...(match[2] ?? '').matchAll(/`([^`]+)`/g)]
-      .map((peer) => peer[1] ?? '')
-      .sort();
+    const peers = [...match[2].matchAll(/`([^`]+)`/g)].map((peer) => peer[1]).sort();
     rows.set(`.${entry.slice(packageName.length)}`, peers);
   }
 
@@ -81,8 +79,8 @@ export function peerTable(readme, packageName) {
 }
 
 /** The peers a row is expected to name: what the entry imports, plus the exceptions. */
-function expected(subpath, reached, exceptions) {
-  const names = new Set(reached.get(subpath) ?? []);
+function expected(subpath, imports, exceptions) {
+  const names = new Set(imports);
   for (const exception of exceptions) {
     if (exception.subpath === subpath) names.add(exception.name);
   }
@@ -138,8 +136,9 @@ export function peerTableChecks(input) {
   }
 
   for (const [subpath, row] of table) {
-    if (!reached.has(subpath)) continue;
-    const wanted = expected(subpath, reached, exceptions);
+    const imports = reached.get(subpath);
+    if (imports === undefined) continue;
+    const wanted = expected(subpath, imports, exceptions);
     checks.push(
       made(
         `the ${subpath} row names what the entry point imports`,
