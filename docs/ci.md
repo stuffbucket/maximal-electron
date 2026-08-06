@@ -1,10 +1,11 @@
 # Continuous integration
 
 Three workflows build. `ci.yml` is the blocking gate, `release.yml` builds and
-ships a tag, and `merge-preview.yml` tests what a merge would produce. Two more
-build nothing: `triage.yml` labels issues, and `watch-rulesets.yml` reads the
-repository settings that no pull request can see change. Each is described in
-its own header.
+ships a tag, and `merge-preview.yml` tests what a merge would produce. Three
+more build nothing: `triage.yml` labels issues, `watch-rulesets.yml` reads the
+repository settings that no pull request can see change, and
+`workflow-health.yml` reads whether the others still run at all. Each is
+described in its own header.
 
 ## What each one runs
 
@@ -14,6 +15,7 @@ its own header.
 | `merge-preview.yml` | push to `main` and `release/**` | Replays every open pull request against the new tip |
 | `release.yml` | tag `v*.*.*`, or a dispatch for a dry run | The draft release, the tarball, the registry publish, publish |
 | `watch-rulesets.yml` | daily, or a dispatch | Reads the live repository rulesets and files one issue when a protection drops below its floor |
+| `workflow-health.yml` | daily, a pull request, or a dispatch | Reads every workflow's run history and files one issue when one has never run, has stopped running, or fails every time |
 
 This repository ships no installer. `npm run package`, `npm run
 verify:package` and `npm run smoke:packaged` still run in `ci.yml`, because
@@ -250,6 +252,89 @@ branch nobody touched — a required check no pull request can turn green is a
 merge freeze, not a gate.
 [`docs/admin/repository-settings.md`](admin/repository-settings.md) holds the
 floor, the three states the check reports, and what the owner has to click.
+
+## Whether the workflows themselves still run
+
+`triage.yml` fires on every issue event and failed on every one of its 77 runs.
+`watch-rulesets.yml` has never run once. Two workflows broken in opposite
+directions, and neither was noticed for months, because a workflow that gates
+nothing is red only in the Actions tab and nobody opens the Actions tab. Issue
+#153.
+
+`npm run verify:workflow-health` is the general answer. It discovers the
+workflow list from `.github/workflows/` — never from a constant, because a
+hand-list is how a new workflow escapes and three escaped one in a single day —
+reads each one's recent runs from the Actions API, and asserts two things per
+workflow: that GitHub holds runs of it, and that its recent runs are not
+uniformly failing.
+
+### What "recently" means, and when it means nothing
+
+A rule that flags `release.yml` every quiet week is a rule somebody deletes, so
+the window comes out of the workflow's own triggers rather than out of a table.
+
+| Trigger | Window | Why |
+| --- | --- | --- |
+| `schedule` | twice the cron interval | GitHub delays a scheduled run under load, so one missed interval is not evidence and two is |
+| `push`, `pull_request`, `merge_group`, `issues` and the rest of repository activity | a fortnight | These fire here several times a day. A fortnight of silence means the trigger stopped matching |
+| A tag push, a dispatch, or a call from another repository | none | There is no cadence to be late against |
+
+The third row is the point. `release.yml` runs on `v*.*.*` and on a dispatch,
+and a month with no release is a month with no release. The check **declines**
+the recency assertion there rather than passing it, and prints how many it
+declined. `verify:docs` reported a true count of what it examined while saying
+nothing about what it dropped (#152); an answer nobody computed must not read
+as one that was.
+
+The same applies to the failure rate. Fewer than three conclusive runs supports
+no verdict — one red run is a flake — so the check says so and counts it.
+Uniform failure means zero successes, not a percentage: `ci.yml`,
+`release.yml` and `merge-preview.yml` all mix red and green today, and a
+threshold tight enough to catch a bad week would be red on all three.
+
+### The states, which are four and not two
+
+Exit 0 healthy, 1 a finding, 2 the check could not run, 3 unverified. A
+workflow with no runs is `never-run`, not a failure rate of zero: it has been
+observed neither to work nor to break, and the reader's next move differs. When
+GitHub has no record of the file at all — which is what a 404 on the runs
+endpoint means — the finding says so, because that is the whole diagnosis for
+`watch-rulesets.yml`. **GitHub registers a workflow from the default branch**,
+so a file that lives only on a release branch is unreachable by `schedule` and
+by `workflow_dispatch` until the release folds into `main`.
+
+### Where it runs, and what it gates
+
+Nothing about run history gates a pull request. A pull request cannot fix a
+hundred-percent failure rate in a workflow it does not touch, and a workflow a
+pull request adds has no runs at all until it merges, so a required check here
+would be a merge freeze whose only remedy is deleting the check. That is #139's
+rule: gate what a pull request can enforce, report what it cannot.
+
+The objection to that is the one this page opened with — a non-gating check is
+exactly what nobody looked at for seventy-five runs. The answer is that the
+output is not a red tick in a tab. `workflow-health.yml` files **one issue**,
+refreshes it while the gap persists, and closes it on the next clean run, the
+way `watch-rulesets.yml` already does. Seventy-five red runs produced no
+issues.
+
+The half a pull request does own is gated, and fails everywhere including on a
+pull request: exit 2, which is the check itself being blind. Its rules stopped
+detecting a dead workflow, or the directory scan found no workflows, or the API
+answered nothing. A watcher that cannot see is the defect this exists to end,
+so it is not allowed to be quiet about itself.
+
+It runs on `pull_request` as well as daily, with no `paths` filter. That is not
+only for coverage: a schedule fires only from the default branch, so a workflow
+added on a release branch cannot run until the release folds — which is the
+`watch-rulesets.yml` defect exactly. The pull request trigger fires where the
+file actually lives, so the job had run before it merged. Shipping an unrun job
+to solve the unrun-job problem would be its own joke.
+
+**What it does not close.** A watcher cannot report its own silence. If
+`workflow-health.yml` is deleted or disabled, nothing files the issue saying
+so. The `pull_request` trigger narrows the hole — the job runs on every pull
+request, so a break is visible within one — and does not shut it.
 
 ## The merge race
 

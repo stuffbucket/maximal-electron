@@ -71,6 +71,7 @@
     "verify:publish": "node scripts/verify-publish.mjs",
     "verify:neutral": "node scripts/verify-neutral.mjs",
     "verify:rulesets": "node scripts/verify-rulesets.mjs",
+    "verify:workflow-health": "node scripts/verify-workflow-health.mjs",
     "verify:tag": "node scripts/verify-tag.mjs",
     "verify:git-install": "node scripts/verify-git-install.mjs",
     "lint": "eslint .",
