@@ -91,3 +91,17 @@ jobs:
         env:
           ELECTRON_ENABLE_LOGGING: '1'
         run: npx electron probe/engine-main.js "${{ matrix.asar }}/.vite/build/llama-worker.js"
+
+      - name: rung 4e, the same under an Electron with RunAsNode burned off
+        timeout-minutes: 10
+        env:
+          PROBE_BOUND_MS: '90000'
+        run: node probe/fuse-electron.mjs .vite/build/llama-worker.js
+
+      - name: rung 4f, RunAsNode off and no vulkan prebuild to test
+        if: runner.os == 'Windows'
+        timeout-minutes: 10
+        env:
+          PROBE_BOUND_MS: '90000'
+          PROBE_HIDE_VULKAN: '1'
+        run: node probe/fuse-electron.mjs .vite/build/llama-worker.js
