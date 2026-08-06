@@ -100,7 +100,6 @@ export function relocate(app) {
   const root = mkdtempSync(path.join(tmpdir(), 'stuffbucket-packaged-'));
   const directory = path.join(root, path.basename(app.directory));
   cpSync(app.directory, directory, { recursive: true, verbatimSymlinks: true });
-  rmSync(path.join(directory, path.relative(app.directory, app.binary)));
 
   const moved = (target) => path.join(directory, path.relative(app.directory, target));
   return {
