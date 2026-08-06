@@ -117,7 +117,50 @@ What it costs: one runner per open pull request per push, for the fast half of
 What it does not close: a race shorter than the run. Two merges 180 seconds
 apart is exactly that case, and only a queue serialises it.
 
-### The two settings, and why neither is enabled
+### The neutrality guard
+
+`npm run verify:neutral` runs in the `static` job and answers whether this
+shell knows anything about the application it hosts. Issue #16 asks for it, and
+a named consumer waits on it.
+
+Two checks, because two things go wrong.
+
+`scripts/neutrality.mjs` parses every TypeScript source under `src` with the
+compiler API and denies a specifier that reaches `maximal`,
+`maximal-core`, or `@stuffbucket/maximal-core`. A parse rather than a grep,
+because `require.resolve`, `createRequire(import.meta.url)('…')`, an aliased
+`createRequire`, `import.meta.resolve`, and a type-position `import('…')` each
+launder an import past a text search. A specifier the parse cannot read — one
+built from a variable — fails too, because that is the one shape it cannot
+judge.
+
+The second check scans for the terms in `FORBIDDEN_TERMS`, which defaults to
+`maximal`, `maximal-core`, and `copilot`. The boundary treats `_` and `-` as
+separators, so `MAXIMAL_BASE` matches where `\b` would not.
+
+**The scope is decided, not inherited.** Every file under `src`, plus
+`README.md`, which is the only prose npm puts in the tarball. `docs/` is out:
+it is this repository's own record, written throughout by comparison with the
+repository this one was extracted from, and no consumer installs it. The guard
+asserts that boundary rather than assuming it, so a manifest that starts
+packing documentation fails.
+
+One exemption, stated once: a term inside a `stuffbucket/…` slug names a
+repository rather than depends on one, and this repository is called
+`maximal-electron`. An npm scope is not a slug, so `@stuffbucket/maximal-core`
+in a string is still reported.
+
+Two files carry a narrow exemption with the reason inline, both waiting on
+issue #22. Each exemption is checked three ways: the file must exist, it must
+still contain a match, and it must be absent from the export graph. A fixed
+file therefore cannot keep its exemption, and no exemption can ever cover a
+file a consumer installs.
+
+Every part of this has a floor, because a scan of nothing reports a clean tree.
+The run parses a built-in fixture of all ten laundering forms and stops before
+touching the tree if it does not catch every one.
+
+## The two settings, and why neither is enabled
 
 Both change how merging behaves for everyone, so both are the repository
 owner's call. Neither is enabled. `ci.yml` carries the `merge_group` trigger so
