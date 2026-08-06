@@ -223,6 +223,45 @@ and that fires no `focusin` at all. It counts what Tab can reach before it
 walks, and fails on zero: a trap over an empty card is an empty scope. See
 #131.
 
+### The agent scenarios script the model
+
+Four scenarios drive the overlay's agent: the theme concierge in
+`e2e/concierge.spec.ts`, and the answer, the approval gate, and Escape's
+ordering in `e2e/shell.spec.ts`. All four needed a model, so all four skipped in
+CI, which has none. Every green run in this repository's history was green
+without the approval gate having been exercised once. That is #25, and it is the
+same defect as an empty scope: a suite that reads as broader than it is.
+
+`e2e/model-server.ts` supplies the model. It is an HTTP server on a loopback
+port that speaks the two endpoints discovery uses for Ollama, and the spec
+points the application at it with `STUFFBUCKET_PROVIDER=ollama` and
+`STUFFBUCKET_PROVIDER_URL`. `docs/agent.md` holds what those two can and cannot
+do; the short version is that neither goes near the gate.
+
+Everything downstream of the token stream is real: pi-ai's HTTP client and SSE
+parsing, pi-agent-core's tool loop, `beforeToolCall`, the risk classification in
+`approval.ts`, the IPC events, and the card. Only the generator is scripted.
+
+Three rules come with it.
+
+- **A scripted reply cannot prove a tool ran.** The server chooses what comes
+  back, so an assertion that the answer contains a marker passes with the shell
+  never touched. Both bash scenarios write a file in a temporary directory
+  through `tee` and assert against the filesystem: present after an allow,
+  absent after a deny, and absent while the question is still on screen. That
+  last one is what fails if a gate ever shows its card after starting the
+  command.
+- **Assert which backend answered.** `requireScriptedBackend` compares the full
+  `ProviderStatus` against the scripted model's distinctive name, so a real
+  Ollama on a developer's machine cannot satisfy the scenario by accident, and a
+  run that reached no backend fails rather than passing over nothing.
+- **The script matches the prompt with a regular expression.** It covers the
+  plumbing and the gate. It says nothing about whether a real model picks the
+  right tool out of a natural request, and nothing automated covers that on a
+  runner with no model. `e2e/embedded.spec.ts` is the one scenario that asks a
+  real model to choose, and it needs weights, so it stays out of the default
+  suite.
+
 ### A still is not an oracle
 
 `demo/stills/*.png` are artifacts to look at. Do not diff them for equality and

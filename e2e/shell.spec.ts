@@ -1,15 +1,21 @@
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import {
   closeApp,
+  getPrefs,
   launchApp,
-  providerAnswers,
-  providerState,
+  providerStatus,
   resetShell,
+  setPrefs,
   setTheme,
   terminalScreen,
   type Harness,
 } from './harness.js';
+import { SCRIPTED_MODEL, startScriptedModel, type ScriptedModel } from './model-server.js';
 import { createRegistry } from './shuffle.js';
 
 /**
@@ -24,14 +30,23 @@ import { createRegistry } from './shuffle.js';
  * Tests run in a **random order**. Each one must therefore set up whatever it
  * needs, and `resetShell` returns the application to a known state first. The
  * seed is printed on every run; `E2E_SEED` replays one.
+ *
+ * The application is pinned to the scripted backend in `e2e/model-server.ts`,
+ * so the agent scenarios run on a machine with no model. Read that file before
+ * changing one: it says what a scripted reply can and cannot prove.
  */
 
 let harness: Harness;
+let model: ScriptedModel;
 
 const { scenario, registerShuffled } = createRegistry();
 
 test.beforeAll(async () => {
-  harness = await launchApp();
+  model = await startScriptedModel();
+  harness = await launchApp({
+    STUFFBUCKET_PROVIDER: 'ollama',
+    STUFFBUCKET_PROVIDER_URL: model.baseUrl,
+  });
 });
 
 test.beforeEach(async () => {
@@ -40,6 +55,7 @@ test.beforeEach(async () => {
 
 test.afterAll(async () => {
   await closeApp(harness);
+  await model.stop();
 });
 
 /* ------------------------------------------------------------------ shell */
@@ -623,40 +639,6 @@ scenario('the floating overlay summons and dismisses', async () => {
     .toBe(false);
 });
 
-scenario('the overlay answers when a local backend is running', async () => {
-  const { app, window } = harness;
-
-  await window.click('[data-testid="toggle-overlay"]');
-  const overlay =
-    app.windows().find((page) => page.url().includes('overlay')) ??
-    (await app.waitForEvent('window', { timeout: 15_000 }));
-
-  await overlay.waitForSelector('[data-testid="overlay-card"]', {
-    timeout: 15_000,
-  });
-
-  // Skip rather than fail when nothing is listening. A contributor without
-  // maximal or Ollama should still get a green suite, and CI has neither.
-  const state = await providerState(overlay);
-  test.skip(state !== 'ready', `No local model backend: ${state}`);
-  test.skip(
-    !(await providerAnswers(overlay)),
-    'The backend reported ready and did not answer a one-word prompt',
-  );
-
-  await overlay.fill('[data-testid="overlay-input"]', 'Reply with exactly: OVERLAY_OK');
-  await overlay.keyboard.press('Enter');
-
-  // The answer streams in as `agent:delta` events, so this asserts the whole
-  // path: pi agent loop, provider, IPC events, and incremental render.
-  await expect(overlay.locator('[data-testid="overlay-answer"]')).toContainText(
-    'OVERLAY_OK',
-    { timeout: 90_000 },
-  );
-
-  await overlay.keyboard.press('Escape');
-});
-
 /**
  * Summon the overlay and wait for its card.
  *
@@ -678,82 +660,179 @@ async function openOverlay() {
 }
 
 /**
- * Skip rather than fail when no local model is running.
+ * Insist the run is about to use the scripted backend.
  *
- * A contributor without maximal or Ollama should still get a green suite, and
- * CI has neither. This reads the state from the IPC contract rather than the
- * status line's wording; see `providerState` in `e2e/harness.ts` for why the
- * substring version could never fire.
+ * The floor for every agent scenario. These used to skip when no model was
+ * reachable, which is why none of them had run in CI; now the backend is
+ * started by this file, so anything else answering is a defect. The model name
+ * is distinctive, so a real Ollama on the developer's machine cannot satisfy
+ * this by accident.
  */
-async function requireBackend(overlay: Awaited<ReturnType<typeof openOverlay>>) {
-  const state = await providerState(overlay);
-  test.skip(state !== 'ready', `No local model backend: ${state}`);
-  test.skip(
-    !(await providerAnswers(overlay)),
-    'The backend reported ready and did not answer a one-word prompt',
-  );
+async function requireScriptedBackend(overlay: Page) {
+  await expect
+    .poll(() => providerStatus(overlay), { timeout: 15_000 })
+    .toEqual({ state: 'ready', provider: 'ollama', model: SCRIPTED_MODEL });
 }
 
-scenario('the overlay agent asks before it runs bash, and runs it when allowed', async () => {
-  const overlay = await openOverlay();
-  await requireBackend(overlay);
+/**
+ * State the preferences the gate reads, rather than trusting the defaults.
+ *
+ * `agentApproval` and `agentTools` persist, and these scenarios run in a random
+ * order against one profile.
+ */
+async function armTheGate() {
+  const before = await getPrefs(harness.window);
+  await setPrefs(harness.window, { agentApproval: 'writes', agentTools: true });
+  return before;
+}
 
-  // A tool call is what separates the pi agent loop from a plain chat call.
-  // The marker can only appear if a real shell ran.
-  await overlay.fill(
-    '[data-testid="overlay-input"]',
-    'Use your bash tool to run: echo AGENT_TOOL_5521 — then report the output.',
-  );
+/**
+ * A file only a real shell can write, and a path a shell writes on either
+ * platform.
+ *
+ * This is what makes the gate scenarios mean something. The backend is
+ * scripted, so it chooses what comes back: an assertion that the answer
+ * contains a marker would pass with the shell never touched, because the
+ * script put the marker there. The filesystem cannot be scripted.
+ *
+ * Git Bash on the Windows runner takes a `C:/…` path, so one form works on
+ * both.
+ */
+function sentinel(): { file: string; shellPath: string } {
+  const file = path.join(mkdtempSync(path.join(tmpdir(), 'overlay-gate-')), 'ran.txt');
+  return { file, shellPath: file.split(path.sep).join('/') };
+}
+
+function contents(file: string): string | undefined {
+  try {
+    return readFileSync(file, 'utf8');
+  } catch {
+    return undefined;
+  }
+}
+
+scenario('the overlay streams an answer back into the card', async () => {
+  const overlay = await openOverlay();
+  await requireScriptedBackend(overlay);
+
+  await overlay.fill('[data-testid="overlay-input"]', 'Reply with exactly: OVERLAY_OK');
   await overlay.keyboard.press('Enter');
 
-  // The gate must fire first. `agentApproval` defaults to `writes`, and bash
-  // is not a read, so nothing should reach the shell without this prompt.
-  const approval = overlay.locator('[data-testid="overlay-approval"]');
-  await expect(approval).toBeVisible({ timeout: 120_000 });
-  await expect(
-    overlay.locator('[data-testid="overlay-approval-summary"]'),
-  ).toContainText('AGENT_TOOL_5521');
-
-  // The prompt has to be on screen, not merely in the DOM. A hidden window
-  // still answers every locator, so this is the only assertion that proves
-  // the user could actually have seen the question.
-  const handle = await harness.app.browserWindow(overlay);
-  await expect
-    .poll(() => handle.evaluate((win) => win.isVisible()), { timeout: 10_000 })
-    .toBe(true);
-
-
-  await overlay.click('[data-testid="overlay-allow"]');
-
+  // The answer arrives as `agent:delta` events, so this asserts the whole path:
+  // the pi agent loop, the provider's HTTP and SSE handling, the IPC events,
+  // and incremental render. The scripted backend sends the word in several
+  // deltas rather than one, so a card that only rendered the last chunk fails.
   await expect(overlay.locator('[data-testid="overlay-answer"]')).toContainText(
-    'AGENT_TOOL_5521',
-    { timeout: 120_000 },
+    'OVERLAY_OK',
+    { timeout: 30_000 },
   );
+
+  expect(model.calls.length, 'the scripted backend answered').toBeGreaterThan(0);
 
   await overlay.keyboard.press('Escape');
 });
 
+scenario('the overlay agent asks before it runs bash, and runs it when allowed', async () => {
+  const overlay = await openOverlay();
+  await requireScriptedBackend(overlay);
+  const before = await armTheGate();
+
+  const ran = sentinel();
+
+  try {
+    // A tool call is what separates the pi agent loop from a plain chat call.
+    // `tee` writes the marker to a file and prints it, so the run leaves
+    // evidence in two places that mean different things.
+    await overlay.fill(
+      '[data-testid="overlay-input"]',
+      `Use your bash tool to run: printf '%s' AGENT_TOOL_5521 | tee '${ran.shellPath}' — then report the output.`,
+    );
+    await overlay.keyboard.press('Enter');
+
+    // The gate must fire first. `agentApproval` is `writes`, and bash is not a
+    // read, so nothing should reach the shell without this prompt.
+    const approval = overlay.locator('[data-testid="overlay-approval"]');
+    await expect(approval).toBeVisible({ timeout: 30_000 });
+    await expect(
+      overlay.locator('[data-testid="overlay-approval-summary"]'),
+    ).toContainText('AGENT_TOOL_5521');
+
+    // Nothing has run yet. Without this the scenario would pass against a gate
+    // that shows a card after starting the command.
+    expect(contents(ran.file), 'the shell ran before anyone allowed it').toBeUndefined();
+
+    // The prompt has to be on screen, not merely in the DOM. A hidden window
+    // still answers every locator, so this is the only assertion that proves
+    // the user could actually have seen the question.
+    const handle = await harness.app.browserWindow(overlay);
+    await expect
+      .poll(() => handle.evaluate((win) => win.isVisible()), { timeout: 10_000 })
+      .toBe(true);
+
+    await overlay.click('[data-testid="overlay-allow"]');
+
+    // The file is the proof that a shell ran. The answer is the proof that the
+    // output travelled back through the tool loop to the model.
+    await expect
+      .poll(() => contents(ran.file), {
+        timeout: 30_000,
+        message: 'the allowed command never reached a shell',
+      })
+      .toContain('AGENT_TOOL_5521');
+
+    await expect(overlay.locator('[data-testid="overlay-answer"]')).toContainText(
+      'AGENT_TOOL_5521',
+      { timeout: 30_000 },
+    );
+
+    await overlay.keyboard.press('Escape');
+  } finally {
+    await setPrefs(harness.window, before);
+  }
+});
+
 scenario('Escape answers a pending approval rather than dismissing the overlay', async () => {
   const overlay = await openOverlay();
-  await requireBackend(overlay);
+  await requireScriptedBackend(overlay);
+  const before = await armTheGate();
 
-  await overlay.fill(
-    '[data-testid="overlay-input"]',
-    'Use your bash tool to run: echo AGENT_DENY_7788',
-  );
-  await overlay.keyboard.press('Enter');
+  const ran = sentinel();
 
-  const approval = overlay.locator('[data-testid="overlay-approval"]');
-  await expect(approval).toBeVisible({ timeout: 120_000 });
+  try {
+    await overlay.fill(
+      '[data-testid="overlay-input"]',
+      `Use your bash tool to run: printf '%s' AGENT_DENY_7788 | tee '${ran.shellPath}'`,
+    );
+    await overlay.keyboard.press('Enter');
 
-  await overlay.keyboard.press('Escape');
+    const approval = overlay.locator('[data-testid="overlay-approval"]');
+    await expect(approval).toBeVisible({ timeout: 30_000 });
 
-  // The prompt goes, and the card stays. A pending question owns Escape, so
-  // denying a tool call must not also tear down the run behind it.
-  await expect(approval).toBeHidden();
-  await expect(overlay.locator('[data-testid="overlay-card"]')).toBeVisible();
+    await overlay.keyboard.press('Escape');
 
-  await overlay.keyboard.press('Escape');
+    // The prompt goes, and the card stays. A pending question owns Escape, so
+    // denying a tool call must not also tear down the run behind it.
+    await expect(approval).toBeHidden();
+    await expect(overlay.locator('[data-testid="overlay-card"]')).toBeVisible();
+
+    // The run carries on, and the model is told what happened. Waiting for
+    // that is what gives a command that was wrongly allowed the time to have
+    // run, so the filesystem claim below is made against a finished run.
+    const answer = overlay.locator('[data-testid="overlay-answer"]');
+    await expect(answer).toBeVisible({ timeout: 30_000 });
+
+    // What a denial is for, and the strongest claim here. Escape closed a card
+    // in the earlier version of this scenario; nothing asserted that the
+    // command had not run.
+    expect(contents(ran.file), 'the denied command reached a shell anyway').toBeUndefined();
+
+    // The refusal reached the loop rather than only the card.
+    await expect(answer).toContainText('denied', { timeout: 30_000 });
+
+    await overlay.keyboard.press('Escape');
+  } finally {
+    await setPrefs(harness.window, before);
+  }
 });
 
 /* ------------------------------------------------------------- registration */

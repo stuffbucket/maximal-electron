@@ -8,7 +8,7 @@ import {
   type Page,
 } from '@playwright/test';
 
-import type { ProviderStatus } from '../src/shared/ipc.js';
+import type { Preferences, ProviderStatus } from '../src/shared/ipc.js';
 
 import { inspectCapture } from './screenshot.js';
 
@@ -119,7 +119,7 @@ async function shellWindow(app: ElectronApplication): Promise<Page> {
   throw new Error('No shell window appeared within 30 seconds.');
 }
 
-export async function launchApp(): Promise<Harness> {
+export async function launchApp(env: Record<string, string> = {}): Promise<Harness> {
   const app = await electron.launch({
     // Resolve Electron from the project, and point it at the built bundles.
     args: [ROOT],
@@ -129,6 +129,9 @@ export async function launchApp(): Promise<Harness> {
       // Keep the profile out of the real user data directory, so a test run
       // never clobbers a developer's preferences.
       STUFFBUCKET_E2E: '1',
+      // Last, so a spec that pins a backend wins over whatever the developer
+      // has exported. `e2e/model-server.ts` is the caller that needs it.
+      ...env,
     },
   });
 
@@ -303,21 +306,25 @@ export async function setTheme(
 }
 
 /**
- * The agent backend's state, read from the contract.
+ * The agent backend, read from the contract.
  *
- * Every agent scenario needs the same decision: is a model actually reachable,
- * or should this skip? That used to be answered by matching substrings against
- * the overlay's status line. It could not work. The guards looked for `Waiting`
- * and `No local model`, and `providerLabel` in `src/renderer/overlay.tsx`
- * produces neither, so they never fired. On a runner with no backend the
- * status reads "<model> is not downloaded yet", every guard passed through, and
- * four scenarios failed on a timeout instead of skipping.
+ * Every agent scenario needs the same answer: which backend is the application
+ * about to use? That used to be decided by matching substrings against the
+ * overlay's status line. It could not work. The guards looked for `Waiting` and
+ * `No local model`, and `providerLabel` in `src/renderer/overlay.tsx` produces
+ * neither, so they never fired. On a runner with no backend the status read
+ * "<model> is not downloaded yet", every guard passed through, and four
+ * scenarios failed on a timeout instead of skipping.
+ *
+ * The scenarios now assert on this rather than skipping on it: the scripted
+ * backend in `e2e/model-server.ts` is started by the spec, so a run that is
+ * talking to something else is a defect rather than a machine without a model.
  *
  * `ProviderStatus` is already a discriminated union in the IPC contract. Asking
- * for the state directly cannot drift when the copy is reworded, and the
- * compiler checks the states.
+ * for it directly cannot drift when the copy is reworded, and the compiler
+ * checks the states.
  */
-export async function providerState(page: Page): Promise<ProviderStatus['state']> {
+export async function providerStatus(page: Page): Promise<ProviderStatus> {
   const status = await page.evaluate(() => {
     const api = (
       globalThis as unknown as {
@@ -327,49 +334,42 @@ export async function providerState(page: Page): Promise<ProviderStatus['state']
     return api?.invoke('overlay:provider');
   });
 
-  return (status as ProviderStatus | undefined)?.state ?? 'unavailable';
+  return (status as ProviderStatus | undefined) ?? { state: 'unavailable', reason: 'no bridge' };
 }
 
 /**
- * Does the model actually answer, rather than merely respond to a probe?
+ * Set preferences through the bridge, the way the shell does.
  *
- * `providerState` reports `ready` when the endpoint replies, which is a weaker
- * claim than it reads as. A saturated local proxy returns 200, the guard
- * passes, and the scenario then waits for output that never arrives and fails
- * on a timeout that looks like a product defect. That is issue #26.
- *
- * So this asks for one word and waits a short budget for any sign of life.
- * Answering is the property the scenarios depend on, so it is the property
- * worth testing before running one.
- *
- * Deliberately not folded into the assertions of a scenario. Turning a missing
- * answer into a skip inside the scenario body would also skip a genuine
- * regression in the thing being asserted.
+ * The agent scenarios depend on `agentTools`, `agentApproval`, and
+ * `agentToolsets`, all of which persist. These specs run in a random order
+ * against one profile, so a scenario states what it needs rather than assuming
+ * the defaults survived.
  */
-export async function providerAnswers(overlay: Page, budgetMs = 30_000): Promise<boolean> {
-  await overlay.fill('[data-testid="overlay-input"]', 'Reply with the single word: ok');
-  await overlay.keyboard.press('Enter');
+export async function setPrefs(page: Page, patch: Partial<Preferences>): Promise<Preferences> {
+  const next = await page.evaluate((value) => {
+    const api = (
+      globalThis as unknown as {
+        stuffbucket?: {
+          invoke: (channel: string, payload: unknown) => Promise<unknown>;
+        };
+      }
+    ).stuffbucket;
+    return api?.invoke('prefs:set', value);
+  }, patch);
 
-  // Either is a live model: text streaming back, or a gate asking about a tool
-  // the model chose to call.
-  const alive = overlay.locator(
-    '[data-testid="overlay-answer"], [data-testid="overlay-approval"]',
-  );
+  return next as Preferences;
+}
 
-  try {
-    await alive.first().waitFor({ state: 'visible', timeout: budgetMs });
-    return true;
-  } catch {
-    return false;
-  } finally {
-    await overlay.evaluate(() => {
-      const api = (
-        globalThis as unknown as {
-          stuffbucket?: { invoke: (channel: string) => Promise<unknown> };
-        }
-      ).stuffbucket;
-      return api?.invoke('overlay:abort');
-    });
-    await overlay.fill('[data-testid="overlay-input"]', '');
-  }
+/** Current preferences, so a scenario can put back what it changed. */
+export async function getPrefs(page: Page): Promise<Preferences> {
+  const prefs = await page.evaluate(() => {
+    const api = (
+      globalThis as unknown as {
+        stuffbucket?: { invoke: (channel: string) => Promise<unknown> };
+      }
+    ).stuffbucket;
+    return api?.invoke('prefs:get');
+  });
+
+  return prefs as Preferences;
 }

@@ -33,10 +33,32 @@ Rules:
   model for restraint.
 - The weights are **not** in the package. `src/main/native/llama.ts` fetches
   them once into `userData` on first use.
-- `STUFFBUCKET_PROVIDER=embedded` pins a provider and
-  `STUFFBUCKET_MODEL_PATH` points at existing weights. Without them the
-  embedded path is unreachable on any machine running a proxy, which is every
-  machine that develops this.
+- `STUFFBUCKET_PROVIDER` pins one backend: `maximal`, `ollama`, or `embedded`.
+  Without it the embedded path is unreachable on any machine running a proxy,
+  which is every machine that develops this. A pin that does not answer reports
+  `unavailable` rather than quietly becoming a different backend.
+- `STUFFBUCKET_MODEL_PATH` points at existing weights.
+
+### Moving an endpoint
+
+`STUFFBUCKET_PROVIDER_URL` replaces the base URL of the pinned backend.
+`src/main/native/provider-endpoint.ts` holds both rules, and both are narrow:
+
+- It is read **only when `STUFFBUCKET_PROVIDER` names `maximal` or `ollama`**.
+  A value on its own changes nothing, so moving discovery is asked for twice.
+- The address must be `http` or `https` on `localhost`, `127.0.0.1`, or `[::1]`.
+  Discovery finds a provider on this machine; an override that could name
+  another one would make that untrue. Anything else is refused rather than
+  repaired.
+
+**It cannot reach the approval gate.** `beforeToolCall` runs against whatever
+answered, and no environment variable is read anywhere near it, so pointing the
+agent at another endpoint cannot make a tool call skip the question.
+
+The end-to-end suite is the caller. `e2e/model-server.ts` serves a scripted
+backend on a loopback port, which is how the overlay's agent scenarios run on a
+runner with no model. See `docs/testing.md` for what a scripted reply proves and
+what it does not.
 
 ## Two engines, one gate
 
