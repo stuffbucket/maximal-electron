@@ -20,7 +20,8 @@
     "src/renderer/lib/account.ts",
     "src/renderer/lib/settings.ts",
     "src/main/native/pty-session.ts",
-    "scripts/terminal-package.mjs"
+    "scripts/terminal-package.mjs",
+    "scripts/shell-variables.mjs"
   ],
   "reporters": [
     "progress",
