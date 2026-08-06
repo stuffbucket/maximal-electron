@@ -31,10 +31,32 @@ describe('package exports', () => {
         default: './dist/renderer/index.js',
       },
       './renderer/styles.css': './dist/renderer/styles.css',
+      './verify': {
+        types: './scripts/terminal-package.d.mts',
+        default: './scripts/terminal-package.mjs',
+      },
     });
     expect(manifest.files).toContain('dist');
+    expect(manifest.files).toContain('scripts/terminal-package.mjs');
     expect(manifest.scripts['build:package']).toBeTruthy();
     expect(manifest.scripts['verify:exports']).toBeTruthy();
+  });
+
+  /*
+   * A caret on a runtime dependency is a version nobody chose. `^1.2.0-beta.14`
+   * admitted every later beta and every 1.x release from a prerelease line.
+   * Electron has always been pinned; issue #79 is the rest of them.
+   */
+  it('pins every runtime dependency to an exact version', async () => {
+    const manifest = JSON.parse(
+      await readFile(path.join(ROOT, 'package.json'), 'utf8'),
+    ) as PackageManifest;
+
+    const pinned = Object.entries(manifest.dependencies);
+    expect(pinned.length).toBeGreaterThan(0);
+    expect(
+      pinned.filter(([, range]) => !/^\d+\.\d+\.\d+(?:-[\w.]+)?$/.test(range)),
+    ).toEqual([]);
   });
 
   it('requires the consumer React instance while retaining local build versions', async () => {

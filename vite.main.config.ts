@@ -7,9 +7,9 @@ import { defineConfig } from 'vite';
 // preload bundle in the same directory. `package.json#main` points at
 // `.vite/build/main.js`.
 //
-// `@lydell/node-pty` is a native module. Bundling it would inline JavaScript
-// that resolves a `.node` binary by relative path, and that path does not
-// survive the move into `.vite/build`. It stays external and is loaded from
+// `node-pty` is a native module. Bundling it would inline JavaScript that
+// resolves a `.node` binary by relative path, and that path does not survive
+// the move into `.vite/build`. It stays external and is loaded from
 // `node_modules` at run time, which is also why `forge.config.ts` unpacks it
 // from the asar.
 //
@@ -21,7 +21,7 @@ export default defineConfig({
   build: {
     sourcemap: true,
     rollupOptions: {
-      external: ['electron', '@lydell/node-pty', 'node-llama-cpp'],
+      external: ['electron', 'node-pty', 'node-llama-cpp'],
       output: { entryFileNames: 'main.js' },
     },
   },

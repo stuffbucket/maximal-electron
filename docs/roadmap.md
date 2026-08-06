@@ -9,7 +9,7 @@ is missing, so it does not drift out of step with them.
 
 ## Terminals
 
-Working. `coder/ghostty-web` in the renderer, `@lydell/node-pty` in the main
+Working. `coder/ghostty-web` in the renderer, `node-pty` in the main
 process. See `docs/architecture.md`.
 
 - Verified on macOS only. The prebuilt pty covers Windows and Linux, but no one

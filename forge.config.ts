@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 
 import { MakerDeb } from '@electron-forge/maker-deb';
@@ -51,6 +51,49 @@ for (const file of [BUNDLE_ICON, ...RUNTIME_ICONS]) {
   }
 }
 
+/**
+ * Drop the prebuilds this build cannot use.
+ *
+ * Microsoft publishes every platform in one package, so the split is ours to
+ * write (their issue #864). `packagerConfig.ignore` cannot do it: the predicate
+ * is handed a path and not the target, so a `--platform` build for another host
+ * would keep this machine's prebuild. This hook is handed both.
+ *
+ * It throws rather than skipping. A layout change upstream would otherwise ship
+ * every platform, or none, and both build cleanly.
+ */
+function prunePrebuilds(buildPath: string, platform: string, arch: string): void {
+  const module = path.join(buildPath, 'node_modules', 'node-pty');
+  const prebuilds = path.join(module, 'prebuilds');
+  if (!existsSync(prebuilds)) {
+    throw new Error(`node-pty has no prebuilds directory at ${prebuilds}.`);
+  }
+
+  const host = platform === 'mas' ? 'darwin' : platform;
+  const wanted = new Set(
+    (arch === 'universal' ? ['x64', 'arm64'] : [arch]).map((each) => `${host}-${each}`),
+  );
+
+  const present = readdirSync(prebuilds);
+  if (!present.some((entry) => wanted.has(entry))) {
+    throw new Error(
+      `node-pty ships no prebuild for ${[...wanted].join(' or ')}. ` +
+        `Found: ${present.join(', ')}.`,
+    );
+  }
+
+  for (const entry of present) {
+    if (!wanted.has(entry)) rmSync(path.join(prebuilds, entry), { recursive: true, force: true });
+  }
+
+  // Install-time inputs. `third_party` alone is 23 MB of Windows conpty
+  // binaries, and `node_modules` holds only the `node-addon-api` C++ headers
+  // the prebuilds were compiled against.
+  for (const entry of ['src', 'third_party', 'scripts', 'typings', 'node_modules', 'binding.gyp']) {
+    rmSync(path.join(module, entry), { recursive: true, force: true });
+  }
+}
+
 const config: ForgeConfig = {
   packagerConfig: {
     /**
@@ -63,9 +106,15 @@ const config: ForgeConfig = {
      * the failure looks like a model that will not start rather than a
      * packaging fault. Both native scopes are unpacked whole, because their
      * own documentation says the directory layout is load-bearing.
+     *
+     * `node-pty` has the same shape. It `execvp`s `spawn-helper` beside
+     * `pty.node`, at a path it rewrites from `app.asar` to
+     * `app.asar.unpacked`, so a `*.node` glob leaves it in the archive and
+     * every shell fails to start. Its whole prebuild tree is unpacked.
      */
     asar: {
-      unpack: '{**/*.node,**/node_modules/@node-llama-cpp/**,**/node_modules/node-llama-cpp/**}',
+      unpack:
+        '{**/*.node,**/node_modules/node-pty/prebuilds/**,**/node_modules/@node-llama-cpp/**,**/node_modules/node-llama-cpp/**}',
     },
 
     /**
@@ -73,16 +122,17 @@ const config: ForgeConfig = {
      *
      * Forge's Vite plugin normally sets this to "keep only `/.vite`", because
      * it assumes every dependency is bundled. That assumption breaks for a
-     * native module: `@lydell/node-pty` stays external (see
-     * `vite.main.config.ts`), so it has to be copied in as real files.
+     * native module: `node-pty` stays external (see `vite.main.config.ts`), so
+     * it has to be copied in as real files.
      *
      * The plugin defers to an `ignore` set here, so this replaces its default
      * rather than fighting it. Keep it narrow: a wrong prefix silently ships
      * the whole `node_modules` tree.
      *
-     * The prebuilt binaries live in platform-specific packages
-     * (`@lydell/node-pty-darwin-arm64`, `@node-llama-cpp/mac-arm64-metal`),
-     * which is why whole scopes are kept rather than single directories.
+     * `node-llama-cpp` keeps its prebuilt binaries in a separate scope, which
+     * is why a whole scope is kept rather than a single directory. `node-pty`
+     * carries every platform in one package; `prunePrebuilds` drops the ones
+     * this build cannot use.
      */
     ignore: (file: string) => {
       if (!file) return false;
@@ -95,7 +145,7 @@ const config: ForgeConfig = {
 
       const keep = [
         '/.vite',
-        '/node_modules/@lydell',
+        '/node_modules/node-pty',
         '/node_modules/node-llama-cpp',
         '/node_modules/@node-llama-cpp',
       ];
@@ -120,6 +170,12 @@ const config: ForgeConfig = {
     // sign, package, notarize, and staple tail. See docs/signing.md.
   },
   rebuildConfig: {},
+  hooks: {
+    packageAfterCopy: (_forgeConfig, buildPath, _electronVersion, platform, arch) => {
+      prunePrebuilds(buildPath, platform, arch);
+      return Promise.resolve();
+    },
+  },
   makers: [
     // Scope every maker to its platform. An unscoped maker fails on the wrong
     // host: deb needs dpkg, rpm needs rpmbuild.
