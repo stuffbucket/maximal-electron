@@ -125,6 +125,12 @@ jobs:
       # attaching to a packaged build.
       - run: npm run verify:package
 
+      # Launches the artifact and makes it open a shell, which is what an
+      # archive listing cannot check. macOS only: the Windows half of #89 is
+      # open, and would drive the packaged directory the same way.
+      - if: runner.os == 'macOS'
+        run: npm run smoke:packaged
+
   e2e:
     name: end-to-end (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

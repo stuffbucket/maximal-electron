@@ -19,6 +19,8 @@ import {
   quietBounds,
 } from './native/preferences.js';
 import { configurePty, killAllPtys } from './native/pty.js';
+import { selfCheckRequested } from './native/self-check.js';
+import { runSelfCheck } from './self-check.js';
 import { destroyTray, setTrayEnabled } from './native/tray.js';
 import { checkForUpdates } from './native/updates.js';
 import { mainWindowOptions } from './windows/main-window.js';
@@ -242,25 +244,35 @@ function shutdown(): Promise<void> | undefined {
 
 /* ------------------------------------------------------------- lifecycle */
 
-void runMain(
-  { app },
-  {
-    version: RUN_MAIN_OPTIONS_VERSION,
-    userDataDirectory: profileDirectory(),
-    keepRunningWithoutWindows: () => getPreferences().menuBarIcon,
-    window: mainWindowOptions,
-    onReady: (context) => {
-      activate = context.activate;
-      if (getPreferences().splash) createSplashWindow();
-      bootstrap();
+if (selfCheckRequested(process.argv)) {
+  /*
+   * The packaged smoke test, ahead of `runMain` because `runMain` takes the
+   * single instance lock. An instance the developer already has open would
+   * otherwise turn a mistyped flag into an activation and an exit code of 0,
+   * which is a green run of a check that launched nothing. Issue #89.
+   */
+  runSelfCheck(process.argv);
+} else {
+  void runMain(
+    { app },
+    {
+      version: RUN_MAIN_OPTIONS_VERSION,
+      userDataDirectory: profileDirectory(),
+      keepRunningWithoutWindows: () => getPreferences().menuBarIcon,
+      window: mainWindowOptions,
+      onReady: (context) => {
+        activate = context.activate;
+        if (getPreferences().splash) createSplashWindow();
+        bootstrap();
+      },
+      onActivate,
+      onWindowCreated: wireWindow,
+      // With the menu bar icon on, closing the last window is not a quit. The
+      // application keeps running, and the dock icon comes out of the dock.
+      onWindowAllClosed: () => {
+        if (getPreferences().menuBarIcon) setDockVisible(false);
+      },
+      beforeShutdown: shutdown,
     },
-    onActivate,
-    onWindowCreated: wireWindow,
-    // With the menu bar icon on, closing the last window is not a quit. The
-    // application keeps running, and the dock icon comes out of the dock.
-    onWindowAllClosed: () => {
-      if (getPreferences().menuBarIcon) setDockVisible(false);
-    },
-    beforeShutdown: shutdown,
-  },
-);
+  );
+}

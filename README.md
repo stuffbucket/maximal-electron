@@ -85,6 +85,26 @@ deferred shutdown. Every application-specific value is a callback in `options`,
 whose shape is versioned. This application's own `src/main/index.ts` runs on it.
 See [docs/embedding.md](./docs/embedding.md).
 
+The package declares no runtime dependencies. Every package an export imports is
+an optional peer, so installing it for `stuffbucket-electron/host` adds nothing
+to `node_modules` beyond the package itself. Install the peers for the entries
+you use:
+
+| Entry | Peers |
+| --- | --- |
+| `stuffbucket-electron/main` | `electron` |
+| `stuffbucket-electron/host` | `electron` |
+| `stuffbucket-electron/host/terminal` | `node-pty` |
+| `stuffbucket-electron/renderer` | `react`, `react-dom`, `ghostty-web`, `lucide-react`, `react-resizable-panels`, `@radix-ui/react-collapsible`, `@radix-ui/react-tabs`, `@radix-ui/react-tooltip` |
+| `stuffbucket-electron/verify` | none |
+| `stuffbucket-electron/verify/shell-variables` | none |
+
+npm says nothing about a missing optional peer at install time. The failure
+lands later: a bundler stops on the unresolved import and names the package,
+and a main-process entry throws when it loads. `npm run verify:exports` reads
+the peers back out of the built import graph, so the table above cannot drift
+from what the code imports without failing a check.
+
 Import the structural styles separately:
 
 ```ts
