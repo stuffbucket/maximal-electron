@@ -347,17 +347,33 @@ check and puts the number in the log to be pinned.
 
 ## The embedded engine is gated off on Windows
 
-`getLlama()` does not return there. A packaged run reaches `phase acknowledged`
-— the child read the request off its port — and then waits out the whole limit,
-twice, including with the `@node-llama-cpp` scope moved aside where it should
-fail in milliseconds. The 30 s bound `llama-worker.ts` puts on the ESM import
-does not fire, so the module loads and it is `getLlama()` itself that stops.
-Issue #149 carries the log lines.
-
+The packaged self check waits out its whole limit there, twice, including with
+the `@node-llama-cpp` scope moved aside where it should fail in milliseconds.
 So `embeddedEngineStatus` reports the provider unavailable on `win32` with a
 reason, `discoverProvider` falls through, and a Windows user reads a sentence
 instead of watching a spinner. **This is a workaround, not a fix**, and it is
-retired by one observation: a Windows run where the engine names a device.
+retired by one observation: a packaged Windows run where the engine names a
+device.
+
+**It is not `getLlama()`.** #144 read the absent 30 s import bound as proof that
+the module graph had loaded and the engine call was what stopped. That reading
+was wrong. Building the environment one rung at a time on `windows-latest`,
+`getLlama()` returns and names a device every time:
+
+| Where | What came back |
+| --- | --- |
+| Bare node, no Electron | `gpu=false` in 583 ms |
+| An Electron main process | `gpu=false` in 438 ms |
+| An Electron `utilityProcess` | `gpu=false` in 440 ms |
+| The same two, against the packaged `node-llama-cpp` tree | `gpu=false` in 458 ms |
+| `.vite/build/llama-worker.js` forked as a `utilityProcess` | `device=cpu loadMs=877` |
+| The same bundle read out of `app.asar` | `device=cpu loadMs=943` |
+
+The last two are the application's own engine, driven the way
+`native/llama-host.ts` drives it. So the engine loads llama.cpp on Windows, and
+what remains is the packaged binary itself: the one rung nothing has run is
+`--self-check=llama` inside `Stuffbucket.exe`, which the gate short-circuits.
+Issue #149 carries the runs.
 
 `--self-check=llama` asserts the gate on that platform rather than skipping —
 that the application exits rather than hanging, that it says the engine is
