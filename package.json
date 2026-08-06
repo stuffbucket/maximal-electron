@@ -15,6 +15,10 @@
       "types": "./dist/host/host-window.d.ts",
       "default": "./dist/host/host-window.js"
     },
+    "./preload": {
+      "types": "./dist/preload/bridge.d.ts",
+      "default": "./dist/preload/bridge.js"
+    },
     "./renderer": {
       "types": "./dist/renderer/index.d.ts",
       "default": "./dist/renderer/index.js"

@@ -14,6 +14,7 @@ import {
   exportTargets,
   mainSurfaceChecks,
   moduleGraphChecks,
+  preloadSurfaceChecks,
   reExportedNames,
 } from './export-checks.mjs';
 import { PEER_TABLE_EXCEPTIONS, peerTable, peerTableChecks } from './peer-table.mjs';
@@ -151,6 +152,13 @@ check(
 console.log('\nMain-process seam');
 const mainChecks = await mainSurfaceChecks(root, manifest.exports['./main']?.types);
 for (const { name, ok } of mainChecks.checks) check(ok, name);
+
+/*
+ * The preload seam. Issue #17.
+ */
+console.log('\nPreload bridge seam');
+const preloadChecks = await preloadSurfaceChecks(root, manifest.exports['./preload']?.types);
+for (const { name, ok } of preloadChecks.checks) check(ok, name);
 
 console.log('\nRenderer import graph');
 const { checks: graphChecks, inspected } = await moduleGraphChecks(root, rendererEntry);
