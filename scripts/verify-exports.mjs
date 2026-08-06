@@ -10,6 +10,7 @@ import { selectors, unscopedSelectors } from './css-selectors.mjs';
 import {
   RENDERER_SURFACE,
   VERIFY_SURFACE,
+  dependencyContractChecks,
   exportTargets,
   mainSurfaceChecks,
   moduleGraphChecks,
@@ -25,17 +26,7 @@ const check = (condition, message) => {
 };
 
 console.log('Package dependency contract');
-for (const dependency of ['react', 'react-dom']) {
-  check(
-    typeof manifest.peerDependencies?.[dependency] === 'string' &&
-      typeof manifest.devDependencies?.[dependency] === 'string',
-    `${dependency} is a consumer peer and a development dependency`,
-  );
-  check(
-    manifest.dependencies?.[dependency] === undefined,
-    `${dependency} is not installed as a package runtime dependency`,
-  );
-}
+for (const { name, ok } of await dependencyContractChecks(root, manifest)) check(ok, name);
 
 /*
  * `scripts/export-checks.mjs` holds what an export has to satisfy.

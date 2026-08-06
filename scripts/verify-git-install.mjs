@@ -30,6 +30,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   RENDERER_SURFACE,
   VERIFY_SURFACE,
+  dependencyContractChecks,
   exportTargets,
   mainSurfaceChecks,
   moduleGraphChecks,
@@ -123,6 +124,45 @@ async function run() {
     await readFile(path.join(packageRoot, 'package.json'), 'utf8'),
   );
   const targets = exportTargets(installedManifest.exports);
+
+  /*
+   * What the install actually put on disk, rather than what the manifest says
+   * it would.
+   *
+   * This is the check issue #31 is about, and it is the only one that can see
+   * the answer directly: before this change the same command installed 265
+   * packages and 274 MB, because a `dependencies` entry reaches every consumer
+   * of every entry point regardless of which one they import.
+   */
+  console.log('\nWhat the install put in node_modules');
+  const modules = path.join(scratch, 'node_modules');
+  const installedPackages = readdirSync(modules)
+    .filter((entry) => !entry.startsWith('.'))
+    .flatMap((entry) =>
+      entry.startsWith('@')
+        ? readdirSync(path.join(modules, entry)).map((scoped) => `${entry}/${scoped}`)
+        : [entry],
+    )
+    .sort();
+
+  // The floor. A directory listing that came back empty would report the
+  // equality below as satisfied by finding nothing at all.
+  check(installedPackages.length > 0, 'node_modules holds at least one package');
+  check(
+    installedPackages.join(', ') === name,
+    `installing ${name} installed only ${name}`,
+  );
+  if (installedPackages.join(', ') !== name) {
+    console.log(`         ${String(installedPackages.length)} packages: ${installedPackages.join(', ')}`);
+  }
+
+  console.log('\nDependency contract of the installed package');
+  for (const { name: message, ok } of await dependencyContractChecks(
+    packageRoot,
+    installedManifest,
+  )) {
+    check(ok, message);
+  }
 
   /*
    * The floor. An installed package with no `exports` map, or a resolver that
