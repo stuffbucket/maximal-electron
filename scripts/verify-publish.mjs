@@ -3,7 +3,7 @@
  * Check the tarball that `npm publish` would upload to GitHub Packages.
  *
  * Everything here is answerable before a version exists in the registry. The
- * registry equivalent of `verify:git-install` — install the published version
+ * registry equivalent of #96's git-ref check — install the published version
  * and resolve every export — is not, so it is not in this file. See
  * `docs/consuming.md`.
  *
