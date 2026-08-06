@@ -3,7 +3,13 @@ import { writeSync } from 'node:fs';
 
 import { app } from 'electron';
 
-import { enginePhase, listen, send } from './native/llama-host.js';
+import {
+  enginePhase,
+  engineReleasedBy,
+  engineStartup,
+  listen,
+  send,
+} from './native/llama-host.js';
 import {
   LLAMA_NO_LIBRARY,
   describeEngineWait,
@@ -54,7 +60,10 @@ export function runLlamaCheck(): void {
   }
 
   const timer = setTimeout(() => {
-    report({ ok: false, reason: describeEngineWait(enginePhase(), Date.now() - started) });
+    report({
+      ok: false,
+      reason: `${describeEngineWait(enginePhase(), Date.now() - started)} [${engineStartup()}]`,
+    });
   }, TIMEOUT_MS);
 
   const id = randomUUID();
@@ -73,7 +82,7 @@ export function runLlamaCheck(): void {
         report({ ok: false, reason: `the engine ${LLAMA_NO_LIBRARY}: ${event.reason}` });
         return;
       }
-      report({ ok: true, device, loadMs, survived: event.reason });
+      report({ ok: true, device, loadMs, releasedBy: engineReleasedBy(), survived: event.reason });
       return;
     }
     if (event.kind === 'done') {

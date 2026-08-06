@@ -35,9 +35,40 @@ function post(event: EngineEvent): void {
 
 let llamaModule: Record<string, unknown> | undefined;
 
+/**
+ * How long the ESM import of `node-llama-cpp` may take.
+ *
+ * Loading a JavaScript module graph is milliseconds of work. This is not a
+ * budget for it, it is a bound on a hang: an `import()` that never settles
+ * would otherwise be indistinguishable from an engine that is merely busy, and
+ * the user would watch a spinner forever. Deliberately far below the check's
+ * own limit, and far above anything a real load costs, so a failure here means
+ * the import and not a slow machine. Issue #133.
+ */
+const IMPORT_TIMEOUT_MS = 30_000;
+
 async function library(): Promise<Record<string, unknown>> {
-  llamaModule ??= await esmImport('node-llama-cpp');
-  return llamaModule;
+  if (llamaModule) return llamaModule;
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const bound = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(
+          new Error(
+            `loading node-llama-cpp did not complete in ${String(IMPORT_TIMEOUT_MS)} ms.`,
+          ),
+        ),
+      IMPORT_TIMEOUT_MS,
+    );
+  });
+
+  try {
+    llamaModule = await Promise.race([esmImport('node-llama-cpp'), bound]);
+    return llamaModule;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 interface LoadedModel {
@@ -274,6 +305,12 @@ async function run(request: Extract<EngineRequest, { kind: 'run' }>): Promise<vo
 /* --------------------------------------------------------------- the port */
 
 function handle(request: EngineRequest): void {
+  // Before anything it might block on. Its absence is what tells the
+  // supervisor the request never arrived, rather than arrived and hung.
+  if (request.kind !== 'crash-on-purpose') {
+    post({ kind: 'ack', id: ENGINE_LIFECYCLE, of: request.kind });
+  }
+
   switch (request.kind) {
     case 'probe':
       void probe(request.id).then(

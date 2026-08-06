@@ -50,6 +50,12 @@ export type EngineEvent =
    * started and is slow.
    */
   | { kind: 'hello'; id: string; pid: number }
+  /**
+   * The engine read a request off the port. Posted before it acts on it, so
+   * the absence of it separates a request that was never delivered from one
+   * that was delivered and then hung.
+   */
+  | { kind: 'ack'; id: string; of: string }
   /** The engine loaded `node-llama-cpp`. `device` is whatever it chose. */
   | { kind: 'loaded'; id: string; device: string; ms: number }
   | { kind: 'progress'; id: string; progress: ModelProgress }
@@ -203,6 +209,8 @@ export type EnginePhase =
   | 'forked'
   /** Its entry ran and its port is wired: `hello` arrived. */
   | 'running'
+  /** It read the request off the port: `ack` arrived. */
+  | 'acknowledged'
   /** `getLlama()` returned and named a device. */
   | 'loaded';
 
@@ -210,8 +218,11 @@ const PHASE_DETAIL: Readonly<Record<EnginePhase, string>> = {
   'not started': 'the engine process was never forked',
   forked: 'the engine process started but its entry never ran',
   running:
-    'the engine started and never named a device, so llama.cpp was still ' +
-    'loading or the request never reached it',
+    'the engine started and never read the request off its port, so the ' +
+    'request never reached it',
+  acknowledged:
+    'the engine read the request and never named a device, so loading ' +
+    'llama.cpp is where it stopped',
   loaded: 'the engine had loaded llama.cpp and did not answer',
 };
 
@@ -258,7 +269,7 @@ export const LLAMA_CHECK_FAILED = 'self-check llama: failed';
 export const LLAMA_NO_LIBRARY = 'did not load llama.cpp';
 
 export type LlamaCheckResult =
-  | { ok: true; device: string; loadMs: number; survived: string }
+  | { ok: true; device: string; loadMs: number; releasedBy: string; survived: string }
   | { ok: false; reason: string };
 
 export function llamaCheckRequested(argv: readonly string[]): boolean {
@@ -285,14 +296,16 @@ export function engineCheckTimeoutMs(platform: string): number {
 /**
  * The one line the driver reads.
  *
- * A pass names the backend the engine chose, what loading it cost, and the
- * crash it walked away from. "ok" alone would also be printed by a check that
- * forked nothing, and the cost is the only measurement anyone has of a
- * platform they cannot run locally.
+ * A pass names the backend, what loading cost, and what released the request
+ * queue. `released-by` is there because the queue is flushed by whichever of
+ * `spawn` and `hello` arrives first, and those may differ by platform: without
+ * it, one platform could pass through a path the other never takes and nothing
+ * would say so. "ok" alone would also be printed by a check that forked
+ * nothing.
  */
 export function llamaCheckLine(result: LlamaCheckResult): string {
   return result.ok
     ? `${LLAMA_CHECK_OK} device=${result.device} loadMs=${String(result.loadMs)} ` +
-      `survived=${result.survived}`
+      `released-by=${result.releasedBy} survived=${result.survived}`
     : `${LLAMA_CHECK_FAILED}: ${result.reason}`;
 }

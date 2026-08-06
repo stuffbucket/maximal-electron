@@ -31,25 +31,46 @@ import {
 /**
  * The engine, and whether its port is usable yet.
  *
- * **A request posted before the `spawn` event is lost on Windows.** macOS
+ * **A request posted before the child is listening is lost on Windows.** macOS
  * delivers it, which is why the first Windows run of the packaged self check
- * was the thing that found it: the child said `hello`, and then waited sixty
- * seconds for a `probe` that had already been thrown away. With the prebuild
- * scope moved aside the same run timed out identically, where a child that had
- * received the request would have failed in milliseconds — that asymmetry is
- * what identified the direction. Electron's own example posts straight after
- * `fork`; it is not a documented guarantee. Issue #133.
+ * was the thing that found it: the child said `hello`, and then waited for a
+ * `probe` that had already been thrown away. With the prebuild scope moved
+ * aside the same run timed out identically, where a child that had received
+ * the request would have failed in milliseconds — that asymmetry is what
+ * identified the direction. Issue #133.
+ *
+ * **Readiness is the child's `hello`, not the `spawn` event.** `spawn` says the
+ * process exists, which is not the same as its port being able to receive, and
+ * holding the queue on `spawn` alone turned an occasional loss into a
+ * deterministic hang on Windows. `hello` is the child's own first act after it
+ * registers its message handler, so it is proof rather than a hint. Either
+ * signal releases the queue, whichever arrives first.
  */
 interface Engine {
   process: UtilityProcess;
-  spawned: boolean;
-  /** Requests made before `spawn`, in order. Flushed once, then never used. */
+  /** The queue has been flushed. Requests go straight out from here on. */
+  ready: boolean;
+  /** Requests made before that, in order. */
   queue: EngineRequest[];
+  sawSpawn: boolean;
+  sawHello: boolean;
+  /** Which signal released the queue, for the failure message. */
+  releasedBy: string;
 }
 
 let child: Engine | undefined;
 let crashes: number[] = [];
 let lastFailure = '';
+
+/**
+ * Which signal released the last engine's queue.
+ *
+ * Module level, not on the record, because the record is gone by the time a
+ * failure is reported: the engine's death is what settles the operation, and
+ * `onExit` clears `child` first. Reading it off the record printed
+ * `released-by=nothing` over a run that had plainly delivered its request.
+ */
+let releasedBy = 'nothing';
 
 /**
  * How far the engine got. Read by the packaged self check, so a wait that ends
@@ -77,10 +98,34 @@ function enginePath(): string {
   return path.join(__dirname, 'llama-worker.js');
 }
 
+/**
+ * Release the queue, once, and record which signal did it.
+ *
+ * `engineStartup` reports it. That is the difference between a platform that
+ * never emits `spawn` and a queue held for some other reason, and it goes in
+ * the failure message rather than in a log line, so a working start stays
+ * silent.
+ */
+function release(engine: Engine, why: string): void {
+  if (engine.ready) return;
+  engine.ready = true;
+  engine.releasedBy = why;
+  releasedBy = why;
+  const waiting = engine.queue;
+  engine.queue = [];
+  for (const request of waiting) engine.process.postMessage(request);
+}
+
 /** Deliver to the operation that asked, once the lifecycle events are read. */
-function fanOut(event: EngineEvent): void {
+function fanOut(engine: Engine, event: EngineEvent): void {
   if (event.kind === 'hello') {
-    phase = 'running';
+    if (phase === 'not started' || phase === 'forked') phase = 'running';
+    engine.sawHello = true;
+    release(engine, 'hello');
+    return;
+  }
+  if (event.kind === 'ack') {
+    if (phase === 'running') phase = 'acknowledged';
     return;
   }
   if (event.kind === 'loaded') phase = 'loaded';
@@ -128,6 +173,22 @@ function engine(): Engine {
     stdio: 'pipe',
   });
 
+  // The record exists before any handler is registered, and every handler
+  // closes over it rather than over the module-level `child`. An earlier
+  // version assigned `child` last, so a `spawn` that arrived before the
+  // assignment read a stale value, took the guard's early exit, and left the
+  // queue held forever. That is a hang, and it is invisible on a platform
+  // where the event happens to arrive later. Issue #133.
+  releasedBy = 'nothing';
+  const record: Engine = {
+    process: forked,
+    ready: false,
+    queue: [],
+    sawSpawn: false,
+    sawHello: false,
+    releasedBy: 'nothing',
+  };
+
   // node-llama-cpp writes the backend it chose, and every load failure, to
   // stderr. Dropping it would trade a crash for a silence.
   forked.stderr?.on('data', (chunk: Buffer) => {
@@ -139,21 +200,17 @@ function engine(): Engine {
 
   forked.on('message', (message: unknown) => {
     const event = parseEngineEvent(message);
-    if (event) fanOut(event);
+    if (event) fanOut(record, event);
   });
   forked.on('spawn', () => {
     if (phase === 'not started') phase = 'forked';
-    const started = child;
-    if (!started || started.process !== forked) return;
-    started.spawned = true;
-    const waiting = started.queue;
-    started.queue = [];
-    for (const request of waiting) forked.postMessage(request);
+    record.sawSpawn = true;
+    release(record, 'spawn');
   });
   forked.on('exit', onExit);
 
-  child = { process: forked, spawned: false, queue: [] };
-  return child;
+  child = record;
+  return record;
 }
 
 /**
@@ -170,17 +227,36 @@ export function listen(id: string, listener: Listener): () => void {
 /**
  * Send one request. Starts the engine if it is not running.
  *
- * Held until `spawn` when the child is not up yet. Posting before then is
- * silently dropped on Windows, and a dropped request is a hang rather than an
- * error: the caller waits for an answer to something the engine never read.
+ * Held until the child is listening. Posting before then is silently dropped
+ * on Windows, and a dropped request is a hang rather than an error: the caller
+ * waits for an answer to something the engine never read.
  */
 export function send(request: EngineRequest): void {
   const target = engine();
-  if (!target.spawned) {
+  if (!target.ready) {
     target.queue.push(request);
     return;
   }
   target.process.postMessage(request);
+}
+
+/**
+ * What the supervisor saw of the engine's start, for a failure message.
+ *
+ * `spawn` and `hello` are separate facts. A platform that never emits the
+ * first is a different problem from a child that never reaches the second, and
+ * the phase alone cannot say which, because `hello` moves it past `forked`.
+ */
+export function engineReleasedBy(): string {
+  return releasedBy;
+}
+
+export function engineStartup(): string {
+  const running = child;
+  if (!running) return 'no engine';
+  return `spawn=${running.sawSpawn ? 'yes' : 'no'} hello=${
+    running.sawHello ? 'yes' : 'no'
+  } released-by=${running.releasedBy} queued=${String(running.queue.length)}`;
 }
 
 /** Stop the engine. It is started again by the next request. */

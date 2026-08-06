@@ -188,7 +188,7 @@ describe('describeEngineWait', () => {
    * port never carried the request, and one that is merely slow. Every phase
    * has to read differently or the message is worth nothing.
    */
-  const phases = ['not started', 'forked', 'running', 'loaded'] as const;
+  const phases = ['not started', 'forked', 'running', 'acknowledged', 'loaded'] as const;
 
   it('says something different for every phase', () => {
     const said = phases.map((phase) => describeEngineWait(phase, 60_000));
@@ -209,14 +209,13 @@ describe('describeEngineWait', () => {
     expect(describeEngineWait('loaded', 1)).toContain('had loaded llama.cpp');
   });
 
-  it('admits that `running` cannot tell a slow load from a lost request', () => {
-    // Both halves matter. The first Windows run was read as a slow load, and
-    // the negative control timing out identically said it was a lost request.
-    // A message naming only one of the two invites the same wrong reading.
-    const message = describeEngineWait('running', 1);
-    expect(message).toContain('never named a device');
-    expect(message).toContain('llama.cpp was still loading');
-    expect(message).toContain('the request never reached it');
+  it('tells a request that never arrived from one that arrived and hung', () => {
+    // The distinction two wrong diagnoses turned on. `running` means the child
+    // never read the request; `acknowledged` means it did and stopped later.
+    expect(describeEngineWait('running', 1)).toContain('never read the request off its port');
+    expect(describeEngineWait('running', 1)).toContain('never reached it');
+    expect(describeEngineWait('acknowledged', 1)).toContain('read the request');
+    expect(describeEngineWait('acknowledged', 1)).toContain('loading llama.cpp');
   });
 
   it('reports the milliseconds it was given', () => {
@@ -269,12 +268,18 @@ describe('the packaged llama check', () => {
     expect(llamaCheckRequested([])).toBe(false);
   });
 
-  it('names the backend, what loading cost, and the crash it walked away from', () => {
+  it('names the backend, the cost, what released the queue, and the crash', () => {
     // "ok" alone would also be printed by a check that forked nothing, and the
     // cost is the only measurement anyone has of a platform they cannot run.
     expect(
-      llamaCheckLine({ ok: true, device: 'metal', loadMs: 418, survived: 'SIGABRT' }),
-    ).toBe(`${LLAMA_CHECK_OK} device=metal loadMs=418 survived=SIGABRT`);
+      llamaCheckLine({
+        ok: true,
+        device: 'metal',
+        loadMs: 418,
+        releasedBy: 'spawn',
+        survived: 'SIGABRT',
+      }),
+    ).toBe(`${LLAMA_CHECK_OK} device=metal loadMs=418 released-by=spawn survived=SIGABRT`);
   });
 
   it('says why it failed', () => {
@@ -284,7 +289,13 @@ describe('the packaged llama check', () => {
   });
 
   it('keeps the two lines apart', () => {
-    const pass = llamaCheckLine({ ok: true, device: 'cpu', loadMs: 1, survived: 'x' });
+    const pass = llamaCheckLine({
+      ok: true,
+      device: 'cpu',
+      loadMs: 1,
+      releasedBy: 'hello',
+      survived: 'x',
+    });
     expect(pass.startsWith(LLAMA_CHECK_FAILED)).toBe(false);
     expect(llamaCheckLine({ ok: false, reason: 'x' }).startsWith(LLAMA_CHECK_OK)).toBe(false);
   });
