@@ -111,15 +111,30 @@ Nothing is committed. It runs `verify:exports` first, so a tarball missing an
 export target fails before it is attached rather than after somebody installs
 it.
 
-The asset is `stuffbucket-electron-<version>.tgz`. A consumer installs it from
-the release:
+`publish-package` then publishes that same archive to the GitHub Packages npm
+registry as `@stuffbucket/maximal-electron`. It publishes the artifact the job
+above uploaded rather than packing a second time, so the bytes that were
+checked are the bytes that go up. `npm run verify:publish` reads the archive
+and asserts the publish identity and its contents; that runs on a dry run too.
+
+Publishing adds no secret. `GITHUB_TOKEN` with `packages: write` publishes to
+the registry for the repository the workflow runs in, and the scope has to be
+the account that owns that repository. **Installing does need a token**, for a
+public package as much as a private one. `docs/consuming.md` states that cost
+and shows the `.npmrc`.
+
+The release still carries the tarball as an asset, named
+`stuffbucket-maximal-electron-<version>.tgz`. A consumer can install it from
+the release without a token:
 
 ```
 npm install https://github.com/stuffbucket/maximal-electron/releases/download/v0.0.1/stuffbucket-electron-0.0.1.tgz
 ```
 
-No registry and no publish token. The cost is that npm cannot resolve a version
-range, so a consumer pins a URL and updates it deliberately.
+That path costs a pinned URL rather than a version range, and it runs neither
+`prepack` nor `prepare`, so it depends entirely on what the attached archive
+already contains. The registry is the supported path. This one is the fallback
+for a consumer who will not hold a token.
 
 ## Why a draft
 

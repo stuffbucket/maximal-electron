@@ -25,6 +25,13 @@ const TAG_ONLY = "github.event_name != 'workflow_dispatch'";
 /** Calls that create, move, or destroy a release. `view` and `download` read. */
 const MUTATES_A_RELEASE = /\bgh release (create|upload|edit|delete)\b/;
 
+/**
+ * A publish that is not a dry run. A version in a registry cannot be replaced
+ * or taken back, so this is the one step in the pipeline whose guard has no
+ * second chance.
+ */
+const PUBLISHES_A_PACKAGE = /\bnpm publish\b(?![^\n]*--dry-run)/;
+
 interface Step {
   name?: string;
   if?: string;
@@ -36,6 +43,7 @@ interface Step {
 interface Job {
   if?: string;
   needs?: string | string[];
+  permissions?: Record<string, string> | string;
   steps?: Step[];
 }
 
@@ -200,5 +208,63 @@ describe('the release workflow', () => {
     expect(needsOf(job ?? {})).toEqual(
       expect.arrayContaining(['windows-msi-verify', 'package-tarball']),
     );
+  });
+
+  /**
+   * The registry publish needs the token permission, and nothing else in the
+   * pipeline does. Dropping it turns the one irreversible step into a 403 on a
+   * tag, which is the run that cannot be repeated.
+   */
+  it('gives the publishing job packages: write', () => {
+    const permissions = release?.jobs?.['publish-package']?.permissions;
+    expect(typeof permissions === 'object' ? permissions : {}).toMatchObject({
+      packages: 'write',
+    });
+  });
+
+  /**
+   * The dry run's half of the publish. Without a dispatch-only `--dry-run`
+   * step, the whole registry path would be exercised for the first time on a
+   * tag, which is how three release defects shipped.
+   */
+  it('rehearses the publish on a dispatch run', () => {
+    const rehearsals = (release?.jobs?.['publish-package']?.steps ?? []).filter(
+      (step) =>
+        /npm publish[^\n]*--dry-run/.test(step.run ?? '') &&
+        step.if?.includes("github.event_name == 'workflow_dispatch'") === true,
+    );
+    expect(rehearsals).toHaveLength(1);
+  });
+});
+
+/**
+ * A published version cannot be replaced, moved, or withdrawn. Every other
+ * guard in this file protects something a second run can repair; this one does
+ * not, so it scans every workflow rather than `release.yml` alone.
+ */
+describe('publishing to a registry', () => {
+  const unguarded: string[] = [];
+  const guarded: string[] = [];
+
+  for (const [name, workflow] of parsed) {
+    for (const [id, job] of jobs(workflow)) {
+      for (const step of job.steps ?? []) {
+        if (!PUBLISHES_A_PACKAGE.test(step.run ?? '')) continue;
+
+        const where = `${name} ${id}: ${step.name ?? step.run?.slice(0, 40) ?? ''}`;
+        const isGuarded = [job.if, step.if].some(
+          (condition) => condition?.includes(TAG_ONLY) === true,
+        );
+        (isGuarded ? guarded : unguarded).push(where);
+      }
+    }
+  }
+
+  it('found a publish step to check', () => {
+    expect(guarded.length + unguarded.length).toBeGreaterThan(0);
+  });
+
+  it('never publishes a package on a dispatch run', () => {
+    expect(unguarded).toEqual([]);
   });
 });

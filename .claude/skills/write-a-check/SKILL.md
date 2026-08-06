@@ -44,7 +44,8 @@ An assertion over a collection needs a floor on the collection. Write the floor
 as a separate failure with its own message, so the output distinguishes "this
 was wrong" from "there was nothing to look at".
 
-`stuffbucket-electron/verify` does this at the seam a consumer touches: the
+`@stuffbucket/maximal-electron/verify` does this at the seam a consumer
+touches: the
 first two returned checks are floors on the file lists, because a consumer who
 points the verifier at the wrong directory would otherwise get a green run.
 

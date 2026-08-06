@@ -1,5 +1,5 @@
 {
-  "name": "stuffbucket-electron",
+  "name": "@stuffbucket/maximal-electron",
   "productName": "Stuffbucket",
   "version": "0.0.3",
   "description": "Reference Electron application with cross-platform build and release mechanics",
@@ -34,6 +34,9 @@
     "type": "git",
     "url": "git+https://github.com/stuffbucket/maximal-electron.git"
   },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
   "scripts": {
     "start": "electron-forge start",
     "build:host": "tsc -p tsconfig.host.json",
@@ -46,6 +49,7 @@
     "icons": "node scripts/gen-icons.mjs",
     "verify:package": "node scripts/verify-package.mjs",
     "verify:exports": "npm run build:package && node scripts/verify-exports.mjs",
+    "verify:publish": "node scripts/verify-publish.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",

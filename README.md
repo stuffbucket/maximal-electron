@@ -59,9 +59,13 @@ A dock badge tracks real application state.
 
 ## Consume the shell frame
 
-GitHub and npm installs expose the secured host window at
-`stuffbucket-electron/host` and the generic renderer frame at
-`stuffbucket-electron/renderer`. The renderer entry exports `ShellLayout`,
+The package is `@stuffbucket/maximal-electron`, on the GitHub Packages npm
+registry. Installing it needs an `.npmrc` and a token, for a public package as
+much as a private one. `docs/consuming.md` has both, and says what that costs.
+
+It exposes the secured host window at `@stuffbucket/maximal-electron/host` and
+the generic renderer frame at `@stuffbucket/maximal-electron/renderer`. The
+renderer entry exports `ShellLayout`,
 `TitleBar`, `TabBar`, `NavRail`, `Canvas`, and `IconButton`. It does not export
 the reference application, terminal, agent, sample data, or fixtures.
 
@@ -74,8 +78,8 @@ import {
   ShellLayout,
   TabBar,
   TitleBar,
-} from 'stuffbucket-electron/renderer';
-import 'stuffbucket-electron/renderer/styles.css';
+} from '@stuffbucket/maximal-electron/renderer';
+import '@stuffbucket/maximal-electron/renderer/styles.css';
 ```
 
 The stylesheet ships no palette and scopes every rule under `.sb-shell`.
@@ -114,8 +118,9 @@ and verify that every export target appears in `npm pack`.
 
 ## Package the terminal
 
-`stuffbucket-electron/host/terminal` and `stuffbucket-electron/renderer` give a
-working terminal and leave two packaging traps behind.
+`@stuffbucket/maximal-electron/host/terminal` and
+`@stuffbucket/maximal-electron/renderer` give a working terminal and leave two
+packaging traps behind.
 
 - `ghostty-web` inlines its WebAssembly as a data URL and fetches it at startup.
   The content policy needs `'wasm-unsafe-eval'` in `script-src` and `data:` in
@@ -125,8 +130,8 @@ working terminal and leave two packaging traps behind.
   `spawn-helper`, which has no extension and is executed from outside the
   archive.
 
-`stuffbucket-electron/verify` exports those assertions as a function to run
-against a built application. `docs/architecture.md` has the call.
+`@stuffbucket/maximal-electron/verify` exports those assertions as a function
+to run against a built application. `docs/architecture.md` has the call.
 
 ## Your own icon
 

@@ -10,7 +10,7 @@ tag, `merge-preview.yml` tests what a merge would produce, and
 | --- | --- | --- |
 | `ci.yml` | pull request, push to `main` and `release/**` | Lint, types, unit and mutation tests, packaging and the end-to-end suite on macOS and Windows |
 | `merge-preview.yml` | push to `main` and `release/**` | Replays every open pull request against the new tip |
-| `release.yml` | tag `v*.*.*`, or a dispatch for a dry run | The draft release, the MSI, the dmg, the tarball, publish |
+| `release.yml` | tag `v*.*.*`, or a dispatch for a dry run | The draft release, the MSI, the dmg, the tarball, the registry publish, publish |
 | `windows-msi-dev.yml` | dispatch | Builds and installs the MSI from any branch |
 
 ## The problem this page exists for
@@ -38,6 +38,8 @@ A dry run does everything a tag does, except attach and publish:
   it, asserts the files and the registry entries, uninstalls, and asserts clean
   removal.
 - `package-tarball` runs `npm run verify:exports` and packs.
+- `publish-package` runs `npm run verify:publish` against the packed archive,
+  then `npm publish --dry-run` with an invalid token. Nothing is uploaded.
 - `macos-dmg` and `publish` do not run at all. The first needs
   `MACOS_BUILDER_PAT` and produces nothing but an asset on the draft.
 
@@ -125,6 +127,11 @@ what a compiler would if YAML went through one:
   why that is deliberate.
 - Every step in `release.yml` that creates, uploads to, or edits a release is
   guarded, so a dry run cannot publish.
+- Every `npm publish` that is not a dry run is guarded, in every workflow
+  rather than `release.yml` alone. A release can be redone. A version in a
+  registry cannot.
+- `publish-package` asks for `packages: write`, and a dispatch run rehearses
+  the publish with `--dry-run`.
 - Every `needs` names a job that exists.
 
 Each rule also asserts that it found something to check, because a rule that
