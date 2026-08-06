@@ -8,7 +8,7 @@ tag, `merge-preview.yml` tests what a merge would produce, and
 
 | Workflow | Trigger | What it is for |
 | --- | --- | --- |
-| `ci.yml` | pull request, push to `main` and `release/**` | Lint, types, unit and mutation tests, a git-ref install, packaging and the end-to-end suite on macOS and Windows |
+| `ci.yml` | pull request, push to `main` and `release/**` | Lint, types, unit and mutation tests, a git-ref install, packaging and the end-to-end suite on macOS and Windows, and the packaged smoke test on macOS |
 | `merge-preview.yml` | push to `main` and `release/**` | Replays every open pull request against the new tip |
 | `release.yml` | tag `v*.*.*`, or a dispatch for a dry run | The draft release, the MSI, the dmg, the tarball, publish |
 | `windows-msi-dev.yml` | dispatch | Builds and installs the MSI from any branch |
@@ -28,6 +28,20 @@ The first complete dry run found another, one level down: `wix build` harvested
 zero files, said so as a warning, and produced an MSI that installed an empty
 directory. Issue #86. A step that finds nothing now fails rather than reporting
 success.
+
+## The packaged smoke test
+
+`npm run smoke:packaged` is the newest job step and is written to that rule. It
+runs in `package (macos-latest)`, after `verify:package`, and it launches the
+application it just built. Its own floor is a second launch with `spawn-helper`
+moved aside, which has to fail: the step cannot report success without having
+started a shell inside the package. `docs/testing.md` describes it.
+
+Windows has no equivalent. The same argument would drive
+`out/Stuffbucket-win32-x64/Stuffbucket.exe` in the packaged directory, where
+`conpty.node` and `OpenConsole.exe` are the same class of resolution, and the
+command would have to be one `cmd.exe` echoes rather than `printf`. The step
+here is scoped to macOS rather than run as a job that skips.
 
 ## The two install paths
 
