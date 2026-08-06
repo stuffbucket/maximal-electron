@@ -103,18 +103,25 @@ built it for Mux, and it is MIT licensed.
 
 It parses and renders. It does not run a process. The shell lives in the main
 process, in `src/main/native/pty.ts`, which is what lets the renderer keep
-`sandbox: true`.
+`sandbox: true`. That file is the Electron half of the manager: which window
+owns a session, where a session starts, and where its output goes. The manager
+itself is `TerminalHost`, the class `./host/terminal` exports, so this shell
+and a consumer run the same code rather than two copies of it.
 
 ```
 keystroke -> term.onData -> `pty:write` channel -> shell
 shell     -> `pty:data` event                   -> term.write
 ```
 
-Three details are load-bearing.
+Four details are load-bearing.
 
-- **`pty.ts` batches output.** A build log emits thousands of small writes per
-  second. One message each would swamp the channel, so `pty.ts` coalesces on an
-  8 millisecond timer.
+- **A session belongs to a window.** `pty.ts` holds one `TerminalHost` per
+  `BrowserWindow` and reaps it on `closed`, so a window that goes away takes
+  its shells with it and cannot reach another window's. Quit reaps every one.
+  A request that arrives with no window is refused: nothing would reap it.
+- **`TerminalHost` batches output.** A build log emits thousands of small
+  writes per second. One message each would swamp the channel, so it coalesces
+  on an 8 millisecond timer.
 - **Terminals stay mounted.** Switching tabs hides the inactive host rather
   than unmounting it. A remount would kill the shell and lose the scrollback.
 - **The content policy needs two additions.** `script-src` needs
@@ -169,9 +176,12 @@ contract, so a consumer wires `TerminalHost` to whatever channels they already
 have and implements the five transport methods against them.
 
 `TerminalHost` is an instance, not module state, so a consumer with two windows
-gets two registries and closing one cannot reap the other's shells. It imports
-no `electron`: the home directory and the default shell are supplied, because
-`app.getPath` is not this module's to call.
+gets two registries and closing one cannot reap the other's shells. This shell
+uses it the same way: `src/main/native/pty.ts` keys one instance per
+`BrowserWindow`. It imports no `electron`: the home directory, the default
+shell, and any extra environment such as `TERM_PROGRAM` are supplied, because
+`app.getPath` is not this module's to call and the product name is not its to
+know.
 
 Three custom properties have no declaration in any stylesheet and cannot have
 one. The emulator renders to a canvas and takes literal colours at
