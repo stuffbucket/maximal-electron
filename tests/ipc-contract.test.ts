@@ -51,7 +51,7 @@ describe('IPC contract', () => {
     // noticing this list is not. Update it in the same change.
     const channels: IpcChannel[] = [...IPC_CHANNELS];
     const events: IpcEvent[] = [...IPC_EVENTS];
-    expect(channels).toHaveLength(19);
+    expect(channels).toHaveLength(20);
     expect(events).toHaveLength(11);
   });
 
@@ -64,6 +64,7 @@ describe('IPC contract', () => {
       'pty:write',
       'pty:resize',
       'pty:kill',
+      'pty:list',
       'pty:default-shell',
     ]);
   });
@@ -77,6 +78,13 @@ describe('default preferences', () => {
 
   it('follows the system theme', () => {
     expect(DEFAULT_PREFERENCES.theme).toBe('system');
+  });
+
+  it('terminates a terminal session with its view', () => {
+    // Detach leaves a process running that the user can no longer see, so it
+    // is a choice. Flipping this default would leak a shell for anyone who
+    // relies on a tab close ending one.
+    expect(DEFAULT_PREFERENCES.terminalDetach).toBe(false);
   });
 
   it('ships a summon accelerator', () => {

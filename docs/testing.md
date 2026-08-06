@@ -82,13 +82,11 @@ The check runs before `whenReady` and opens no window, so it needs no window
 server and no signed binary. `package (macos-latest)` runs it.
 
 What it leaves uncovered: no window, no renderer, and no IPC. It says nothing
-about Windows, where `verify-msi.ps1` starts the installed executable and
-asserts only that it survives 20 seconds, and nothing about the dmg, the
-signature, or the notarised bundle. Run it on the package Forge produces, which
-carries an ad-hoc signature that `codesign --verify` already rejects because
-packager rewrites `Info.plist` afterwards. Signing happens later, in
-stuffbucket/macos-runner, and moving a file inside a bundle that has been
-signed properly would break its seal.
+about the Windows or linux packages, and nothing about a signed or notarised
+bundle. Run it on the package Forge produces, which carries an ad-hoc signature
+that `codesign --verify` already rejects because packager rewrites `Info.plist`
+afterwards. Signing happens later, in stuffbucket/macos-runner, and moving a
+file inside a bundle that has been signed properly would break its seal.
 
 ## User interface changes
 

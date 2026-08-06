@@ -4,6 +4,7 @@ import path from 'node:path';
 
 import { BrowserWindow, app, globalShortcut } from 'electron';
 
+import { RUN_MAIN_OPTIONS_VERSION, runMain } from '../host/run-main.js';
 import { registerIpcHandlers, sendEvent } from './ipc.js';
 import { focusWindow, installApplicationMenu } from './native/menu.js';
 import { applyDockIcon } from './native/app-icon.js';
@@ -22,17 +23,17 @@ import { selfCheckRequested } from './native/self-check.js';
 import { runSelfCheck } from './self-check.js';
 import { destroyTray, setTrayEnabled } from './native/tray.js';
 import { checkForUpdates } from './native/updates.js';
-import { createMainWindow } from './windows/main-window.js';
+import { mainWindowOptions } from './windows/main-window.js';
 import { destroyOverlay, toggleOverlay } from './windows/overlay.js';
 import { closeSplashWindow, createSplashWindow } from './windows/splash.js';
 
 /*
  * Pick the profile before anything else touches it.
  *
- * This has to happen before `whenReady`, and before the single instance lock
- * below, because the lock is derived from the profile directory. Two builds
- * pointing at the same directory are the same application as far as Chromium
- * is concerned, and the second one to start will not get a window.
+ * `runMain` applies this before it takes the single instance lock, because the
+ * lock is derived from the profile directory. Two builds pointing at the same
+ * directory are the same application as far as Chromium is concerned, and the
+ * second one to start will not get a window.
  *
  * - Under test: a throwaway directory, so a run never clobbers a developer's
  *   real preferences.
@@ -43,13 +44,14 @@ import { closeSplashWindow, createSplashWindow } from './windows/splash.js';
  *   no lock, quit, and asked the first to come forward, so a developer saw a
  *   clean build and a window that was not the one they had just asked for.
  */
-if (isE2E()) {
-  app.setPath('userData', mkdtempSync(path.join(tmpdir(), 'stuffbucket-e2e-')));
-} else if (isDemo()) {
-  app.setPath('userData', `${app.getPath('userData')}-demo`);
+function profileDirectory(): string | undefined {
+  if (isE2E()) return mkdtempSync(path.join(tmpdir(), 'stuffbucket-e2e-'));
+  if (isDemo()) return `${app.getPath('userData')}-demo`;
+  return undefined;
 }
 
 let mainWindow: BrowserWindow | undefined;
+let activate: () => void = () => undefined;
 
 /* ------------------------------------------------------------ dock state */
 
@@ -84,34 +86,40 @@ function hasOpenWindow(): boolean {
   return BrowserWindow.getAllWindows().some((window) => !window.isDestroyed());
 }
 
-/** Bring the application forward, opening a window if none is left. */
-function activate(): void {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    setDockVisible(true);
-    focusWindow(mainWindow);
-    return;
-  }
-
-  setDockVisible(true);
-  mainWindow = createMainWindow();
-  wireWindow(mainWindow);
-
-  // `app.dock.show()` resolves asynchronously. Focus after the window paints,
-  // or the application can come forward without taking key status.
-  mainWindow.once('ready-to-show', () => {
-    focusWindow(mainWindow);
-  });
-}
-
 /* ---------------------------------------------------------------- windows */
 
+/**
+ * Bring the application forward, with the surviving window when there is one.
+ *
+ * `runMain` opens a replacement when there is none, and `onWindowCreated` runs
+ * for it. Focus is deferred to that path because `app.dock.show()` resolves
+ * asynchronously, so focusing before the window paints can bring the
+ * application forward without taking key status.
+ */
+let focusNextWindow = false;
+
+function onActivate(window: BrowserWindow | undefined): void {
+  setDockVisible(true);
+  if (window) {
+    focusWindow(window);
+    return;
+  }
+  focusNextWindow = true;
+}
+
 function wireWindow(window: BrowserWindow): void {
+  mainWindow = window;
+
   window.once('ready-to-show', () => {
     closeSplashWindow();
     // A quiet test run parks the window off screen rather than hiding it, so
     // layout, visibility, and the renderer behave exactly as in production.
     if (isE2EQuiet()) window.setBounds(quietBounds(window.getBounds()));
     window.show();
+    if (focusNextWindow) {
+      focusNextWindow = false;
+      focusWindow(window);
+    }
   });
 
   window.on('closed', () => {
@@ -207,84 +215,64 @@ function bootstrap(): void {
     if (!next.menuBarIcon && !hasOpenWindow()) activate();
     sendEvent(mainWindow, 'prefs:changed', next);
   });
+}
 
-  mainWindow = createMainWindow();
-  wireWindow(mainWindow);
+/**
+ * Release everything the application owns.
+ *
+ * The embedded model runs native work on a worker thread. If the Node
+ * environment is torn down while any of it is outstanding, the addon completes
+ * into an environment that no longer exists, calls `ThrowAsJavaScriptException`
+ * against it, and the process aborts inside ggml's terminate handler.
+ *
+ * Returning the promise is what defers the quit rather than firing cleanup and
+ * hoping. The crash lands after the last assertion of a test, so the suite
+ * stayed green through four consecutive runs of it.
+ */
+function shutdown(): Promise<void> | undefined {
+  // Kill every shell first. A surviving child would outlive the application.
+  killAllPtys();
+  globalShortcut.unregisterAll();
+  destroyOverlay();
+  clearBadge();
+  destroyTray();
+  closeSplashWindow();
+
+  if (!isAgentBusy()) return undefined;
+  return shutdownAgent();
 }
 
 /* ------------------------------------------------------------- lifecycle */
 
-// A second instance should activate the first, not open another window. Say
-// so, because the alternative is a developer watching a clean build produce a
-// window that belongs to a process they started an hour ago.
 if (selfCheckRequested(process.argv)) {
-  // Ahead of the lock. An instance the developer already has open would
-  // otherwise turn a mistyped flag into an activation and an exit code of 0,
-  // which is a green run of a check that launched nothing.
-  runSelfCheck(process.argv);
-} else if (!app.requestSingleInstanceLock()) {
-  console.error(
-    `Another instance already holds ${app.getPath('userData')}. ` +
-      'Bringing it forward instead of opening a second window.',
-  );
-  app.quit();
-} else {
-  app.on('second-instance', activate);
-
-  void app.whenReady().then(() => {
-    if (getPreferences().splash) createSplashWindow();
-    bootstrap();
-
-    // macOS: a dock or menu bar click with no window open.
-    app.on('activate', activate);
-  });
-
-  app.on('window-all-closed', () => {
-    // With the menu bar icon on, closing the last window is not a quit. The
-    // application keeps running, and the dock icon comes out of the dock.
-    if (getPreferences().menuBarIcon) {
-      setDockVisible(false);
-      return;
-    }
-
-    // Without it, the usual platform behaviour: quit everywhere except macOS,
-    // where an application normally survives its last window.
-    if (process.platform !== 'darwin') app.quit();
-  });
-
-  /**
-   * Quit cleanly.
-   *
-   * The embedded model runs native work on a worker thread. If the Node
-   * environment is torn down while any of it is outstanding, the addon
-   * completes into an environment that no longer exists, calls
-   * `ThrowAsJavaScriptException` against it, and the process aborts inside
-   * ggml's terminate handler.
-   *
-   * That is why this defers the quit rather than firing cleanup and hoping.
-   * The crash lands after the last assertion of a test, so the suite stayed
-   * green through four consecutive runs of it.
+  /*
+   * The packaged smoke test, ahead of `runMain` because `runMain` takes the
+   * single instance lock. An instance the developer already has open would
+   * otherwise turn a mistyped flag into an activation and an exit code of 0,
+   * which is a green run of a check that launched nothing. Issue #89.
    */
-  let quitting = false;
-
-  app.on('before-quit', (event) => {
-    // Kill every shell first. A surviving child would outlive the application.
-    killAllPtys();
-    globalShortcut.unregisterAll();
-    destroyOverlay();
-    clearBadge();
-    destroyTray();
-    closeSplashWindow();
-
-    // Second pass, after the agent has stopped. Let it through.
-    if (quitting) return;
-    // Nothing native is running, so there is nothing to wait for.
-    if (!isAgentBusy()) return;
-
-    quitting = true;
-    event.preventDefault();
-    void shutdownAgent().then(() => {
-      app.quit();
-    });
-  });
+  runSelfCheck(process.argv);
+} else {
+  void runMain(
+    { app },
+    {
+      version: RUN_MAIN_OPTIONS_VERSION,
+      userDataDirectory: profileDirectory(),
+      keepRunningWithoutWindows: () => getPreferences().menuBarIcon,
+      window: mainWindowOptions,
+      onReady: (context) => {
+        activate = context.activate;
+        if (getPreferences().splash) createSplashWindow();
+        bootstrap();
+      },
+      onActivate,
+      onWindowCreated: wireWindow,
+      // With the menu bar icon on, closing the last window is not a quit. The
+      // application keeps running, and the dock icon comes out of the dock.
+      onWindowAllClosed: () => {
+        if (getPreferences().menuBarIcon) setDockVisible(false);
+      },
+      beforeShutdown: shutdown,
+    },
+  );
 }

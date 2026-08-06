@@ -14,9 +14,8 @@
  * `TerminalHost` the terminal uses, and it prints the result. See
  * `src/main/native/self-check.ts`.
  *
- * macOS only. The Windows half of #89 is open: `verify-msi.ps1` starts the
- * installed executable and asserts it survives 20 seconds, which a package
- * whose terminal cannot spawn would pass.
+ * macOS only. The Windows half of #89 is open, and its vehicle is the packaged
+ * directory rather than an installed tree.
  */
 
 import { randomBytes } from 'node:crypto';

@@ -37,10 +37,11 @@ application it just built. Its own floor is a second launch with `spawn-helper`
 moved aside, which has to fail: the step cannot report success without having
 started a shell inside the package. `docs/testing.md` describes it.
 
-Windows has no equivalent in `ci.yml`. `verify-msi.ps1` starts the installed
-executable and asserts it survives 20 seconds, which is liveness rather than
-work: a package whose terminal cannot spawn passes it. The step here is scoped
-to macOS rather than run as a job that skips on Windows.
+Windows has no equivalent. The same argument would drive
+`out/Stuffbucket-win32-x64/Stuffbucket.exe` in the packaged directory, where
+`conpty.node` and `OpenConsole.exe` are the same class of resolution, and the
+command would have to be one `cmd.exe` echoes rather than `printf`. The step
+here is scoped to macOS rather than run as a job that skips.
 
 ## The two install paths
 

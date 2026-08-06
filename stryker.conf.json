@@ -8,6 +8,7 @@
   },
   "mutate": [
     "src/shared/urls.ts",
+    "src/host/main-options.ts",
     "src/renderer/lib/data.ts",
     "src/renderer/lib/theme.ts",
     "src/main/native/approval.ts",
@@ -21,6 +22,7 @@
     "src/renderer/lib/settings.ts",
     "src/main/native/pty-session.ts",
     "src/main/native/self-check.ts",
+    "src/renderer/lib/terminal-sessions.ts",
     "scripts/terminal-package.mjs",
     "scripts/shell-variables.mjs"
   ],

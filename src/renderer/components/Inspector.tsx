@@ -6,6 +6,7 @@ import type {
 } from '../../shared/ipc.js';
 import { bridge } from '../lib/bridge.js';
 import type { Item } from '../lib/data.js';
+import type { TerminalSession } from '../lib/terminal-transport.js';
 
 import { Button, Field, FormField, InspectorPanel, Select, Switch } from './Controls.js';
 
@@ -40,6 +41,8 @@ export function Inspector({
   onPrefChange,
   updateStatus,
   onCheckUpdates,
+  detachedTerminals,
+  onReattachTerminal,
 }: {
   item: Item | undefined;
   versions: AppVersions | undefined;
@@ -47,6 +50,9 @@ export function Inspector({
   onPrefChange: (patch: Partial<Preferences>) => void;
   updateStatus: UpdateStatus;
   onCheckUpdates: () => void;
+  /** Shells still running with no tab. Empty unless `terminalDetach` is on. */
+  detachedTerminals: TerminalSession[];
+  onReattachTerminal: (id: string) => void;
 }) {
   return (
     <InspectorPanel title={item ? 'Properties' : 'Settings'}>
@@ -120,6 +126,33 @@ export function Inspector({
               onChange={(next) => onPrefChange({ theme: next ? 'light' : 'dark' })}
               testId="pref-theme"
             />
+            <Switch
+              label="Keep terminals running"
+              checked={prefs.terminalDetach}
+              onChange={(next) => onPrefChange({ terminalDetach: next })}
+              testId="pref-terminal-detach"
+            />
+            <p className="card__sub card__sub--wrap">
+              Closing a terminal tab leaves its shell running. It appears below,
+              and reopening it attaches to the same process. Closing the window
+              still ends every shell it started.
+            </p>
+          </section>
+        )}
+
+        {detachedTerminals.length > 0 && (
+          <section style={{ display: 'grid', gap: 'var(--space-2)' }}>
+            <h3 className="inspector__title">Running terminals</h3>
+            {detachedTerminals.map((session) => (
+              <Button
+                key={session.id}
+                block
+                onClick={() => onReattachTerminal(session.id)}
+                testId={`reattach-${session.id}`}
+              >
+                {session.id} in {session.cwd}
+              </Button>
+            ))}
           </section>
         )}
 
