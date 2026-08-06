@@ -77,6 +77,8 @@ export const DEFERRED = new Map([
   ['scripts/verify-publish.mjs', 125],
   ['scripts/verify-rulesets.mjs', 125],
   ['scripts/verify-tag.mjs', 125],
+  ['scripts/verify-workflow-health.mjs', 125],
+  ['scripts/workflow-health.mjs', 125],
   ['src/host/terminal-host.ts', 125],
   ['src/main/native/updates.ts', 125],
   ['src/renderer/lib/sample-settings.ts', 125],

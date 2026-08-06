@@ -34,6 +34,7 @@ linked document.
 | Verify the shell stays agnostic | `npm run verify:neutral` |
 | Verify the docs | `npm run verify:docs` |
 | Verify the repository rulesets | `npm run verify:rulesets` |
+| Verify every workflow still runs | `npm run verify:workflow-health` |
 | Verify a tag has never been cut | `npm run verify:tag` |
 | Regenerate icons | `npm run icons` |
 
