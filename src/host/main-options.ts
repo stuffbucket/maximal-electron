@@ -57,6 +57,12 @@ export interface RunMainOptions {
   onActivate?: (window: BrowserWindow | undefined) => void;
   onWindowCreated?: (window: BrowserWindow) => void;
   /**
+   * The last window closed. `quitting` is the decision the shell is about to
+   * act on, so an application that reacts to it never recomputes the policy or
+   * depends on where its own listener sits in the order.
+   */
+  onWindowAllClosed?: (quitting: boolean) => void;
+  /**
    * Release whatever the application owns. Returning a promise defers the quit
    * until it settles; returning nothing lets the quit through untouched.
    */

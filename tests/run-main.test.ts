@@ -220,6 +220,29 @@ describe('runMain', () => {
     expect(electron.created).toHaveLength(2);
   });
 
+  it('hands the quit decision to the consumer before acting on it', async () => {
+    const { app, runtime } = fakeApp();
+    const order: string[] = [];
+    let keepRunning = true;
+    app.quit.mockImplementation(() => order.push('quit'));
+
+    await runMain(
+      { ...runtime, platform: 'win32' },
+      {
+        version: RUN_MAIN_OPTIONS_VERSION,
+        window: () => windowOptions,
+        keepRunningWithoutWindows: () => keepRunning,
+        onWindowAllClosed: (quitting) => order.push(`closed:${String(quitting)}`),
+      },
+    );
+
+    app.emit('window-all-closed');
+    keepRunning = false;
+    app.emit('window-all-closed');
+
+    expect(order).toEqual(['closed:false', 'closed:true', 'quit']);
+  });
+
   it('quits with the last window unless the consumer keeps the process alive', async () => {
     const { app, runtime } = fakeApp();
     let keepRunning = true;

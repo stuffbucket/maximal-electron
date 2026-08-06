@@ -88,6 +88,7 @@ second launch. `runMain` opens a replacement window when none is left, and
 | `onReady` | none | After discovery, before the first window |
 | `onActivate` | none | Every activation, with the surviving window |
 | `onWindowCreated` | none | Every window the shell opens |
+| `onWindowAllClosed` | none | The last window closed, with the quit decision |
 | `beforeShutdown` | none | Release what the application owns |
 
 `keepRunningWithoutWindows` is a callback rather than a value because the
@@ -105,6 +106,30 @@ reaches the renderer is the consumer's decision, because the mechanism belongs
 to the preload it wrote. The shell does not inject it, does not proxy it, and
 does not know what speaks on it. A relative or empty value fails there, where
 the message can name the callback, rather than as a blank window.
+
+`onWindowAllClosed` receives the decision rather than the inputs to it, and it
+runs before the shell acts. An application that reacts to the last window
+closing — this one pulls its dock icon out — therefore never recomputes the
+policy and never depends on where its own listener sits in the order. It
+observes; `keepRunningWithoutWindows` is what changes the answer.
+
+## Registering your own handlers
+
+`runMain` takes `app` rather than owning it, so a consumer can call `app.on`
+for anything the options do not cover. Two listeners on one event are fine.
+Guessing at the ordering is not, so this is what the shell has already done on
+each event it listens to.
+
+| Event | Registered | State when a consumer's listener runs |
+| --- | --- | --- |
+| `second-instance` | after `whenReady` | The shell activates: a surviving window is passed to `onActivate`, or a replacement window is opened |
+| `activate` | after `whenReady` | The same |
+| `window-all-closed` | before `whenReady` | The shell may already have called `app.quit()`, depending on registration order. Use `onWindowAllClosed` instead, which is called before the decision is acted on |
+| `before-quit` | before `whenReady` | The shell may already have called `preventDefault` and started `beforeShutdown`, depending on registration order |
+
+A listener registered before `runMain` runs first; one registered after it
+resolves runs second. Both of the events where that difference is observable
+have an option, and the option is the supported route.
 
 ## Versioning
 

@@ -242,12 +242,6 @@ function shutdown(): Promise<void> | undefined {
 
 /* ------------------------------------------------------------- lifecycle */
 
-// With the menu bar icon on, closing the last window is not a quit. The
-// application keeps running, and the dock icon comes out of the dock.
-app.on('window-all-closed', () => {
-  if (getPreferences().menuBarIcon) setDockVisible(false);
-});
-
 void runMain(
   { app },
   {
@@ -262,6 +256,11 @@ void runMain(
     },
     onActivate,
     onWindowCreated: wireWindow,
+    // With the menu bar icon on, closing the last window is not a quit. The
+    // application keeps running, and the dock icon comes out of the dock.
+    onWindowAllClosed: () => {
+      if (getPreferences().menuBarIcon) setDockVisible(false);
+    },
     beforeShutdown: shutdown,
   },
 );
