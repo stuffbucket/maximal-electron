@@ -175,6 +175,27 @@ describe('the dry run', () => {
     const report = evaluateTag({ tag: 'v0.0.2', tags: ['v0.0.4'], runs: [], dryRun: true });
     expect(report.findings.map((finding) => finding.assertion)).toContain(ORDERED);
   });
+
+  it('does not claim the run history was clean', () => {
+    const report = evaluateTag({ tag: 'v0.0.5', tags: ['v0.0.4'], runs: [], dryRun: true });
+    const rendered = renderTagReport(report);
+    expect(rendered).toContain('run history was not evaluated');
+    expect(rendered).not.toContain('is a new cut');
+  });
+
+  it('says a real push is a new cut', () => {
+    const report = evaluateTag({
+      tag: 'v0.0.5',
+      sha: SECOND,
+      tags: ['v0.0.4', 'v0.0.5'],
+      runs: [{ id: 1, headSha: SECOND }],
+    });
+    expect(renderTagReport(report)).toContain('is a new cut');
+  });
+
+  it('says a re-cut is a re-cut', () => {
+    expect(renderTagReport(evaluateTag(MOVED_TAG_FIXTURE))).toContain('is a re-cut');
+  });
 });
 
 /** `verify-tag.mjs` runs this before it reads git or the API. */

@@ -33,6 +33,7 @@ export interface TagFinding {
 
 export interface TagReport {
   tag: string;
+  dryRun: boolean;
   examinedTags: number;
   examinedRuns: number;
   findings: TagFinding[];

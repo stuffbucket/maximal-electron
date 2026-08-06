@@ -8,7 +8,7 @@ import {
   overallState,
   renderIssue,
   renderSummary,
-  scopeFailures,
+  renderUnreadable,
   selfTestFailures,
 } from '../scripts/rulesets.mjs';
 import type { LiveRuleset } from '../scripts/rulesets.mjs';
@@ -135,26 +135,33 @@ describe('assessing one ruleset', () => {
   });
 });
 
-describe('the floors on scope', () => {
-  it('fails when the expectation list was emptied', () => {
-    expect(scopeFailures(evaluate([tagRuleset()], []))).toEqual([
-      expect.stringContaining('no ruleset'),
-    ]);
-  });
-
-  it('fails when the API returned no rulesets at all', () => {
-    expect(scopeFailures(evaluate([]))).toEqual([expect.stringContaining('no rulesets at all')]);
-  });
-
-  it('passes when both were non-empty', () => {
-    expect(scopeFailures(evaluate([tagRuleset()], [want()]))).toEqual([]);
-  });
-
-  it('counts what it examined, so an empty scope is visible in the output', () => {
+/**
+ * The counts `verify-rulesets.mjs` hands to `scopedChecks`. Both are the size
+ * of a set the run could legitimately find empty, which is why the runner has
+ * to see them rather than a boolean.
+ */
+describe('what the run examined', () => {
+  it('counts the live rulesets and the expectations', () => {
     const report = evaluate([tagRuleset()], [want()]);
     expect(report.examinedLive).toBe(1);
     expect(report.examinedExpectations).toBe(1);
-    expect(renderSummary(report)).toContain('Examined 1 live ruleset(s) against 1 expectation(s)');
+  });
+
+  it('reports zero live rulesets as zero, not as a clean sweep', () => {
+    const report = evaluate([], [want()]);
+    expect(report.examinedLive).toBe(0);
+    expect(report.rulesets[0]?.state).toBe('unprotected');
+  });
+
+  it('reports an emptied expectation list as zero', () => {
+    expect(evaluate([tagRuleset()], []).examinedExpectations).toBe(0);
+  });
+
+  it('prints both counts before it says anything else', () => {
+    const summary = renderSummary(evaluate([tagRuleset()], [want()]));
+    expect(summary.split('\n')[0]).toBe(
+      'Examined 1 live ruleset(s) against 1 expectation(s)',
+    );
   });
 });
 
@@ -216,5 +223,33 @@ describe('the issue body', () => {
 
   it('names the file to edit if the change was deliberate', () => {
     expect(body).toContain('scripts/rulesets.mjs');
+  });
+
+  it('states every unverified assertion under its own heading', () => {
+    const withoutKey = tagRuleset();
+    delete withoutKey.bypass_actors;
+    const unverified = renderIssue(evaluate([withoutKey], [want()]), 'owner/name');
+    expect(unverified).toContain('### Not verified by this run');
+    expect(unverified).toContain('no actor may bypass it');
+  });
+
+  it('omits that heading when every assertion was computed', () => {
+    expect(renderIssue(evaluate([tagRuleset({ rules: [] })], [want()]), 'owner/name')).not.toContain(
+      'Not verified by this run',
+    );
+  });
+});
+
+/** Silence has to be earned. An unreadable run says so rather than passing. */
+describe('the unreadable body', () => {
+  const body = renderUnreadable('owner/name', 'GET /repos/owner/name/rulesets answered 403');
+
+  it('says nobody can tell, not that protection is gone', () => {
+    expect(body).toContain('nobody can currently tell');
+  });
+
+  it('quotes the reason and names the settings page', () => {
+    expect(body).toContain('answered 403');
+    expect(body).toContain('https://github.com/owner/name/settings/rules');
   });
 });

@@ -53,7 +53,6 @@ export interface Report {
 export declare const EXPECTED: Expectation[];
 export declare function assess(live: LiveRuleset[], want: Expectation): Assessment;
 export declare function evaluate(live: LiveRuleset[], expected?: Expectation[]): Report;
-export declare function scopeFailures(report: Report): string[];
 export declare function gutted(expected?: Expectation[]): LiveRuleset[];
 export declare function selfTestFailures(expected?: Expectation[]): string[];
 export declare function overallState(report: Report): RulesetState;

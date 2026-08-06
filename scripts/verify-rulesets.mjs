@@ -5,8 +5,8 @@
  *   npm run verify:rulesets
  *   npm run verify:rulesets -- --body-file drift.md
  *
- * Exit 0 protected · 1 a protection is missing or weakened · 2 the rulesets
- * could not be read, or this run examined nothing · 3 unverified, because an
+ * Exit 0 protected · 1 a protection is missing, weakened, or nothing was
+ * examined · 2 the rulesets could not be read at all · 3 unverified, because an
  * assertion could not be computed. Four codes rather than pass and fail, so a
  * caller cannot render "nobody could tell" as "verified".
  *
@@ -20,13 +20,14 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { scopedChecks } from './check-scope.mjs';
 import {
+  EXPECTED,
   evaluate,
   overallState,
   renderIssue,
   renderSummary,
   renderUnreadable,
-  scopeFailures,
   selfTestFailures,
 } from './rulesets.mjs';
 
@@ -54,7 +55,10 @@ function repoSlug() {
  */
 function ghCliToken() {
   try {
-    return execFileSync('gh', ['auth', 'token'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    return execFileSync('gh', ['auth', 'token'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
   } catch {
     return '';
   }
@@ -97,12 +101,19 @@ async function main() {
   const write = (body) => {
     if (bodyFile) writeFileSync(bodyFile, body);
   };
+  const { check, summary } = scopedChecks();
 
-  // Before the network: prove the floor still detects a gutted ruleset.
+  // Before the network: prove the floor still detects a gutted ruleset. An
+  // emptied EXPECTED fails here on the scope rather than passing on the logic.
   const blind = selfTestFailures();
-  if (blind.length > 0) {
-    console.error('verify-rulesets: the floor no longer detects a weakening.');
-    for (const line of blind) console.error(`  ${line}`);
+  if (
+    !check(blind.length === 0, 'the recorded floor still detects a gutted ruleset', {
+      count: EXPECTED.length,
+      of: 'expectations',
+    })
+  ) {
+    for (const line of blind) console.error(`         ${line}`);
+    summary('verify:rulesets');
     return 2;
   }
 
@@ -117,22 +128,20 @@ async function main() {
   }
 
   const report = evaluate(live);
-  const empty = scopeFailures(report);
-  if (empty.length > 0) {
-    console.error(`Examined ${report.examinedLive} live ruleset(s) against ${report.examinedExpectations} expectation(s)`);
-    for (const line of empty) console.error(`  ${line}`);
-    write(renderUnreadable(repo, empty.join('\n')));
-    return 2;
+  for (const entry of report.rulesets) {
+    check(entry.state !== 'unprotected', `${entry.name} meets its floor`, {
+      count: report.examinedLive,
+      of: 'live rulesets',
+    });
   }
-
   console.error(renderSummary(report));
-  const state = overallState(report);
-  if (state === 'unprotected') {
+
+  if (summary('verify:rulesets') !== 0) {
     write(renderIssue(report, repo));
-    console.error(`\nhttps://github.com/${repo}/settings/rules`);
+    console.error(`https://github.com/${repo}/settings/rules`);
     return 1;
   }
-  return state === 'unverified' ? 3 : 0;
+  return overallState(report) === 'unverified' ? 3 : 0;
 }
 
 main().then(

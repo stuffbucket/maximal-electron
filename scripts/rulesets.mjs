@@ -118,25 +118,6 @@ export function evaluate(live, expected = EXPECTED) {
 }
 
 /**
- * The two ways this check passes while measuring nothing: an expectation list
- * someone emptied, and a ruleset list that came back empty. Each is its own
- * failure, so the output says "there was nothing to look at" rather than
- * "this was wrong".
- */
-export function scopeFailures(report) {
-  const failures = [];
-  if (report.examinedExpectations === 0) {
-    failures.push('EXPECTED declares no ruleset, so this run asserted nothing.');
-  }
-  if (report.examinedLive === 0) {
-    failures.push(
-      'The API returned no rulesets at all. Either every protection was deleted or the list was not read; neither is a pass.',
-    );
-  }
-  return failures;
-}
-
-/**
  * A gutted copy of every expected ruleset: right name, wrong everything else.
  * `verify-rulesets.mjs` evaluates this before it opens a socket, so a floor
  * that has stopped detecting a weakening fails the run instead of passing it.

@@ -6,12 +6,13 @@
  *   npm run verify:tag                      # the version in package.json
  *   npm run verify:tag -- --tag v0.0.5 --sha <commit>
  *
- * Without `--sha` this is a dry run: the tag does not exist yet, so only the
- * ordering can be checked. `docs/ci.md` holds the rule that made that the
- * default — a check that only runs behind a tag is a check nobody has run.
+ * Without `--sha` this is a dry run: the tag does not exist yet, so the run
+ * history on its ref cannot be read and is reported as not evaluated rather
+ * than as clean. `docs/ci.md` holds the rule that made that the default — a
+ * check that only runs behind a tag is a check nobody has run.
  *
- * Exit 0 the tag is a new cut · 1 it is a re-cut · 2 the facts could not be
- * read, so nothing was decided.
+ * Exit 0 the tag is a new cut · 1 it is a re-cut, or nothing was examined ·
+ * 2 the guard itself went blind.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -19,6 +20,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { scopedChecks } from './check-scope.mjs';
 import {
   evaluateTag,
   renderTagReport,
@@ -27,6 +29,9 @@ import {
 } from './tag-history.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+const MOVED = 'this ref has never been built at another commit';
+const ORDERED = 'the tag is above every tag that exists';
 
 const flag = (name) => {
   const index = process.argv.indexOf(name);
@@ -80,11 +85,18 @@ async function runsOnRef(repo, tag) {
 }
 
 async function main() {
-  // Before anything real: replay the incident and prove the rules still catch it.
+  const { check, summary } = scopedChecks();
+
+  // Before anything real: replay both incidents and prove the rules catch them.
   const blind = selfTestFailures();
-  if (blind.length > 0) {
-    console.error('verify-tag: the guard no longer detects a re-cut.');
-    for (const line of blind) console.error(`  ${line}`);
+  if (
+    !check(blind.length === 0, 'the guard still detects a re-cut', {
+      count: 2,
+      of: 'replayed incidents',
+    })
+  ) {
+    for (const line of blind) console.error(`         ${line}`);
+    summary('verify:tag');
     return 2;
   }
 
@@ -96,21 +108,32 @@ async function main() {
   const tags = remoteTags();
   const runs = dryRun ? [] : await runsOnRef(repo, tag);
 
-  const empty = scopeFailures({ tag, tags, runs, dryRun });
-  if (empty.length > 0) {
-    console.error(`verify-tag: this run examined nothing it could decide on.`);
-    for (const line of empty) console.error(`  ${line}`);
-    return 2;
+  // A tag push always carries its own tag and its own run, so their absence
+  // means a list was not read rather than that there is nothing to compare.
+  if (!dryRun) {
+    const missed = scopeFailures({ tag, tags, runs, dryRun });
+    check(missed.length === 0, 'the tag and its run history were both read', {
+      count: tags.length + runs.length,
+      of: 'tags and runs',
+    });
+    for (const line of missed) console.error(`         ${line}`);
   }
 
   const report = evaluateTag({ tag, sha, tags, runs, dryRun });
+  const raised = (assertion) => report.findings.some((finding) => finding.assertion === assertion);
+
+  // Not registered on a dry run. The ref does not exist, so this is an answer
+  // nobody could compute, and an uncomputed answer must not read as a pass.
+  if (!dryRun) {
+    check(!raised(MOVED), MOVED, { count: report.examinedRuns, of: 'runs on the ref' });
+  }
+  check(!raised(ORDERED), ORDERED, { count: report.examinedTags, of: 'existing tags' });
+
   console.error(renderTagReport(report));
   if (dryRun) {
-    console.error(
-      'Dry run: the tag does not exist yet, so the run history on its ref was not read.',
-    );
+    console.error('Dry run: the tag does not exist yet, so its run history was not evaluated.');
   }
-  return report.findings.length > 0 ? 1 : 0;
+  return summary('verify:tag');
 }
 
 main().then(

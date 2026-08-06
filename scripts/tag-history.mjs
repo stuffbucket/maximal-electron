@@ -101,7 +101,7 @@ export function evaluateTag({ tag, sha, tags = [], runs = [], dryRun = false }) 
     );
   }
 
-  return { tag, examinedTags: tags.length, examinedRuns: runs.length, findings, notes };
+  return { tag, dryRun, examinedTags: tags.length, examinedRuns: runs.length, findings, notes };
 }
 
 /**
@@ -150,11 +150,13 @@ export function renderTagReport(report) {
   for (const finding of report.findings) {
     lines.push(`  expected  ${finding.assertion}`, `  got       ${finding.detail}`);
   }
-  for (const note of report.notes ?? []) lines.push(`  note      ${note}`);
-  lines.push(
-    report.findings.length === 0
-      ? `\`${report.tag}\` is a new cut. Nothing has been built on this ref at another commit.`
-      : `\`${report.tag}\` is a re-cut, not a new one.`,
-  );
+  for (const note of report.notes) lines.push(`  note      ${note}`);
+  if (report.findings.length > 0) {
+    lines.push(`\`${report.tag}\` is a re-cut, not a new one.`);
+  } else if (report.dryRun) {
+    lines.push(`\`${report.tag}\` orders correctly. Its run history was not evaluated.`);
+  } else {
+    lines.push(`\`${report.tag}\` is a new cut. Nothing has been built on this ref before.`);
+  }
   return lines.join('\n');
 }
