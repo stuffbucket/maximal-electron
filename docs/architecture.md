@@ -372,20 +372,24 @@ everywhere is that the supervisor named it as a fault at all: a code
 `llama-protocol.ts` cannot name reads as "exited with code N", which fails the
 check and puts the number in the log to be pinned.
 
-## The embedded engine is gated off on Windows
+## The embedded engine was gated off on Windows, and is not any more
 
-The packaged self check waits out its whole limit there, twice, including with
-the `@node-llama-cpp` scope moved aside where it should fail in milliseconds.
-So `embeddedEngineStatus` reports the provider unavailable on `win32` with a
-reason, `discoverProvider` falls through, and a Windows user reads a sentence
-instead of watching a spinner. **This is a workaround, not a fix**, and it is
-retired by one observation: a packaged Windows run where the engine names a
-device.
+From #144 until #149 `embeddedEngineStatus` reported the provider unavailable
+on `win32`, because the packaged self check waited out its whole limit there,
+twice, including with the `@node-llama-cpp` scope moved aside where it should
+fail in milliseconds. A spinner forever is worse than a legible error, so
+`discoverProvider` fell through and a Windows user read a sentence.
 
-**It is not `getLlama()`.** #144 read the absent 30 s import bound as proof that
-the module graph had loaded and the engine call was what stopped. That reading
-was wrong. Building the environment one rung at a time on `windows-latest`,
-`getLlama()` returns and names a device every time:
+**What produced that was where the check ran, not the platform.** Both runs
+launched `out/Stuffbucket-win32-x64` in place, inside this repository, and both
+reached a vulkan prebuild in the repository's own `node_modules` that the build
+prunes. Launched from a copy with nothing above it, the packaged binary names a
+device. The gate is gone, and `embeddedEngineStatus` with it.
+
+**It is not `getLlama()` either.** #144 read the absent 30 s import bound as
+proof that the module graph had loaded and the engine call was what stopped.
+That reading was wrong. Building the environment one rung at a time on
+`windows-latest`, `getLlama()` returns and names a device every time:
 
 | Where | What came back |
 | --- | --- |
@@ -426,15 +430,20 @@ loaded. Moving the `@node-llama-cpp` scope aside inside the package did not
 move that copy, which is why the `#113` negative control hung for exactly as
 long as the real run. Both checks now launch from a copy, as above.
 
-So the one rung nothing has run is `--self-check=llama` inside
-`Stuffbucket.exe`, which the gate short-circuits. Issue #149 carries the runs
-and the two things that retire the gate: launch the packaged application from
-outside this repository, and lift the gate behind it.
+The rung nothing had run was `--self-check=llama` inside `Stuffbucket.exe`,
+which the gate short-circuited. `smoke:packaged` runs it now, from a copy of
+the package outside this repository, and asserts the same four things it
+asserts on macOS: that the engine named a device, that the main process
+outlived the abort, that it named a fault rather than a bare exit code, and
+that the `#113` control fails by reporting a library that would not load.
 
-`--self-check=llama` asserts the gate on that platform rather than skipping —
-that the application exits rather than hanging, that it says the engine is
-gated, and that it names the issue. A skip examines nothing; an asserted gate
-still fails if the application starts hanging again.
+**The half that is upstream is untouched.** A build that ships a GPU backend —
+`STUFFBUCKET_LLAMA_BACKENDS=vulkan` or `cuda` — still takes the fork, on a real
+machine and not only in CI, and still waits five minutes for an answer.
+`testBindingBinary` assumes a fork of `process.execPath` yields a node process,
+which is false for any Electron application with the recommended fuses burned.
+The default build does not ship such a backend, so it does not reach that path.
+`engineCheckTimeoutMs` keeps its 180 s ceiling on Windows for the same reason.
 
 ### What the diagnosis cost, and what actually found it
 
@@ -518,11 +527,9 @@ leave a database with no dump in it. The second is `--self-check=llama` —
 llama.cpp, and calls `process.abort()` in native code. That run must leave a
 dump where the first left none.
 
-Which of the two it demands is read off the line the application printed rather
-than off a platform table. Where #149 gates the engine off, the gated run
-crashes nothing, so the check asserts the gate and **the artifact is not proven
-on that platform**. The day a Windows run names a device, the same check starts
-demanding the dump there without anyone editing it.
+Both platforms are held to that. #149's Windows gate is retired, so a run that
+does not report the engine loading and dying is a defect rather than a
+disposition, and the crash artifact is proven on both packaging hosts.
 
 ## The terminal a consumer gets
 

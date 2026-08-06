@@ -19,12 +19,17 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 /**
- * The mutant count `npm run mutate` produced when this floor was last raised.
+ * The mutant count `npm run mutate` produced when this floor was last set.
  *
  * 1246 was a number nothing asserted, so a configuration change that halved
  * the mutated set would still have printed 100.00. Raise this when the count
  * rises; a fall is the defect it exists to catch.
- */export const MUTANT_FLOOR = 1634;
+ *
+ * It has come down once, from 1634, and only because code was deleted on
+ * purpose: `embeddedEngineStatus` and the gated result `llamaCheckLine`
+ * printed went with the Windows gate in #149, which is 16 mutants. Lowering it
+ * for any other reason is the defect. Say which deletion paid for it.
+ */export const MUTANT_FLOOR = 1618;
 
 /**
  * `// Stryker disable` suppressions, counted in mutants rather than comments

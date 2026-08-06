@@ -53,7 +53,6 @@ const LLAMA_FLAG = '--self-check=llama';
 const LLAMA_OK = 'self-check llama: ok';
 const LLAMA_FAILED = 'self-check llama: failed';
 const LLAMA_NO_LIBRARY = 'did not load llama.cpp';
-const LLAMA_GATED = 'self-check llama: gated';
 
 const LAUNCH_TIMEOUT_MS = 90_000;
 
@@ -92,7 +91,6 @@ function fragility() {
       // the engine. Observed on this platform: Electron reports a POSIX signal
       // death as the bare signal number, and 6 is SIGABRT.
       abortName: 'SIGABRT',
-      engineGated: false,
     };
   }
   if (process.platform === 'win32') {
@@ -105,9 +103,6 @@ function fragility() {
       // an unrecognised code fails here with the number in the log rather
       // than passing quietly. Issue #133.
       abortName: undefined,
-      // The engine does not finish loading here. `embeddedEngineStatus` gates
-      // the provider off, and this check asserts that gate. Issue #149.
-      engineGated: true,
     };
   }
   return undefined;
@@ -290,120 +285,95 @@ console.log('\nLoading llama.cpp in the engine process, then killing it\n');
 const engine = await launch([LLAMA_FLAG], LLAMA_LAUNCH_TIMEOUT_MS);
 console.log(`${describe(engine)}\n`);
 
-if (platform.engineGated) {
-  /**
-   * Where the engine is gated off, the gate is what gets asserted. Issue #149.
-   *
-   * Not a skip. A skip stops examining anything, and the failure this guards
-   * is precise: a user on this platform reaching the embedded provider and
-   * getting a spinner forever. So the application has to say why, and it has
-   * to exit rather than hang.
-   */
-  check(engine.code === 0, 'the packaged application exits rather than hanging', {
-    count: 1,
-    of: 'engine runs',
-  });
-  check(
-    engine.stdout.includes(LLAMA_GATED),
-    'it reports the embedded engine as gated on this platform',
-    { count: 1, of: 'engine runs' },
-  );
-  check(engine.stdout.includes('#149'), 'the gate names the issue that retires it', {
-    count: 1,
-    of: 'engine runs',
-  });
-  check(!engine.stdout.includes(LLAMA_OK), 'it does not claim an engine that works', {
-    count: 1,
-    of: 'engine runs',
-  });
-  console.log(
-    `  skip   the #113 reproduction needs a working engine, which ${process.platform} gates off`,
-  );
-} else {
-  check(engine.code === 0, 'the packaged application survives a native abort in the engine', {
-    count: 1,
-    of: 'engine runs',
-  });
-  check(
-    engine.stdout.includes(LLAMA_OK),
-    'the engine loaded llama.cpp and the main process reported its death',
-    { count: 1, of: 'engine runs' },
-  );
-  // The supervisor must have recognised the death as a fault rather than as an
-  // ordinary exit. This is the assertion that holds on every platform: an exit
-  // code `llama-protocol.ts` cannot name reads as "exited with code N", and the
-  // number is then in the log above to be pinned.
-  check(
-    engine.stdout.includes(LLAMA_OK) && !engine.stdout.includes('exited with code'),
-    'it names a native fault rather than a bare exit code',
-    { count: 1, of: 'engine runs' },
-  );
+check(engine.code === 0, 'the packaged application survives a native abort in the engine', {
+  count: 1,
+  of: 'engine runs',
+});
+check(
+  engine.stdout.includes(LLAMA_OK),
+  'the engine loaded llama.cpp and the main process reported its death',
+  { count: 1, of: 'engine runs' },
+);
+// The supervisor must have recognised the death as a fault rather than as an
+// ordinary exit. This is the assertion that holds on every platform: an exit
+// code `llama-protocol.ts` cannot name reads as "exited with code N", and the
+// number is then in the log above to be pinned.
+check(
+  engine.stdout.includes(LLAMA_OK) && !engine.stdout.includes('exited with code'),
+  'it names a native fault rather than a bare exit code',
+  { count: 1, of: 'engine runs' },
+);
+// macOS reports a signal death as the bare signal number, so the name is
+// pinned there. Windows reports a status code, and none has been printed yet;
+// the assertion above is what holds until one is, and it fails with the number
+// in the log rather than passing quietly.
+if (platform.abortName !== undefined) {
   check(engine.stdout.includes(platform.abortName), `it reports the fault as ${platform.abortName}`, {
     count: 1,
     of: 'named faults',
   });
-
-  /**
-   * The floor for that one. With the prebuild scope gone, the engine cannot load
-   * llama.cpp, and the check must say so rather than pass — and the application
-   * must still exit rather than hang, because a crash the supervisor never hears
-   * about is the failure this whole change exists to remove.
-   *
-   * It only means anything from the copy. Launched in place, the scope one
-   * directory above the package answers instead, so this control took the same
-   * branch as the run it is the control for. Issue #149.
-   */
-  console.log('Reproducing #113: moving the @node-llama-cpp scope aside\n');
-
-  const SCOPE = path.join(packaged.resources, 'app.asar.unpacked/node_modules/@node-llama-cpp');
-
-  if (!existsSync(SCOPE)) {
-    console.error(`No llama.cpp prebuild scope at ${path.relative(packaged.root, SCOPE)}.`);
-    packaged.cleanup();
-    process.exit(1);
-  }
-  const scopeEntries = readdirSync(SCOPE).length;
-  const SCOPE_ASIDE = `${SCOPE}.aside`;
-
-  let noEngine;
-  try {
-    renameSync(SCOPE, SCOPE_ASIDE);
-    noEngine = await launch([LLAMA_FLAG], LLAMA_LAUNCH_TIMEOUT_MS);
-  } finally {
-    renameSync(SCOPE_ASIDE, SCOPE);
-  }
-
-  console.log(`${describe(noEngine)}\n`);
-
-  check(noEngine.code !== 0, 'the llama check fails with no prebuild scope', {
-    count: 1,
-    of: 'engine runs without it',
-  });
-  check(
-    noEngine.stdout.includes(LLAMA_FAILED),
-    'it fails by reporting the engine, not by dying before the check',
-    { count: 1, of: 'engine runs without it' },
-  );
-  // Not merely "it failed". Removing the wait on `app.whenReady()` once made both
-  // this run and the real one die at the fork with the same message, and the two
-  // assertions above passed on it. This is the branch reached only after the
-  // engine started, so it tells a library that will not load apart from an engine
-  // that never ran.
-  check(
-    noEngine.stdout.includes(LLAMA_NO_LIBRARY),
-    'it fails because the library would not load, not because nothing started',
-    { count: 1, of: 'engine runs without it' },
-  );
-  check(!noEngine.stdout.includes(LLAMA_OK), 'no pass line comes back when nothing loaded', {
-    count: 1,
-    of: 'engine runs without it',
-  });
-  check(
-    existsSync(SCOPE) && readdirSync(SCOPE).length === scopeEntries && !existsSync(SCOPE_ASIDE),
-    'the prebuild scope is back where it was',
-    { count: scopeEntries, of: 'prebuild packages' },
-  );
 }
+
+/**
+ * The floor for that one. With the prebuild scope gone, the engine cannot load
+ * llama.cpp, and the check must say so rather than pass — and the application
+ * must still exit rather than hang, because a crash the supervisor never hears
+ * about is the failure this whole change exists to remove.
+ *
+ * It only means anything from the copy. Launched in place, the scope one
+ * directory above the package answers instead, so this control took the same
+ * branch as the run it is the control for. Issue #149.
+ */
+console.log('Reproducing #113: moving the @node-llama-cpp scope aside\n');
+
+const SCOPE = path.join(packaged.resources, 'app.asar.unpacked/node_modules/@node-llama-cpp');
+
+if (!existsSync(SCOPE)) {
+  console.error(`No llama.cpp prebuild scope at ${path.relative(packaged.root, SCOPE)}.`);
+  packaged.cleanup();
+  process.exit(1);
+}
+const scopeEntries = readdirSync(SCOPE).length;
+const SCOPE_ASIDE = `${SCOPE}.aside`;
+
+let noEngine;
+try {
+  renameSync(SCOPE, SCOPE_ASIDE);
+  noEngine = await launch([LLAMA_FLAG], LLAMA_LAUNCH_TIMEOUT_MS);
+} finally {
+  renameSync(SCOPE_ASIDE, SCOPE);
+}
+
+console.log(`${describe(noEngine)}\n`);
+
+check(noEngine.code !== 0, 'the llama check fails with no prebuild scope', {
+  count: 1,
+  of: 'engine runs without it',
+});
+check(
+  noEngine.stdout.includes(LLAMA_FAILED),
+  'it fails by reporting the engine, not by dying before the check',
+  { count: 1, of: 'engine runs without it' },
+);
+// Not merely "it failed". Removing the wait on `app.whenReady()` once made both
+// this run and the real one die at the fork with the same message, and the two
+// assertions above passed on it. This is the branch reached only after the
+// engine started, so it tells a library that will not load apart from an engine
+// that never ran.
+check(
+  noEngine.stdout.includes(LLAMA_NO_LIBRARY),
+  'it fails because the library would not load, not because nothing started',
+  { count: 1, of: 'engine runs without it' },
+);
+check(!noEngine.stdout.includes(LLAMA_OK), 'no pass line comes back when nothing loaded', {
+  count: 1,
+  of: 'engine runs without it',
+});
+check(
+  existsSync(SCOPE) && readdirSync(SCOPE).length === scopeEntries && !existsSync(SCOPE_ASIDE),
+  'the prebuild scope is back where it was',
+  { count: scopeEntries, of: 'prebuild packages' },
+);
 
 /* --------------------------------------------------------------- result */
 

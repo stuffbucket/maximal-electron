@@ -13,7 +13,6 @@ import {
 import {
   LLAMA_NO_LIBRARY,
   describeEngineWait,
-  embeddedEngineStatus,
   engineCheckTimeoutMs,
   llamaCheckLine,
   type LlamaCheckResult,
@@ -47,15 +46,6 @@ function announce(result: LlamaCheckResult): number {
 export function runLlamaCheck(): void {
   // Answering a shell prompt is not being an application.
   if (process.platform === 'darwin') app.dock?.hide();
-
-  // Where the engine is gated off, the thing worth asserting is the gate: the
-  // application says why rather than starting something that will not answer.
-  // An asserted gate keeps running where a skip stops. Issue #149.
-  const engine = embeddedEngineStatus(process.platform);
-  if (!engine.supported) {
-    app.exit(announce({ ok: true, gated: engine.reason }));
-    return;
-  }
 
   let settled = false;
   let device: string | undefined;

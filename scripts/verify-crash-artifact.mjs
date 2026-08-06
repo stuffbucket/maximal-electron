@@ -42,7 +42,6 @@ const TOKEN_FLAG = '--self-check-token=';
 /** Kept in step with `src/main/native/llama-protocol.ts` by `tests/llama-protocol.test.ts`. */
 const LLAMA_FLAG = '--self-check=llama';
 const LLAMA_OK = 'self-check llama: ok';
-const LLAMA_GATED = 'self-check llama: gated';
 
 const TERMINAL_TIMEOUT_MS = 90_000;
 /** Above `engineCheckTimeoutMs`, which is 180 s on Windows. */
@@ -252,18 +251,14 @@ console.log(`${describe(crashed, LLAMA_TIMEOUT_MS)}\n`);
  * Whether the engine really died, read off the run rather than off a platform
  * table.
  *
- * `embeddedEngineStatus` gates the engine off on Windows while #149 is open,
- * and a gated run crashes nothing. Deciding from the line the application
- * printed means this check demands a dump on Windows the day that gate is
- * retired, without anyone remembering to come back here.
+ * Every platform must now crash: #149's Windows gate is retired, so a run that
+ * does not report the engine loading and dying is a defect rather than a
+ * disposition. The line the application printed is still what decides it,
+ * because a platform table here would be a second place to keep in step.
  */
 const aborted = crashed.stdout.includes(LLAMA_OK);
-const gated = crashed.stdout.includes(LLAMA_GATED);
 
-check(aborted !== gated, 'the run reports the engine as either crashed or gated', {
-  count: 1,
-  of: 'engine runs',
-});
+check(aborted, 'the run reports the engine as crashed', { count: 1, of: 'engine runs' });
 check(crashed.code === 0, 'the application outlives whatever the engine did', {
   count: 1,
   of: 'engine runs',
@@ -271,39 +266,18 @@ check(crashed.code === 0, 'the application outlives whatever the engine did', {
 
 const crashDumps = await waitForDumps(crashed.database, aborted);
 
-if (aborted) {
-  check(
-    crashDumps.length > cleanDumps.length,
-    'the engine crash left a minidump, where the run without a crash left none',
-    { count: crashDumps.length, of: 'minidumps' },
-  );
-  check(
-    crashDumps.every((dump) => statSync(dump).size >= MIN_DUMP_BYTES),
-    `every minidump is at least ${String(MIN_DUMP_BYTES)} bytes`,
-    { count: crashDumps.length, of: 'minidumps' },
-  );
-  for (const dump of crashDumps) {
-    console.log(`       ${path.basename(dump)}  ${String(statSync(dump).size)} bytes`);
-  }
-} else {
-  /**
-   * Not a skip. The gate is asserted instead, and the assertion is the one
-   * thing that is true here: nothing crashed, so nothing was written. This
-   * platform therefore proves the reporter starts and does not prove the
-   * artifact. `docs/architecture.md` says so in as many words. Issue #149.
-   */
-  check(crashDumps.length === 0, 'the gated run crashes nothing, and writes no minidump', {
-    count: 1,
-    of: 'gated runs',
-  });
-  check(crashed.stdout.includes('#149'), 'and the gate names the issue that retires it', {
-    count: 1,
-    of: 'gated runs',
-  });
-  console.log(
-    '\n  note  no crash artifact is proven on this platform: the only crash this\n' +
-      '        repository can reproduce is the engine abort, and #149 gates it off.',
-  );
+check(
+  crashDumps.length > cleanDumps.length,
+  'the engine crash left a minidump, where the run without a crash left none',
+  { count: crashDumps.length, of: 'minidumps' },
+);
+check(
+  crashDumps.every((dump) => statSync(dump).size >= MIN_DUMP_BYTES),
+  `every minidump is at least ${String(MIN_DUMP_BYTES)} bytes`,
+  { count: crashDumps.length, of: 'minidumps' },
+);
+for (const dump of crashDumps) {
+  console.log(`       ${path.basename(dump)}  ${String(statSync(dump).size)} bytes`);
 }
 
 for (const run of [clean, crashed]) rmSync(run.profile, { recursive: true, force: true });

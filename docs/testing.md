@@ -79,7 +79,8 @@ timeout. `IGNORED_CEILING` holds the suppression count, so a fourth
 `// Stryker disable` has to be added on purpose.
 
 Raise `MUTANT_FLOOR` when the count rises. A fall is the defect it exists to
-catch.
+catch, and the one exception is code deleted on purpose: say which deletion
+paid for the new number, in the constant's comment and in the pull request.
 
 ### Reaching 100 after you add code
 
