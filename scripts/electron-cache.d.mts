@@ -22,6 +22,9 @@ export interface CacheRootInput {
 export declare function defaultCacheRoot(input: CacheRootInput): string;
 export declare function resolveCacheRoot(input: CacheRootInput): string;
 
+export declare function cacheKeys(text: string): string[];
+export declare function keyOmissions(key: string): string[];
+
 export declare function parseDownload(name: string): ElectronDownload | undefined;
 
 export declare function inspectCache(input: {
@@ -31,6 +34,5 @@ export declare function inspectCache(input: {
   arch: string;
 }): {
   downloads: ElectronDownload[];
-  stale: ElectronDownload[];
   wanted: ElectronDownload[];
 };

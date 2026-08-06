@@ -76,7 +76,15 @@ that fills the cache. It counts the files under the root, fails on zero, and
 asserts that the download for this runner's platform and architecture is there
 at the version `node_modules/electron` actually installed.
 
-It fails rather than reporting the run unverified. The condition it asserts is
+It also reads the cache **key** out of the action's own YAML and asserts it
+names the runner operating system, the architecture, and the Electron version.
+That is the cause rather than the symptom: a key that stops naming the version
+restores the previous binary, and the first run that could notice is the one
+after the mistake. The contents cannot carry that assertion, because a
+developer's shared cache root legitimately holds several Electron versions and
+a CI cache holds one.
+
+It fails rather than reporting the run unverified. Every condition it asserts is
 one those four jobs always meet, so a zero there is a real defect and not a
 question the check could not answer.
 
