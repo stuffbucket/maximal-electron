@@ -26,6 +26,8 @@ knows. A third train would be that decision made too early.
 |          | preload bridge, client integration, theming from an external source.    |
 | `v0.0.3` | What a consumer installs: the artifact is correct and provably so.      |
 | `v0.0.4` | What a consumer carries: install weight, the entrypoint seam, guards.   |
+| `v0.0.5` | Whether the instruments are honest, and what the package is called.     |
+| `v0.0.6` | What a consumer can trust: the preload seam, crash isolation, coverage. |
 
 The test for which train a change belongs on is whether
 `stuffbucket/maximal` has to change to benefit from it. If it does, the change
