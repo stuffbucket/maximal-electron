@@ -1,4 +1,4 @@
-import { expect, test, type Locator } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import {
   closeApp,
@@ -381,6 +381,205 @@ scenario('the overlay card is a real dialog', async () => {
 
   expect(modality.focusInside, 'focus should start inside the card').toBe(true);
   expect(modality.siblingsHidden, 'the rest of the document should be inert').toBe(
+    true,
+  );
+
+  await overlay.keyboard.press('Escape');
+});
+
+/**
+ * What Tab can reach, by the definition a browser uses.
+ *
+ * Radix gives the card itself `tabindex="-1"`, so it is focusable
+ * programmatically and unreachable by Tab. Excluding it is the point: a walk
+ * that counted it would report a scope of one over a card with no fields.
+ */
+const TABBABLE = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(', ');
+
+/**
+ * Where focus is now, and what holds it.
+ *
+ * Read from `document.activeElement` after every press rather than from a
+ * `focusin` listener. Focus leaving the last field of an untrapped dialog
+ * lands on `document.body`, and that fires no `focusin` at all, so a listener
+ * records nothing and the walk reads as clean. The escape this test exists to
+ * catch is exactly that one.
+ */
+function focusHolder(overlay: Page): Promise<{ inside: boolean; element: string }> {
+  return overlay.evaluate(() => {
+    const card = document.querySelector('[data-testid="overlay-card"]');
+    const active = document.activeElement;
+    const name = active
+      ? `${active.tagName.toLowerCase()}${active.getAttribute('data-testid') ? `[${active.getAttribute('data-testid') ?? ''}]` : ''}`
+      : 'nothing';
+    return { inside: Boolean(card && active && card.contains(active)), element: name };
+  });
+}
+
+/** Press a key `times` times, recording where focus sat after each press. */
+async function walk(
+  overlay: Page,
+  key: 'Tab' | 'Shift+Tab',
+  times: number,
+): Promise<{ inside: boolean; element: string }[]> {
+  const trail: { inside: boolean; element: string }[] = [];
+  for (let press = 0; press < times; press += 1) {
+    await overlay.keyboard.press(key);
+    trail.push(await focusHolder(overlay));
+  }
+  return trail;
+}
+
+/**
+ * Somewhere for focus to escape to, and the count of what can hold it.
+ *
+ * The overlay window holds the dialog and nothing else. With one field inside
+ * the card and no background content, Tab has nowhere to go, and a card with
+ * no trap at all walks exactly like a trapped one — the check would pass while
+ * examining nothing. So the walk supplies the background element. Radix marks
+ * the siblings that exist when the dialog mounts; this one arrives afterwards,
+ * which is the harder case and the one a later render would produce.
+ */
+const HATCH = 'focus-escape-hatch';
+
+async function openEscapeHatch(overlay: Page): Promise<void> {
+  await overlay.evaluate((testId) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset['testid'] = testId;
+    button.textContent = 'outside the card';
+    document.body.append(button);
+  }, HATCH);
+}
+
+async function closeEscapeHatch(overlay: Page): Promise<void> {
+  await overlay.evaluate((testId) => {
+    document.querySelector(`[data-testid="${testId}"]`)?.remove();
+  }, HATCH);
+}
+
+/**
+ * Tell the renderer it has the keyboard, without taking the user's.
+ *
+ * Sequential focus navigation is the browser's own, and Chromium performs it
+ * only for a focused widget. The suite parks its windows off the side of the
+ * display and never activates them, so a dispatched Tab arrives and moves
+ * nothing: the walk reads as trapped whatever the dialog does. `bringToFront`
+ * would fix it by pulling the keyboard out of whatever the developer is doing,
+ * once per run. Focus emulation is the same claim made to the renderer alone.
+ */
+async function withKeyboardFocus<T>(page: Page, run: () => Promise<T>): Promise<T> {
+  const session = await page.context().newCDPSession(page);
+  await session.send('Emulation.setFocusEmulationEnabled', { enabled: true });
+  try {
+    return await run();
+  } finally {
+    await session
+      .send('Emulation.setFocusEmulationEnabled', { enabled: false })
+      .catch(() => undefined);
+    await session.detach().catch(() => undefined);
+  }
+}
+
+/** What Tab can reach inside the card, and what it can reach outside it. */
+function tabbableCounts(
+  overlay: Page,
+): Promise<{ inside: number; outside: number; hatch: boolean }> {
+  return overlay.evaluate(
+    ({ selector, testId }) => {
+      const card = document.querySelector('[data-testid="overlay-card"]');
+      const all = [...document.querySelectorAll(selector)];
+      const inside = all.filter((element) => card?.contains(element) === true);
+      const outside = all.filter((element) => card?.contains(element) !== true);
+      return {
+        inside: inside.length,
+        outside: outside.length,
+        hatch: outside.some((element) => element.getAttribute('data-testid') === testId),
+      };
+    },
+    { selector: TABBABLE, testId: HATCH },
+  );
+}
+
+scenario('Tab and Shift+Tab stay inside the overlay dialog', async () => {
+  /*
+   * The trap, walked. `role="dialog"` and an inert background declare a modal
+   * to assistive technology; neither enforces one, and axe reports no
+   * violation against a dialog focus still escapes from. The scenario above
+   * checks the declaration. This presses the key.
+   *
+   * No model is needed: the card renders and traps focus whatever the provider
+   * reports, which is why this runs in CI while the agent scenarios skip. See
+   * #131.
+   */
+  const overlay = await openOverlay();
+
+  await openEscapeHatch(overlay);
+  try {
+    await withKeyboardFocus(overlay, async () => {
+      // The card renders while the provider is still being probed, and in that
+      // moment it holds a disabled field and no buttons. Waiting for something
+      // Tab can reach is the floor: a card that never grows one fails here
+      // rather than reporting a walk over nothing.
+      await expect
+        .poll(async () => (await tabbableCounts(overlay)).inside, {
+          timeout: 15_000,
+          message: 'nothing inside the card can be reached by Tab, so a walk would prove nothing',
+        })
+        .toBeGreaterThan(0);
+
+      const reachable = await tabbableCounts(overlay);
+      expect(
+        reachable.hatch,
+        'the element outside the card is not reachable, so an escape has nowhere to land',
+      ).toBe(true);
+      // Start the walk somewhere defined. Where focus lands on a summon is the
+      // scenario above, and these run in a random order, so this puts it on
+      // the first field rather than assuming.
+      await overlay.locator('[data-testid="overlay-card"]').locator(TABBABLE).first().focus();
+      expect((await focusHolder(overlay)).inside, 'the walk starts inside the card').toBe(
+        true,
+      );
+
+      // Two past the end. One press per element only proves the last one is
+      // reachable; the escape happens on the press after that.
+      const presses = reachable.inside + reachable.outside + 2;
+
+      const forward = await walk(overlay, 'Tab', presses);
+      expect(
+        forward.filter((step) => !step.inside).map((step) => step.element),
+        'Tab left the card',
+      ).toEqual([]);
+
+      const backward = await walk(overlay, 'Shift+Tab', presses);
+      expect(
+        backward.filter((step) => !step.inside).map((step) => step.element),
+        'Shift+Tab left the card',
+      ).toEqual([]);
+    });
+  } finally {
+    // These specs share one overlay page, and they run in a random order.
+    await closeEscapeHatch(overlay);
+  }
+
+  // Escape hands the window back to the main process. Hiding and summoning
+  // again must not leave focus outside the card, because the next key the user
+  // presses goes wherever it sits.
+  const handle = await harness.app.browserWindow(overlay);
+  await overlay.keyboard.press('Escape');
+  await expect
+    .poll(() => handle.evaluate((win) => win.isVisible()), { timeout: 10_000 })
+    .toBe(false);
+
+  await openOverlay();
+  expect((await focusHolder(overlay)).inside, 'focus should return inside the card').toBe(
     true,
   );
 
