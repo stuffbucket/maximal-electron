@@ -1,7 +1,8 @@
 # Continuous integration
 
-Three workflows. `ci.yml` is the blocking gate, `release.yml` builds and ships
-a tag, and `merge-preview.yml` tests what a merge would produce.
+Three workflows build. `ci.yml` is the blocking gate, `release.yml` builds and
+ships a tag, and `merge-preview.yml` tests what a merge would produce. A
+fourth, `triage.yml`, only labels issues and is described in its own header.
 
 ## What each one runs
 

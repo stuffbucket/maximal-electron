@@ -19,7 +19,7 @@
 #
 # ## There is no installer
 #
-# No MSI and no dmg. Four jobs here built them, one of which had never once
+# No MSI and no dmg. Three jobs here built them, one of which had never once
 # succeeded and one of which shipped an installer containing zero files. See
 # `docs/release.md`. The tarball is the artifact, and `publish` gates on it.
 

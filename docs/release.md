@@ -106,9 +106,10 @@ That is a removal, and the reasons are on the record:
 - `stuffbucket/maximal` consumes this shell as a library and packages, signs,
   and notarizes its own application. It has never consumed either installer.
 
-Four of the eight jobs in `release.yml` existed for those two artifacts, and
-half the release pipeline was maintaining something no consumer used and one
-half of which had never worked.
+Three of the eight jobs in `release.yml` existed for those two artifacts, and
+a fourth workflow, `windows-msi-dev.yml`, existed only to iterate on one of
+them. Nearly half the release pipeline was maintaining something no consumer
+used and one half of which had never worked.
 
 **Packaging is kept.** `npm run package` produces a `.app` on macOS and a
 `win32` directory on Windows, `ci.yml` runs it on both platforms, and `npm run
