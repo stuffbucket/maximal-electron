@@ -7,10 +7,23 @@
  * script into a build step.
  */
 
+export interface PathScope {
+  roots: string[];
+  buildRoots: string[];
+  moduleExtensions: string[];
+}
+
+export interface PathClaims {
+  repo: string[];
+  build: string[];
+  relative: string[];
+  declined: string[];
+}
+
 export declare function withoutFences(text: string): string;
 export declare function codeSpans(text: string): string[];
 export declare function npmScripts(text: string): string[];
 export declare function npmScriptsOutOfScope(text: string): number;
-export declare function repoPaths(text: string, roots: string[]): string[];
+export declare function pathClaims(text: string, scope: PathScope): PathClaims;
 export declare function constants(text: string): string[];
 export declare function links(text: string): string[];

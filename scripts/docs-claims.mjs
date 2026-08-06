@@ -11,7 +11,7 @@
  * | `READ_ONLY_TOOLS`, three refactors stale | `constants` |
  * | `MIN_SCREENSHOT_BYTES`, replaced the same day | `constants` |
  * | A link to a file that moved | `links` |
- * | A backticked path to a script that was never written | `repoPaths` |
+ * | A backticked path to a script that was never written | `pathClaims` |
  *
  * Kept pure, and separate from the script that walks the tree, so the matching
  * is unit tested rather than trusted.
@@ -30,8 +30,17 @@ export function withoutFences(text) {
  * how the prose linter this replaced earned its removal.
  */
 export function codeSpans(text) {
-  return [...withoutFences(text).matchAll(/`([^`\n]+)`/g)].map((match) => match[1] ?? '');
+  return [...withoutFences(text).matchAll(/`([^`\n]+)`/g)].map((match) => match[1]);
 }
+
+/**
+ * Every `npm run <name>` in the text, wherever it sits.
+ *
+ * One pattern, read by the rule and by the count of what the rule declines.
+ * Two copies of it would have to stay in step, and the number that says how
+ * much is out of scope is only worth printing if it is the same question.
+ */
+const NPM_RUN = /\bnpm run ([a-z][a-z0-9:-]*)/g;
 
 /**
  * Every `npm run <name>` named in prose.
@@ -43,23 +52,71 @@ export function codeSpans(text) {
  */
 export function npmScripts(text) {
   return codeSpans(text).flatMap((span) =>
-    [...span.matchAll(/\bnpm run ([a-z][a-z0-9:-]*)/g)].map((match) => match[1]),
+    [...span.matchAll(NPM_RUN)].map((match) => match[1]),
   );
 }
 
 /**
- * Every backticked path into this repository, under one of `roots`.
+ * A span that could name a file: a directory separator, or an extension.
  *
- * A whole span, so `npm run package` and a sentence are not paths, and a
- * `:142` line reference is trimmed to the file it points at. Globs are
- * returned as written: the caller decides whether a pattern matching nothing
- * is a defect, and here it is.
+ * The extension has to start with a letter and end the span, or `v0.0.2` and
+ * `v1.2.3-alpha.1` read as file names.
  */
-export function repoPaths(text, roots) {
-  return codeSpans(text)
-    .map((span) => span.trim().replace(/:\d+$/, ''))
-    .filter((span) => !/\s/.test(span))
-    .filter((span) => roots.some((root) => span.startsWith(root + '/')));
+function pathShaped(span) {
+  return !/\s/.test(span) && (span.includes('/') || /\.[a-z][a-z0-9]{0,4}$/i.test(span));
+}
+
+/**
+ * A span written as a path inside the source tree rather than from the root.
+ *
+ * `native/llama-host.ts` and `host/crash-artifacts.ts` sit in one table row in
+ * `docs/architecture.md`, at two different depths, because a reader of that
+ * table is already inside `src/`. A leading `.`, `/`, `@` or `~` is a relative
+ * import, an export subpath, a package specifier or a home directory, and
+ * `node_modules/` is somebody else's tree.
+ */
+const OWN_TREE = /^[a-z]/i;
+
+/**
+ * Every path-shaped backticked span, sorted into what the checker can decide.
+ *
+ * One pass and four buckets, because the counts have to add up. The rule this
+ * replaces kept the spans under a declared root and dropped the rest on the
+ * floor, so a document could name `.vite/build/anything.js` and stay green
+ * while the run reported 205 paths as its scope. #152 is the two break
+ * attempts that passed that way. `declined` is the residue, so the caller can
+ * print a number instead of nothing.
+ *
+ * A `:142` line reference is trimmed to the file it points at. Globs are kept
+ * as written: the caller decides whether a pattern matching nothing is a
+ * defect, and there it is.
+ *
+ * - `repo` sits under `roots` and names a file in the checkout.
+ * - `build` sits under `buildRoots`, which a checkout does not contain. An
+ *   optional leading slash is an archive listing entry, `/.vite/build/main.js`.
+ * - `relative` carries one of `moduleExtensions` and is written from inside the
+ *   source tree.
+ */
+export function pathClaims(text, { roots, buildRoots, moduleExtensions }) {
+  const claims = { repo: [], build: [], relative: [], declined: [] };
+  for (const raw of codeSpans(text)) {
+    const span = raw.trim().replace(/:\d+$/, '');
+    if (!pathShaped(span)) continue;
+    const listed = span.startsWith('/') ? span.slice(1) : span;
+
+    if (roots.some((root) => span.startsWith(root + '/'))) claims.repo.push(span);
+    else if (buildRoots.some((root) => listed === root || listed.startsWith(root + '/')))
+      claims.build.push(span);
+    else if (
+      OWN_TREE.test(span) &&
+      span.includes('/') &&
+      !span.startsWith('node_modules/') &&
+      moduleExtensions.some((extension) => span.endsWith(extension))
+    )
+      claims.relative.push(span);
+    else claims.declined.push(span);
+  }
+  return claims;
 }
 
 /**
@@ -71,8 +128,7 @@ export function repoPaths(text, roots) {
  * how the choice stays visible in the output instead of looking like coverage.
  */
 export function npmScriptsOutOfScope(text) {
-  const all = [...text.matchAll(/\bnpm run ([a-z][a-z0-9:-]*)/g)].length;
-  return all - npmScripts(text).length;
+  return [...text.matchAll(NPM_RUN)].length - npmScripts(text).length;
 }
 
 /**
@@ -90,7 +146,7 @@ export function constants(text) {
 
 /** Relative markdown link targets, with any anchor removed. */
 export function links(text) {
-  return [...text.matchAll(/]\((?!https?:|mailto:|#)([^)\s]+)\)/g)].map((match) =>
-    (match[1] ?? '').split('#')[0],
+  return [...text.matchAll(/]\((?!https?:|mailto:|#)([^)\s]+)\)/g)].map(
+    (match) => match[1].split('#')[0],
   );
 }

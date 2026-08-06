@@ -31,7 +31,8 @@
     "src/renderer/lib/terminal-transport.ts",
     "scripts/terminal-package.mjs",
     "scripts/shell-variables.mjs",
-    "scripts/electron-cache.mjs"
+    "scripts/electron-cache.mjs",
+    "scripts/docs-claims.mjs"
   ],
   "reporters": [
     "progress",
