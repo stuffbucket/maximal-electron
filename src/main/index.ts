@@ -258,7 +258,7 @@ function shutdown(): Promise<void> | undefined {
  */
 const userDataDirectory = profileDirectory();
 if (userDataDirectory !== undefined) app.setPath('userData', userDataDirectory);
-startCrashReports();
+// BREAK: startCrashReports();
 
 if (selfCheckRequested(process.argv)) {
   /*
