@@ -500,7 +500,8 @@ Electron 43 before any of this was written.
 
 | Process | Covered | Established by |
 | --- | --- | --- |
-| `utilityProcess` (the engine) | yes | `npm run verify:crash-artifact` on a packaged build |
+| `utilityProcess` (the engine), macOS | yes | `npm run verify:crash-artifact` on a packaged build |
+| `utilityProcess` (the engine), Windows | **no** | The engine aborts, the application survives, and Crashpad writes nothing. Issue #156 |
 | Renderer | yes | A `forcefullyCrashRenderer` run on Electron 43. No check drives it |
 | Main | yes | A `process.crash()` run on Electron 43. No check drives it |
 
@@ -530,9 +531,18 @@ leave a database with no dump in it. The second is `--self-check=llama` —
 llama.cpp, and calls `process.abort()` in native code. That run must leave a
 dump where the first left none.
 
-Both platforms are held to that. #149's Windows gate is retired, so a run that
-does not report the engine loading and dying is a defect rather than a
-disposition, and the crash artifact is proven on both packaging hosts.
+Both platforms crash now. #149's Windows gate is retired, so a run that does
+not report the engine loading and dying is a defect rather than a disposition,
+and the check demands that on both packaging hosts.
+
+**Only macOS leaves a file, and that is a finding rather than a disposition.**
+The same abort on `windows-latest` exits the utility process with 134 — the
+POSIX `128 + SIGABRT` convention, not a structured exception — and Crashpad
+writes nothing in the 30 s the check waits. The database is on disk, so the
+reporter started; the supervisor names the fault, so the engine really died.
+Nothing could have seen this before, because the engine never got far enough to
+crash on Windows. The check asserts what happens there rather than skipping, so
+a Windows dump appearing fails it. Issue #156.
 
 ## The terminal a consumer gets
 
