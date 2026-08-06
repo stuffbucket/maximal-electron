@@ -15,10 +15,12 @@
  * survives it, so it is the crash least likely to be noticed and the one most
  * in need of a record.
  *
- * Which of the three process types this covers is decided by the run rather
- * than asserted here. The engine is a `utilityProcess`; the main process and
- * the renderer are covered by the same reporter and are not exercised by any
- * check. See `docs/architecture.md`.
+ * This covers the engine's `utilityProcess` and nothing else. The main process
+ * and the renderer use the same reporter and no check drives either. It covers
+ * the artifact on macOS and only the crash on Windows, where Crashpad writes
+ * nothing for this abort. See `docs/architecture.md`.
+ *
+ * The package is launched from a copy outside this repository. Issue #149.
  *
  * Issue #134.
  */
