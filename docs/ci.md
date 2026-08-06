@@ -154,7 +154,7 @@ the `env` context is not available to a job-level condition, and
 
 ### Why a dispatch can publish at all
 
-It could not, until #141. The rule was "a dispatch run is always a dry run",
+It could not, until #162. The rule was "a dispatch run is always a dry run",
 and it held because no input existed to make one publish.
 
 That made a tag push a one-shot fuse. A tag is immutable, so a run that does

@@ -62,7 +62,7 @@ Read the log for which of the two outcomes each step reported: `CREATED` or
 
 Two things this does not fix. A release that is already published and does not
 carry the tarball cannot gain one — HTTP 422, so cut the next patch. And the
-workflow that runs is the one at the dispatched ref, so a tag cut before #141
+workflow that runs is the one at the dispatched ref, so a tag cut before #162
 landed does not carry the input.
 
 ## What the workflow does
