@@ -7,9 +7,12 @@
 
 import { cp, rm, mkdtemp } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
+
+const require = createRequire(import.meta.url);
 
 const source = path.resolve(process.argv[2] ?? '');
 const scratch = await mkdtemp(path.join(tmpdir(), 'probe149-'));
@@ -32,9 +35,9 @@ const worker =
         'llama-worker.js',
       );
 
-const electron = path.join(process.cwd(), 'node_modules', '.bin', 'electron');
+const electron = require('electron');
 const child = spawn(
-  process.platform === 'win32' ? `${electron}.cmd` : electron,
+  electron,
   [path.join(process.cwd(), 'probe', 'engine-main.js'), worker],
   { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ELECTRON_ENABLE_LOGGING: '1' } },
 );

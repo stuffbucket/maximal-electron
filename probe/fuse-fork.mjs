@@ -11,17 +11,18 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const exe = process.argv[2];
+const script = process.argv[3] ?? path.join(HERE, 'echo-child.js');
 const BOUND_MS = 20_000;
 
 if (exe == null) {
-  console.error('usage: node probe/fuse-fork.mjs <path to the packaged binary>');
+  console.error('usage: node probe/fuse-fork.mjs <path to the packaged binary> [script]');
   process.exit(2);
 }
 
 async function attempt(label, env) {
   const started = Date.now();
-  const child = spawn(exe, [path.join(HERE, 'echo-child.js')], {
-    env: { ...process.env, ...env },
+  const child = spawn(exe, [script], {
+    env: { ...process.env, TEST_BINDING_CP: 'true', ...env },
     stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   });
 
@@ -51,7 +52,7 @@ async function attempt(label, env) {
   if (trimmed.length > 0) console.log(`     output: ${trimmed}`);
 }
 
-console.log(`[fuse-fork] ${exe}`);
+console.log(`[fuse-fork] ${exe} running ${script}`);
 await attempt('with ELECTRON_RUN_AS_NODE=1', { ELECTRON_RUN_AS_NODE: '1' });
 await attempt('with no ELECTRON_RUN_AS_NODE', { ELECTRON_RUN_AS_NODE: undefined });
 process.exit(0);

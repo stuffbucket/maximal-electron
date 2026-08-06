@@ -120,3 +120,10 @@ jobs:
         env:
           ELECTRON_ENABLE_LOGGING: '1'
         run: node probe/relocate.mjs "${{ matrix.package }}"
+
+      - name: rung 4i, the packaged binary running node-llama-cpp's own test child
+        if: runner.os == 'Windows'
+        timeout-minutes: 5
+        run: |
+          node probe/fuse-fork.mjs node "${{ matrix.unpacked }}/node_modules/node-llama-cpp/dist/bindings/utils/testBindingBinary.js"
+          node probe/fuse-fork.mjs "${{ matrix.binary }}" "${{ matrix.unpacked }}/node_modules/node-llama-cpp/dist/bindings/utils/testBindingBinary.js"
