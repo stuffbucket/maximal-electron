@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
-  "_comment": "Mutation testing. Runs in CI, in the `static` job, and breaks the build below 100. Deliberately narrow \u2014 point it at pure-logic modules only. The shape follows stuffbucket/maximal's stryker.conf.json, with the Vitest runner instead of a command runner because the unit suite is already Vitest. Anything importing `electron` cannot be mutated here: it needs a real Electron runtime, not Node.",
+  "_comment": "Mutation testing. Runs in CI, in the `static` job, and breaks the build below 100. `mutate` is not a hand-list: `scripts/mutation-scope.mjs` derives the set every file under `src/` and `scripts/` that Stryker can run, and fails when one is on neither this list nor its deferred list. Anything importing `electron` or React for a value cannot be mutated here: it needs a real Electron runtime or a browser, not Node. `scripts/mutation-report.mjs` then reads the run back, because the score alone says nothing about how many mutants there were or what killed them. The shape follows stuffbucket/maximal's stryker.conf.json, with the Vitest runner instead of a command runner because the unit suite is already Vitest.",
   "packageManager": "npm",
   "testRunner": "vitest",
   "vitest": {
@@ -24,17 +24,22 @@
     "src/main/native/pty-session.ts",
     "src/main/native/self-check.ts",
     "src/renderer/lib/terminal-sessions.ts",
+    "src/renderer/lib/terminal-transport.ts",
     "scripts/terminal-package.mjs",
     "scripts/shell-variables.mjs"
   ],
   "reporters": [
     "progress",
     "clear-text",
-    "html"
+    "html",
+    "json"
   ],
   "tempDirName": ".stryker-tmp",
   "htmlReporter": {
     "fileName": "reports/mutation/index.html"
+  },
+  "jsonReporter": {
+    "fileName": "reports/mutation/mutation.json"
   },
   "concurrency": 4,
   "timeoutMS": 30000,

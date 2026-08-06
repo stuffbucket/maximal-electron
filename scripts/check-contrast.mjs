@@ -13,7 +13,10 @@
  *   node scripts/check-contrast.mjs [tokens.css] [--selectors <list>]
  *
  * `--selectors` is comma separated and read in cascade order, later overriding
- * earlier, which is how a light theme layered on a dark base resolves.
+ * earlier, which is how a light theme layered on a dark base resolves. The list
+ * is not trusted: a block that declares palette tokens and is not on it fails
+ * the run, because a third theme nobody measured is the shape of every
+ * empty-scope defect here.
  *
  * Three sections, because they need three different fixes: a token that is not
  * defined, a token defined in a form this cannot read, and a pair that reads
@@ -24,7 +27,8 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { checkPalette } from '../src/renderer/lib/contrast.ts';
+import { REQUIRED_TOKENS, checkPalette } from '../src/renderer/lib/contrast.ts';
+import { scopedChecks } from './check-scope.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -67,42 +71,82 @@ try {
 }
 
 /**
- * Every custom property declared in the first block matching a selector.
+ * Every brace block in the stylesheet, with the prelude that opened it.
  *
  * Deliberately simple. A palette is a flat list of declarations, and a CSS
- * parser would be a dependency this does not need. A selector that is not
- * present is reported rather than silently contributing nothing.
+ * parser would be a dependency this does not need. Balanced rather than
+ * line-anchored, so a block inside `@media (prefers-color-scheme: dark)`
+ * is found too: that is where a third theme would go.
  */
-function propertiesFor(selector) {
-  const at = css.indexOf(selector);
-  if (at === -1) return undefined;
+function blocks(text) {
+  const found = [];
+  const open = [];
+  let start = 0;
 
-  const open = css.indexOf('{', at);
-  const close = css.indexOf('\n}', open);
-  if (open === -1 || close === -1) return undefined;
+  for (let index = 0; index < text.length; index += 1) {
+    if (text[index] === '{') {
+      open.push({ prelude: text.slice(start, index), at: index });
+      start = index + 1;
+    } else if (text[index] === '}') {
+      const block = open.pop();
+      if (block) found.push({ prelude: block.prelude, body: text.slice(block.at + 1, index) });
+      start = index + 1;
+    }
+  }
+  return found;
+}
 
+/** The custom properties declared directly in a block body. */
+function declarations(body) {
   const found = {};
-  for (const match of css.slice(open, close).matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/gi)) {
+  for (const match of body.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/gi)) {
     found[match[1]] = (match[2] ?? '').trim();
   }
   return found;
 }
 
+const styleBlocks = blocks(css)
+  .map(({ prelude, body }) => ({
+    selector: prelude.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s+/g, ' ').trim(),
+    properties: declarations(body),
+  }))
+  .filter(({ selector }) => selector !== '' && !selector.startsWith('@'));
+
+const { check, summary } = scopedChecks();
+
+/**
+ * A block is a palette layer when it defines a token the shell reads.
+ *
+ * `[data-status]` sets `--status` at run time and is not one, which is why
+ * this asks about `REQUIRED_TOKENS` rather than about any `--` declaration.
+ */
+const paletteSelectors = styleBlocks
+  .filter(({ properties }) => REQUIRED_TOKENS.some((token) => properties[token] !== undefined))
+  .map(({ selector }) => selector);
+
+console.log(`${show(file)}\n`);
+
+const unmeasured = paletteSelectors.filter((selector) => !selectors.includes(selector));
+check(
+  unmeasured.length === 0,
+  unmeasured.length === 0
+    ? 'every block that declares palette tokens is on the --selectors list'
+    : `these blocks declare palette tokens and are not measured: ${unmeasured.join(', ')}`,
+  { count: paletteSelectors.length, of: 'palette blocks in the file' },
+);
+
 const layers = [];
 for (const selector of selectors) {
-  const properties = propertiesFor(selector);
-  if (properties === undefined) {
+  const block = styleBlocks.find((entry) => entry.selector === selector);
+  if (block === undefined) {
     console.error(` FAIL  no ${selector} block in ${show(file)}`);
     process.exit(1);
   }
-  layers.push([selector, properties]);
+  layers.push([selector, block.properties]);
 }
 
 /* --------------------------------------------------------------- report */
 
-console.log(`${show(file)} — ${String(layers.length)} scheme(s)\n`);
-
-let failed = false;
 let palette = {};
 
 for (const [selector, properties] of layers) {
@@ -111,20 +155,21 @@ for (const [selector, properties] of layers) {
   const report = checkPalette(palette);
   const bad = report.checked.filter((result) => !result.passes);
 
-  console.log(
-    `${selector} — ${String(report.checked.length)} pairs checked, ` +
-      `${String(report.skipped.length)} skipped, ` +
-      `${String(report.missing.length)} tokens missing`,
+  // The scope is `checked`, not `CONTRAST_PAIRS`. A palette written in
+  // `oklch()` parses to nothing, skips every pair, and used to read as clean.
+  check(
+    bad.length === 0 && report.missing.length === 0 && report.skipped.length === 0,
+    `${selector} is legible` +
+      ` (${String(report.skipped.length)} skipped, ${String(report.missing.length)} missing)`,
+    { count: report.checked.length, of: 'pairs judged' },
   );
 
   if (report.missing.length > 0) {
-    failed = true;
     console.log('   missing — the shell reads these and this palette does not define them');
     for (const token of report.missing) console.log(`     ${token}`);
   }
 
   if (report.skipped.length > 0) {
-    failed = true;
     console.log('   unreadable — defined, but not as #rgb or #rrggbb, so no verdict');
     for (const pair of report.skipped) {
       console.log(`     ${pair.unreadable.join(', ')}  (${pair.where})`);
@@ -132,7 +177,6 @@ for (const [selector, properties] of layers) {
   }
 
   if (bad.length > 0) {
-    failed = true;
     console.log('   contrast — legible tokens that do not contrast enough');
     for (const result of bad) {
       console.log(
@@ -141,9 +185,6 @@ for (const [selector, properties] of layers) {
       );
     }
   }
-
-  if (!failed) console.log('   ok');
-  console.log('');
 }
 
-process.exit(failed ? 1 : 0);
+process.exit(summary('check:contrast'));

@@ -17,7 +17,6 @@ verify:package` and `npm run smoke:packaged` still run in `ci.yml`, because
 packaging is a property of the shell and it is where the defects were found.
 What was removed was the MSI and the dmg built on top of it, and
 `windows-msi-dev.yml` with them. See `docs/release.md`.
->>>>>>> origin/release/0.0.5
 
 ## The problem this page exists for
 
