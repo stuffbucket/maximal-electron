@@ -52,9 +52,11 @@ jobs:
           - os: windows-latest
             binary: out/Stuffbucket-win32-x64/Stuffbucket.exe
             unpacked: out/Stuffbucket-win32-x64/resources/app.asar.unpacked
+            asar: out/Stuffbucket-win32-x64/resources/app.asar
           - os: macos-latest
             binary: out/Stuffbucket-darwin-arm64/Stuffbucket.app/Contents/MacOS/Stuffbucket
             unpacked: out/Stuffbucket-darwin-arm64/Stuffbucket.app/Contents/Resources/app.asar.unpacked
+            asar: out/Stuffbucket-darwin-arm64/Stuffbucket.app/Contents/Resources/app.asar
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v5
@@ -78,6 +80,14 @@ jobs:
         timeout-minutes: 5
         run: node probe/fuse-fork.mjs "${{ matrix.binary }}"
 
-      - name: rung 4c, the real packaged binary
+      - name: rung 3.5, the application's own engine bundle, unpackaged
         timeout-minutes: 10
-        run: node probe/self-check.mjs "${{ matrix.binary }}"
+        env:
+          ELECTRON_ENABLE_LOGGING: '1'
+        run: npx electron probe/engine-main.js .vite/build/llama-worker.js
+
+      - name: rung 4d, the engine bundle inside app.asar
+        timeout-minutes: 10
+        env:
+          ELECTRON_ENABLE_LOGGING: '1'
+        run: npx electron probe/engine-main.js "${{ matrix.asar }}/.vite/build/llama-worker.js"
