@@ -342,8 +342,12 @@ function handle(request: EngineRequest): void {
       return;
     }
     case 'crash-on-purpose':
-      // BREAK: back to what #156 found, so a Windows run says what it does.
-      process.abort();
+      // The packaged self check, and the one thing no `try` in this file could
+      // catch. `process.crash()` writes through a null pointer, so it faults on
+      // every platform. Not `process.abort()`: Node defines that as
+      // `_exit(134)` on Windows, which is a clean exit and no crash at all.
+      // Issue #156.
+      process.crash();
   }
 }
 
