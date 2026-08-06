@@ -662,11 +662,10 @@ async function openOverlay() {
 /**
  * Insist the run is about to use the scripted backend.
  *
- * The floor for every agent scenario. These used to skip when no model was
- * reachable, which is why none of them had run in CI; now the backend is
- * started by this file, so anything else answering is a defect. The model name
- * is distinctive, so a real Ollama on the developer's machine cannot satisfy
- * this by accident.
+ * The floor for every agent scenario. This file starts the backend, so anything
+ * else answering is a defect rather than a machine without a model. The model
+ * name is distinctive, so a real Ollama on the developer's machine cannot
+ * satisfy this by accident.
  */
 async function requireScriptedBackend(overlay: Page) {
   await expect
@@ -821,9 +820,9 @@ scenario('Escape answers a pending approval rather than dismissing the overlay',
     const answer = overlay.locator('[data-testid="overlay-answer"]');
     await expect(answer).toBeVisible({ timeout: 30_000 });
 
-    // What a denial is for, and the strongest claim here. Escape closed a card
-    // in the earlier version of this scenario; nothing asserted that the
-    // command had not run.
+    // What a denial is for, and the strongest claim here. A card that closes is
+    // not a command that did not run, and only one of those is the property
+    // worth protecting.
     expect(contents(ran.file), 'the denied command reached a shell anyway').toBeUndefined();
 
     // The refusal reached the loop rather than only the card.

@@ -24,11 +24,11 @@ import { SCRIPTED_MODEL, startScriptedModel, type ScriptedModel } from './model-
  * repaints on its own. A future refactor that routes this through a new IPC
  * channel has made the design worse, and this test should fail.
  *
- * It used to skip without a local backend, which meant it had never run in CI.
- * `e2e/model-server.ts` supplies the model instead. What that costs is stated
- * there: the scripted backend picks `set_theme` because a regular expression
- * matched the prompt, so this covers the gate, the tool, and the repaint, and
- * not whether a real model would have chosen the same tool.
+ * The model comes from `e2e/model-server.ts`, so this needs no backend and runs
+ * on a machine that has none. What a scripted reply costs is stated there: the
+ * script picks `set_theme` because a regular expression matched the prompt, so
+ * this covers the gate, the tool, and the repaint, and not whether a real model
+ * would have chosen the same tool.
  */
 let harness: Harness;
 let model: ScriptedModel;

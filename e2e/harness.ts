@@ -309,16 +309,16 @@ export async function setTheme(
  * The agent backend, read from the contract.
  *
  * Every agent scenario needs the same answer: which backend is the application
- * about to use? That used to be decided by matching substrings against the
- * overlay's status line. It could not work. The guards looked for `Waiting` and
- * `No local model`, and `providerLabel` in `src/renderer/overlay.tsx` produces
- * neither, so they never fired. On a runner with no backend the status read
- * "<model> is not downloaded yet", every guard passed through, and four
- * scenarios failed on a timeout instead of skipping.
+ * about to use? Matching substrings against the overlay's status line cannot
+ * give it. The guards that did looked for `Waiting` and `No local model`, and
+ * `providerLabel` in `src/renderer/overlay.tsx` produces neither, so they never
+ * fired: on a runner with no backend the status read "<model> is not downloaded
+ * yet", every guard passed through, and four scenarios failed on a timeout
+ * instead of skipping.
  *
- * The scenarios now assert on this rather than skipping on it: the scripted
- * backend in `e2e/model-server.ts` is started by the spec, so a run that is
- * talking to something else is a defect rather than a machine without a model.
+ * The scenarios assert on this rather than skipping on it. The scripted backend
+ * in `e2e/model-server.ts` is started by the spec, so a run talking to something
+ * else is a defect rather than a machine without a model.
  *
  * `ProviderStatus` is already a discriminated union in the IPC contract. Asking
  * for it directly cannot drift when the copy is reworded, and the compiler
