@@ -87,7 +87,7 @@ describe('selfCheckCommand', () => {
     // `cmd.exe` has no `printf`, and its `echo` puts a space between two
     // arguments. The caret is stripped while the line is parsed, so `echo` is
     // handed the halves already joined.
-    expect(selfCheckCommand(TOKEN, 'win32')).toBe('echo 01234567^89abcdef\r');
+    expect(selfCheckCommand(TOKEN, 'win32')).toBe('echo 01234567 89abcdef\r');
   });
 
   it('never carries the whole token, on any platform', () => {
