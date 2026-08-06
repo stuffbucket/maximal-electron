@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  cacheKeys,
   defaultCacheRoot,
   inspectCache,
+  keyOmissions,
   parseDownload,
   resolveCacheRoot,
 } from '../scripts/electron-cache.mjs';
@@ -126,7 +128,6 @@ describe('inspectCache', () => {
       ...wanted,
     });
     expect(result.downloads).toHaveLength(1);
-    expect(result.stale).toEqual([]);
     expect(result.wanted).toEqual([
       { version: '43.2.0', platform: 'darwin', arch: 'arm64' },
     ]);
@@ -136,7 +137,6 @@ describe('inspectCache', () => {
     const result = inspectCache({ names: [], ...wanted });
     expect(result.downloads).toEqual([]);
     expect(result.wanted).toEqual([]);
-    expect(result.stale).toEqual([]);
   });
 
   it('drops the files that are not downloads', () => {
@@ -147,12 +147,12 @@ describe('inspectCache', () => {
     expect(result.downloads).toHaveLength(1);
   });
 
-  it('calls another version stale, which is what a key missing the version lets in', () => {
+  it('keeps another version out of the match, whatever else is in the root', () => {
     const result = inspectCache({
       names: ['electron-v39.2.4-darwin-arm64.zip', 'electron-v43.2.0-darwin-arm64.zip'],
       ...wanted,
     });
-    expect(result.stale).toEqual([{ version: '39.2.4', platform: 'darwin', arch: 'arm64' }]);
+    expect(result.downloads).toHaveLength(2);
     expect(result.wanted).toHaveLength(1);
   });
 
@@ -166,7 +166,65 @@ describe('inspectCache', () => {
       ...wanted,
     });
     expect(result.downloads).toHaveLength(3);
-    expect(result.stale).toEqual([]);
     expect(result.wanted).toEqual([]);
+  });
+});
+
+/**
+ * The key is checked rather than the symptom.
+ *
+ * A key that stops naming the Electron version restores the previous binary,
+ * and that appears one run after the mistake. The contents cannot show it: a
+ * developer's shared cache root legitimately holds several versions.
+ */
+describe('cacheKeys', () => {
+  it('reads the key off an actions/cache step', () => {
+    const yaml = [
+      '    - id: restore',
+      '      uses: actions/cache@v4',
+      '      with:',
+      '        path: ${{ steps.resolve.outputs.root }}',
+      '        key: electron-${{ runner.os }}-${{ runner.arch }}-${{ steps.resolve.outputs.version }}',
+    ].join('\n');
+    expect(cacheKeys(yaml)).toEqual([
+      'electron-${{ runner.os }}-${{ runner.arch }}-${{ steps.resolve.outputs.version }}',
+    ]);
+  });
+
+  it('finds every key, not only the first', () => {
+    expect(cacheKeys('  key: a\n  path: x\n  key: b\n')).toEqual(['a', 'b']);
+  });
+
+  it('finds none in a file that declares no cache, so the floor can fire', () => {
+    expect(cacheKeys('name: something\nruns:\n  using: composite\n')).toEqual([]);
+  });
+
+  it('does not read a line that merely ends in key:', () => {
+    expect(cacheKeys('  description: the cache key:\n')).toEqual([]);
+  });
+});
+
+describe('keyOmissions', () => {
+  it('accepts a key that names the runner and the version', () => {
+    expect(
+      keyOmissions('electron-${{ runner.os }}-${{ runner.arch }}-${{ steps.resolve.outputs.version }}'),
+    ).toEqual([]);
+  });
+
+  it('names the version when a bump would restore the old binary', () => {
+    expect(keyOmissions('electron-${{ runner.os }}-${{ runner.arch }}')).toEqual([
+      'outputs.version',
+    ]);
+  });
+
+  it('names the operating system and the architecture when a runner would take another platform', () => {
+    expect(keyOmissions('electron-${{ steps.resolve.outputs.version }}')).toEqual([
+      'runner.os',
+      'runner.arch',
+    ]);
+  });
+
+  it('names all three for a key that is a bare string', () => {
+    expect(keyOmissions('electron')).toEqual(['runner.os', 'runner.arch', 'outputs.version']);
   });
 });
