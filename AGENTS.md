@@ -140,6 +140,7 @@ only background.
 | Stories, the a11y run, what is deliberately not in CI | `docs/storybook.md` |
 | Capture and compose, the pacing constants | `docs/recording.md` |
 | Trains, the draft release, macOS signing | `docs/release.md` |
+| The workflows, the release dry run, the merge race | `docs/ci.md` |
 | Code signing | `docs/signing.md` |
 | What is planned and what is deliberately not | `docs/roadmap.md` |
 
