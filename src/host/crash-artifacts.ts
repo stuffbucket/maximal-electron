@@ -74,6 +74,7 @@ export function findCrashDumps(root: string): string[] {
  * for it.
  */
 export function startCrashArtifacts(runtime: CrashArtifactRuntime): CrashArtifacts {
+  runtime.crashReporter.start({ uploadToServer: false });
   const directory = runtime.app.getPath('crashDumps');
   return { directory, existing: findCrashDumps(directory) };
 }
