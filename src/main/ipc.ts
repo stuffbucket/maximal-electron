@@ -81,10 +81,11 @@ const handlers: IpcHandlers = {
     void shell.openExternal(request.url);
   },
 
-  'pty:spawn': (request) => spawnPty(request),
-  'pty:write': (request) => writePty(request.id, request.data),
-  'pty:resize': (request) => resizePty(request.id, request.cols, request.rows),
-  'pty:kill': (request) => killPty(request.id),
+  'pty:spawn': (request, window) => spawnPty(window, request),
+  'pty:write': (request, window) => writePty(window, request.id, request.data),
+  'pty:resize': (request, window) =>
+    resizePty(window, request.id, request.cols, request.rows),
+  'pty:kill': (request, window) => killPty(window, request.id),
   'pty:default-shell': () => defaultShell(),
 
   'overlay:toggle': () => toggleOverlay(),

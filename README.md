@@ -112,6 +112,22 @@ Run `npm run build:package` after changing an exported source file. Run
 `npm run verify:exports` to rebuild, inspect the complete renderer import graph,
 and verify that every export target appears in `npm pack`.
 
+## Package the terminal
+
+`stuffbucket-electron/host/terminal` and `stuffbucket-electron/renderer` give a
+working terminal and leave two packaging traps behind.
+
+- `ghostty-web` inlines its WebAssembly as a data URL and fetches it at startup.
+  The content policy needs `'wasm-unsafe-eval'` in `script-src` and `data:` in
+  `connect-src`, or the terminal renders nothing.
+- `node-pty` is native. Keep it out of the bundler, and unpack its whole
+  prebuild directory rather than only `*.node`. On macOS the shell is started by
+  `spawn-helper`, which has no extension and is executed from outside the
+  archive.
+
+`stuffbucket-electron/verify` exports those assertions as a function to run
+against a built application. `docs/architecture.md` has the call.
+
 ## Your own icon
 
 The dock, taskbar, window, and menu bar icons all come from one directory.

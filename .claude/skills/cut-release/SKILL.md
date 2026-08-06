@@ -16,6 +16,15 @@ npm run package && npm run verify:package && npm run test:e2e
 Set the version in `package.json`. The tag must match it exactly, or the
 `tag-check` job fails before anything builds.
 
+Then dispatch `release.yml` from the branch. A dispatch is always a dry run: it
+builds the MSI, installs and removes it, packs the tarball, and attaches
+nothing. Every release defect this repository has shipped was in a job that had
+never run. See `docs/ci.md`.
+
+```bash
+gh workflow run release.yml --ref release/0.1.0
+```
+
 ```bash
 # package.json version 0.1.0 -> tag v0.1.0
 git tag -a v0.1.0 -m "Release 0.1.0"
@@ -34,29 +43,24 @@ Accepted tag shapes: `v1.2.3`, `v1.2.3-alpha`, `v1.2.3-alpha.1`, `v1.2.3-beta`,
 | `windows-msi` | Packages, builds the MSI with WiX, attaches it and a checksum. |
 | `windows-msi-verify` | Installs silently, asserts, uninstalls, asserts clean. |
 | `macos-dmg` | Dispatches the private builder, polls the draft for the dmg. |
+| `package-tarball` | Packs what a consumer installs, and attaches it. |
 | `publish` | Flips the draft to published, once, at the end. |
+
+`publish` gates on `package-tarball` alone. An installer that fails costs an
+installer, not the release.
 
 Every asset lands on the **draft**. GitHub immutable releases reject an asset
 added after publish with HTTP 422, so there is no second chance.
 
 ## If the macOS build fails
 
-The release stays a draft. That is deliberate: it does not publish without a
-macOS artifact.
+The release publishes without a dmg. `stuffbucket/maximal` consumes the
+tarball and signs its own application, so a missing installer does not hold it
+up. See `docs/release.md`.
 
 1. Open the run in `stuffbucket/macos-builder`. That is where the real log is.
-2. Fix the cause, then re-dispatch with the same tag:
-
-   ```bash
-   gh workflow run build.yml --repo stuffbucket/macos-builder \
-     -f repo=stuffbucket/maximal-electron -f ref=v0.1.0
-   ```
-
-3. When the dmg appears on the draft, publish by hand:
-
-   ```bash
-   gh release edit v0.1.0 --draft=false --latest
-   ```
+2. Fix the cause, then cut a patch release. A published release cannot take a
+   new asset.
 
 ## Verify what shipped
 

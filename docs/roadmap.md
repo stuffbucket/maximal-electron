@@ -9,11 +9,15 @@ is missing, so it does not drift out of step with them.
 
 ## Terminals
 
-Working. `coder/ghostty-web` in the renderer, `@lydell/node-pty` in the main
+Working. `coder/ghostty-web` in the renderer, `node-pty` in the main
 process. See `docs/architecture.md`.
 
 - Verified on macOS only. The prebuilt pty covers Windows and Linux, but no one
   has run it there.
+- Reaping is checked against real processes on POSIX only. Both checks read the
+  shell's own pid through `$$`, and `cmd.exe` has no equivalent, so
+  `tests/terminal-host.test.ts` and `e2e/terminal-window.spec.ts` skip on
+  Windows.
 - No tab-level working directory. Every shell starts in the home directory.
 - No flow control. A process that floods output will still outrun the batcher.
 

@@ -103,18 +103,25 @@ built it for Mux, and it is MIT licensed.
 
 It parses and renders. It does not run a process. The shell lives in the main
 process, in `src/main/native/pty.ts`, which is what lets the renderer keep
-`sandbox: true`.
+`sandbox: true`. That file is the Electron half of the manager: which window
+owns a session, where a session starts, and where its output goes. The manager
+itself is `TerminalHost`, the class `./host/terminal` exports, so this shell
+and a consumer run the same code rather than two copies of it.
 
 ```
 keystroke -> term.onData -> `pty:write` channel -> shell
 shell     -> `pty:data` event                   -> term.write
 ```
 
-Three details are load-bearing.
+Four details are load-bearing.
 
-- **`pty.ts` batches output.** A build log emits thousands of small writes per
-  second. One message each would swamp the channel, so `pty.ts` coalesces on an
-  8 millisecond timer.
+- **A session belongs to a window.** `pty.ts` holds one `TerminalHost` per
+  `BrowserWindow` and reaps it on `closed`, so a window that goes away takes
+  its shells with it and cannot reach another window's. Quit reaps every one.
+  A request that arrives with no window is refused: nothing would reap it.
+- **`TerminalHost` batches output.** A build log emits thousands of small
+  writes per second. One message each would swamp the channel, so it coalesces
+  on an 8 millisecond timer.
 - **Terminals stay mounted.** Switching tabs hides the inactive host rather
   than unmounting it. A remount would kill the shell and lose the scrollback.
 - **The content policy needs two additions.** `script-src` needs
@@ -142,7 +149,7 @@ emulator proves nothing about what reached the screen.
 
 ### Packaging the native module
 
-`@lydell/node-pty` is native, and this is the part that breaks quietly.
+`node-pty` is native, and this is the part that breaks quietly.
 
 It stays external to the Vite bundle. Bundling it would inline code that
 resolves a `.node` file by relative path, and that path does not survive the
@@ -154,24 +161,92 @@ The package built, every test passed, and a user would still have had no
 terminal. `forge.config.ts` now supplies its own `ignore`, and
 `scripts/verify-package.mjs` asserts the module is present.
 
+`*.node` is not the whole of it. On macOS `node-pty` `execvp`s `spawn-helper`,
+which sits beside `pty.node` and has no extension, at a path it rewrites from
+`app.asar` to `app.asar.unpacked`. An `unpack` glob of only `*.node` leaves the
+helper inside the archive and every shell fails to start with
+`posix_spawn failed`. The whole prebuild tree is unpacked instead. Windows needs
+the same treatment for `conpty.dll` and `OpenConsole.exe`, which `conpty.node`
+loads.
+
+**The package comes from Microsoft.** `@lydell/node-pty` repackages the same
+published tarball — the binaries and the seven `lib/*.js` files hash
+identically — and adds a single maintainer with no continuous integration.
+Microsoft ships every platform in one 26 MB package instead of a prebuild per
+platform (their issue #864), so `prunePrebuilds` in `forge.config.ts` drops the
+ones a given build cannot use. It runs as `packageAfterCopy` rather than in
+`packagerConfig.ignore`, because the `ignore` predicate is handed a path and
+not the target platform, and a cross-platform build would otherwise keep the
+build host's prebuild.
+
+The binary is Node-API: 38 `napi_*` imports and no V8 symbols. One binary per
+platform serves every Electron version, which is why `@electron/rebuild` does
+not appear anywhere in this repository. A registry install runs
+`scripts/prebuild.js`, which checks that the prebuild directory exists and exits
+0. `node-gyp` fires only on an unsupported platform or under
+`npm_config_build_from_source`.
+
+Every runtime dependency is pinned to an exact version. `^1.2.0-beta.14`
+admitted every later beta on a prerelease line, plus every 1.x release.
+`tests/package-exports.test.ts` holds that rule.
+
 ## The terminal a consumer gets
 
-Three exports, and they are deliberately separate.
+Four exports, and they are deliberately separate.
 
 | Export | What it is |
 | --- | --- |
 | `./renderer` | `TerminalView` and `TerminalTabs`, plus the `TerminalTransport` contract and `readTerminalTheme`. |
 | `./host/terminal` | `TerminalHost`, the pty manager, for a consumer's main process. |
 | `./renderer/styles.css` | `structural.css`, which carries the terminal rules. |
+| `./verify` | The packaging assertions, as a function to run against a consumer's own build. |
+
+### Verifying a consumer's own package
+
+A consumer inherits both traps and none of the checks. `./verify` closes that,
+and `scripts/verify-package.mjs` calls the same function, so the two cannot
+drift.
+
+```js
+import { readdirSync } from 'node:fs';
+import { listPackage } from '@electron/asar';
+import { terminalPackageChecks } from 'stuffbucket-electron/verify';
+
+const resources = 'dist/mac-arm64/YourApp.app/Contents/Resources';
+const checks = terminalPackageChecks({
+  packedFiles: listPackage(`${resources}/app.asar`),
+  unpackedFiles: readdirSync(`${resources}/app.asar.unpacked`, {
+    recursive: true,
+    encoding: 'utf8',
+  }),
+  platform: process.platform,
+  arch: process.arch,
+  contentSecurityPolicy: "script-src 'self' 'wasm-unsafe-eval'; connect-src 'self' data:",
+});
+
+for (const { name, ok } of checks) if (!ok) throw new Error(name);
+```
+
+It is plain ESM under `scripts/`, not TypeScript in `src/`, because `dist/` is
+ESM syntax in a package with no `"type": "module"`: a bundler reads it and
+`node` refuses it. A packaging check runs under plain `node`.
+
+The first two checks it returns are floors. Point either list at the wrong
+directory and it is empty, at which point every assertion over it would
+otherwise report a pass. `contentSecurityPolicy` is optional and covers the
+`ghostty-web` directives above; omit it and those two checks are not returned.
 
 `TerminalView` takes its transport as a value. It knows nothing about an IPC
 contract, so a consumer wires `TerminalHost` to whatever channels they already
 have and implements the five transport methods against them.
 
 `TerminalHost` is an instance, not module state, so a consumer with two windows
-gets two registries and closing one cannot reap the other's shells. It imports
-no `electron`: the home directory and the default shell are supplied, because
-`app.getPath` is not this module's to call.
+gets two registries and closing one cannot reap the other's shells. This shell
+uses it the same way: `src/main/native/pty.ts` keys one instance per
+`BrowserWindow`. It imports no `electron`: the home directory, the default
+shell, and any extra environment such as `TERM_PROGRAM` are supplied, because
+`app.getPath` is not this module's to call and the product name is not its to
+know.
 
 Three custom properties have no declaration in any stylesheet and cannot have
 one. The emulator renders to a canvas and takes literal colours at

@@ -24,6 +24,8 @@ knows. A third train would be that decision made too early.
 | `v0.0.1` | The shell's own behaviour: accessibility, interface state, its defects. |
 | `v0.0.2` | The seam a consumer depends on: the host entrypoint, the export, the    |
 |          | preload bridge, client integration, theming from an external source.    |
+| `v0.0.3` | What a consumer installs: the artifact is correct and provably so.      |
+| `v0.0.4` | What a consumer carries: install weight, the entrypoint seam, guards.   |
 
 The test for which train a change belongs on is whether
 `stuffbucket/maximal` has to change to benefit from it. If it does, the change
@@ -59,6 +61,9 @@ tag-check ──> release (draft) ──┬─> package-tarball ──> publish
                                 ├─> windows-msi ──> windows-msi-verify
                                 └─> macos-dmg
 ```
+
+The same workflow runs from a dispatch as a dry run, which builds everything
+and attaches nothing. See `docs/ci.md`.
 
 **`publish` gates on the tarball alone.** The installers run on every tag and
 do not hold the release.
@@ -143,9 +148,14 @@ administrator rights.
 
 `windows-msi-verify` installs it silently. It asserts the files, the registry
 marker, and the Add or Remove Programs entry. It then uninstalls and asserts
-clean removal. `publish` gates on that job.
+clean removal. It takes the MSI from `windows-msi` as a workflow artifact:
+`gh release download` cannot resolve a draft by tag name, and the release was a
+detour between two jobs that already have the file.
 
-To iterate without a release, dispatch `windows-msi-dev.yml` from a branch.
+`publish` does not gate on it. A broken installer costs an installer.
+
+To iterate without a release, dispatch `windows-msi-dev.yml` from a branch, or
+dispatch `release.yml` for a dry run of the whole pipeline. See `docs/ci.md`.
 
 ## Auto-update: why there is none
 
