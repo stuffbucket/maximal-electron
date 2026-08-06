@@ -51,6 +51,33 @@ that has not shipped.
 4. Open the next train: a `v0.0.(n+2)` milestone, branch, and draft release, so
    two are open again.
 
+## A pushed tag is immutable
+
+`v0.0.2` was pushed at 23:29:43, deleted, and pushed again at 23:37:44 onto a
+different commit, to pick up #80. The workflow run list shows both pushes. The
+release was still a draft, so nothing published moved, and the cost this time
+was nil.
+
+The cost next time is not. `stuffbucket/maximal` installs this package from a
+git ref, so a lockfile records `v0.0.3` and resolves whatever that tag points
+at now. Moving a tag changes what a consumer installs without changing anything
+they can see. That is the same class of hazard as adding an asset to a
+published release, and it has the same answer: cut the next patch.
+
+If a tag's build fails, the tag stays where it is. Fix the cause on the release
+branch, bump the patch, and push a new tag. The failed run is the record of what
+happened, and deleting the tag deletes that record too.
+
+`stuffbucket/maximal-core` reached the same rule from the other direction. Their
+#60 refuses a tag that is not above every tag that already exists, checked
+against `git ls-remote --tags origin` rather than the local checkout, because a
+checkout is stale by default. Here that ordering has held so far: `v0.0.1` is an
+ancestor of `v0.0.2`, and `v0.0.2` of `v0.0.3`.
+
+Nothing enforces any of this. `main` carries two branch rulesets,
+`main-no-force-delete` and `main-require-pr`. There is no ruleset with a tag
+target, so `git push --delete origin v0.0.3` succeeds today.
+
 ## The shape
 
 Push a tag. Seven jobs run. Every asset lands on a **draft** release, and one
