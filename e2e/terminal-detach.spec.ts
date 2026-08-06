@@ -1,4 +1,10 @@
-import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import {
+  expect,
+  test,
+  type ElectronApplication,
+  type Locator,
+  type Page,
+} from '@playwright/test';
 
 import {
   closeApp,
@@ -17,12 +23,22 @@ import {
  * attaches to it again. Asserting the same pid answers is what separates a
  * reattach from a second shell opened under the same id.
  *
+ * Commands go over `pty:write` rather than through the keyboard. Typing races
+ * the shell coming up, and a mangled command still matches a loose pattern: the
+ * first run of this scenario read a pid out of a line the shell had garbled,
+ * which is a number greater than zero and not a process. `e2e/shell.spec.ts`
+ * covers the keystroke path.
+ *
  * Its own application, because the preference persists and the shared suite
  * runs in a random order.
  *
  * POSIX only: the pid comes from the shell itself through `$$`, and `cmd.exe`
  * has no equivalent. Windows is unverified.
  */
+
+/** `newTerminal` in `App.tsx` numbers from the terminals open, so this is it. */
+const SESSION = 'term-1';
+const TAB = 'Terminal 1';
 
 let harness: Harness;
 
@@ -34,17 +50,21 @@ test.afterAll(async () => {
   await closeApp(harness);
 });
 
-function setDetach(page: Page, terminalDetach: boolean): Promise<unknown> {
-  return page.evaluate((value) => {
-    const api = (
-      globalThis as unknown as {
-        stuffbucket?: {
-          invoke: (channel: string, payload: unknown) => Promise<unknown>;
-        };
-      }
-    ).stuffbucket;
-    return api?.invoke('prefs:set', { terminalDetach: value });
-  }, terminalDetach);
+/** Reach the preload bridge. `window` is the Playwright page in this file. */
+function invoke(page: Page, channel: string, payload?: unknown): Promise<unknown> {
+  return page.evaluate(
+    ([name, body]) => {
+      const api = (
+        globalThis as unknown as {
+          stuffbucket?: {
+            invoke: (channel: string, payload?: unknown) => Promise<unknown>;
+          };
+        }
+      ).stuffbucket;
+      return api?.invoke(name as string, body);
+    },
+    [channel, payload] as const,
+  );
 }
 
 /** Signal 0 asks whether a process exists without delivering anything. */
@@ -59,30 +79,59 @@ function isAlive(app: ElectronApplication, pid: number): Promise<boolean> {
   }, pid);
 }
 
-/** Open a terminal tab and wait for the shell to report its own pid. */
-async function openTerminal(page: Page, marker: string): Promise<number> {
-  await page.click('[data-testid="tab-new"]');
-  const terminal = page.locator('[data-testid="terminal"]').last();
-  await expect(terminal.locator('canvas').first()).toBeVisible({ timeout: 20_000 });
-  await terminal.click();
+/**
+ * Ask the shell for its own pid.
+ *
+ * The brackets are the point. A partial line cannot match, so a command that
+ * did not arrive intact leaves the poll to time out with its own message rather
+ * than yielding a number that is not a pid.
+ */
+async function pidOf(page: Page, terminal: Locator, marker: string): Promise<number> {
+  await invoke(page, 'pty:write', { id: SESSION, data: `echo "[${marker}=$$]"\n` });
 
-  await page.keyboard.type(`echo ${marker}:$$`);
-  await page.keyboard.press('Enter');
-
-  const pattern = new RegExp(`${marker}:(\\d+)`);
+  const pattern = new RegExp(`\\[${marker}=(\\d+)]`);
   await expect
     .poll(() => terminalScreen(terminal), {
       timeout: 20_000,
-      message: 'the shell never reported its pid',
+      message: `the shell never answered ${marker}`,
     })
     .toMatch(pattern);
 
   return Number(pattern.exec(await terminalScreen(terminal))?.[1]);
 }
 
-/** Close a tab by its title, through the control a user clicks. */
-function closeTab(page: Page, title: string): Promise<void> {
-  return page.locator('.tab').filter({ hasText: title }).locator('.tab__close').click();
+/** The terminal a view is showing. There is only ever one in this scenario. */
+function terminalOf(page: Page): Locator {
+  return page.locator('[data-testid="terminal"]');
+}
+
+/** Open a terminal tab and wait for its shell to print something. */
+async function openTerminal(page: Page): Promise<Locator> {
+  await page.click('[data-testid="tab-new"]');
+  const terminal = terminalOf(page);
+  await expect(terminal.locator('canvas').first()).toBeVisible({ timeout: 20_000 });
+
+  // A shell that has printed nothing has not necessarily started, and writing
+  // to a session the host does not hold yet is dropped.
+  await expect
+    .poll(() => terminalScreen(terminal), {
+      timeout: 20_000,
+      message: 'the shell printed nothing at all',
+    })
+    .not.toBe('');
+
+  return terminal;
+}
+
+/**
+ * Close the tab, and insist the view left the document.
+ *
+ * Without this a later assertion could read the closed view's own buffer and
+ * report it as replayed output.
+ */
+async function closeTerminalTab(page: Page): Promise<void> {
+  await page.locator('.tab').filter({ hasText: TAB }).locator('.tab__close').click();
+  await expect(terminalOf(page)).toHaveCount(0);
 }
 
 test('a tab close ends its shell, unless the shell is detached', async () => {
@@ -93,18 +142,18 @@ test('a tab close ends its shell, unless the shell is detached', async () => {
 
   const { app, window } = harness;
   await resetShell(harness);
-  await setDetach(window, false);
+  await invoke(window, 'prefs:set', { terminalDetach: false });
 
   /* --------------------------------------------------- the default: terminate */
 
-  const reaped = await openTerminal(window, 'REAPED_PID');
+  const reaped = await pidOf(window, await openTerminal(window), 'REAPED');
 
   // The floor. Without a real pid every check below asks about nothing, and a
   // test that found no process would report both behaviours as correct.
   expect(reaped).toBeGreaterThan(0);
   expect(await isAlive(app, reaped)).toBe(true);
 
-  await closeTab(window, 'Terminal 1');
+  await closeTerminalTab(window);
   await expect
     .poll(() => isAlive(app, reaped), {
       timeout: 15_000,
@@ -114,14 +163,14 @@ test('a tab close ends its shell, unless the shell is detached', async () => {
 
   /* ------------------------------------------------------ opted in: detach */
 
-  await setDetach(window, true);
-  const kept = await openTerminal(window, 'KEPT_PID');
+  await invoke(window, 'prefs:set', { terminalDetach: true });
+  const kept = await pidOf(window, await openTerminal(window), 'KEPT');
 
   expect(kept).toBeGreaterThan(0);
   expect(kept).not.toBe(reaped);
   expect(await isAlive(app, kept)).toBe(true);
 
-  await closeTab(window, 'Terminal 1');
+  await closeTerminalTab(window);
 
   // The reaped shell above was gone 42 milliseconds after its tab closed, so
   // five seconds of staying alive is a result rather than a race won.
@@ -135,37 +184,29 @@ test('a tab close ends its shell, unless the shell is detached', async () => {
 
   // A session nothing can find again is a leak rather than a feature, so the
   // shell lists what is running with no tab.
-  const reattach = window.locator('[data-testid="reattach-term-1"]');
+  const reattach = window.locator(`[data-testid="reattach-${SESSION}"]`);
   await expect(reattach).toBeVisible({ timeout: 10_000 });
   await reattach.click();
 
-  const terminal = window.locator('[data-testid="terminal"]').last();
+  const terminal = terminalOf(window);
   await expect(terminal.locator('canvas').first()).toBeVisible({ timeout: 20_000 });
 
-  // What the host retained crosses the unmount. The emulator's scrollback does
-  // not: this is the replayed tail, not the buffer the closed view held.
+  // What the host retained crosses the unmount. This is a new view over an old
+  // session, so every character on it was replayed.
   await expect
     .poll(() => terminalScreen(terminal), {
       timeout: 20_000,
       message: 'the attached view was never sent what the session had printed',
     })
-    .toContain(`KEPT_PID:${String(kept)}`);
+    .toContain(`[KEPT=${String(kept)}]`);
 
   // The same process, not a second one spawned under the same id.
-  await terminal.click();
-  await window.keyboard.type('echo AGAIN:$$');
-  await window.keyboard.press('Enter');
-  await expect
-    .poll(() => terminalScreen(terminal), {
-      timeout: 20_000,
-      message: 'the attached view is talking to a different shell',
-    })
-    .toContain(`AGAIN:${String(kept)}`);
+  expect(await pidOf(window, terminal, 'AGAIN')).toBe(kept);
 
   /* ------------------------------------------------------- and back to off */
 
-  await setDetach(window, false);
-  await closeTab(window, 'Terminal 1');
+  await invoke(window, 'prefs:set', { terminalDetach: false });
+  await closeTerminalTab(window);
   await expect
     .poll(() => isAlive(app, kept), {
       timeout: 15_000,
