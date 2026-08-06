@@ -1,7 +1,8 @@
 # Consuming this package
 
 This package publishes to the **GitHub Packages npm registry** as
-`@stuffbucket/maximal-electron`. Issue #22 named it.
+`@stuffbucket/maximal-electron`. Issue #22 named it. The first publish happens
+on the next tag; nothing is in the registry before then.
 
 Before the registry there were three install paths and they behaved
 differently. `npm pack` runs `prepack`. A `github:` ref runs `prepare`. An
@@ -29,8 +30,9 @@ self-hosted macOS signing runner, which is a machine somebody configures by
 hand. That is the price of the registry, and it is paid by the consuming
 repository rather than this one.
 
-The alternative that avoids it entirely is the public npm registry, which needs
-no token to install and a publish credential this repository does not have.
+The public npm registry avoids the burden entirely. It needs no token to
+install. It needs a publish credential this repository does not hold, and that
+is a decision for the owner rather than a change an agent makes.
 `docs/roadmap.md` is where that argument belongs if the burden proves too high.
 
 ## What a consumer writes
