@@ -87,20 +87,20 @@ function fragility() {
     return {
       fragile: 'spawn-helper',
       heading: 'Reproducing #88: moving spawn-helper aside',
-      // What `llama-protocol.ts` calls the fault `process.abort()` raises in
+      // What `llama-protocol.ts` calls the fault `process.crash()` raises in
       // the engine. Observed on this platform: Electron reports a POSIX signal
-      // death as the bare signal number, and 6 is SIGABRT.
-      abortName: 'SIGABRT',
+      // death as the bare signal number, and 11 is SIGSEGV.
+      faultName: 'SIGSEGV',
     };
   }
   if (process.platform === 'win32') {
     return {
       fragile: 'conpty.node',
       heading: 'The same defect as #88, one platform over: moving conpty.node aside',
-      // Observed once the gate came off: Electron reports the engine's
-      // `process.abort()` as 134 here, which is `128 + SIGABRT` rather than
-      // the status code this comment used to say was unknown. Issue #149.
-      abortName: 'SIGABRT',
+      // `process.crash()` writes through a null pointer, which is
+      // STATUS_ACCESS_VIOLATION here. `process.abort()` was used until #156
+      // and never faulted on Windows at all: Node defines it as `_exit(134)`.
+      faultName: 'access violation',
     };
   }
   return undefined;
@@ -274,16 +274,16 @@ check(
  * the same shape, and it shipped.
  *
  * The application forks its engine as a `utilityProcess`, makes it load
- * `node-llama-cpp` out of `app.asar.unpacked`, then makes it abort in native
+ * `node-llama-cpp` out of `app.asar.unpacked`, then makes it fault in native
  * code. A pass means both halves: the library resolved from the child, and the
- * main process outlived the abort well enough to print a line about it.
+ * main process outlived the fault well enough to print a line about it.
  */
 console.log('\nLoading llama.cpp in the engine process, then killing it\n');
 
 const engine = await launch([LLAMA_FLAG], LLAMA_LAUNCH_TIMEOUT_MS);
 console.log(`${describe(engine)}\n`);
 
-check(engine.code === 0, 'the packaged application survives a native abort in the engine', {
+check(engine.code === 0, 'the packaged application survives a native fault in the engine', {
   count: 1,
   of: 'engine runs',
 });
@@ -301,7 +301,7 @@ check(
   'it names a native fault rather than a bare exit code',
   { count: 1, of: 'engine runs' },
 );
-check(engine.stdout.includes(platform.abortName), `it reports the fault as ${platform.abortName}`, {
+check(engine.stdout.includes(platform.faultName), `it reports the fault as ${platform.faultName}`, {
   count: 1,
   of: 'named faults',
 });
@@ -375,7 +375,7 @@ const code = summary('smoke:packaged');
 if (code === 0) {
   console.log(
     '\nThe packaged application opened a shell, and cannot pass without one.\n' +
-      'It loaded llama.cpp out of process, and outlived it aborting.',
+      'It loaded llama.cpp out of process, and outlived it faulting.',
   );
 }
 process.exit(code);

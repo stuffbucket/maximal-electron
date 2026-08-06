@@ -189,8 +189,8 @@ server and no signed binary. `package (macos-latest)` and
 
 `--self-check=llama` launches the same binary again. It forks the engine as a
 `utilityProcess`, makes it load `node-llama-cpp` out of `app.asar.unpacked`,
-and then makes it abort in native code. A pass needs both halves: the library
-resolved from the child, and the main process outlived the abort well enough to
+and then makes it fault in native code. A pass needs both halves: the library
+resolved from the child, and the main process outlived the fault well enough to
 print a line. `src/main/native/llama-protocol.ts` holds the strings and
 `tests/llama-protocol.test.ts` pairs them with the driver's copy, as the
 terminal half does. Issue #133.
@@ -207,12 +207,18 @@ the same two green lines — the "failed for the wrong reason" case at the end o
 `.claude/skills/write-a-check/SKILL.md`, caught by re-running the break rather
 than by reading the code.
 
-The fault name is pinned per platform and only where it has been seen.
-`SIGABRT` is asserted by name on macOS. Windows reports a status code instead
-of a signal and no run has yet shown which one, so that record carries no name
-and the driver prints a `skip`. What is asserted on both is that the supervisor
-recognised a fault at all: a code `llama-protocol.ts` cannot name reads as
-"exited with code N" and fails the check with the number in the log.
+The fault name is pinned per platform, and both have now been seen. `SIGSEGV`
+is asserted by name on macOS, against the bare signal number Electron reports;
+`access violation` is asserted on Windows, against the status code. What is
+asserted on both is that the supervisor recognised a fault at all: a code
+`llama-protocol.ts` cannot name reads as "exited with code N" and fails the
+check with the number in the log.
+
+The engine faults with Electron's `process.crash()` rather than with
+`process.abort()`. Node defines `ABORT_NO_BACKTRACE()` as `_exit(134)` on
+Windows, so an abort there is a clean exit that no crash handler sees, and the
+Windows half of `verify:crash-artifact` was measuring a process that had not
+crashed. Issue #156.
 
 This is the first thing in the repository ever to load the packaged llama.cpp.
 It failed on its first run, and `docs/architecture.md` records what it found.
