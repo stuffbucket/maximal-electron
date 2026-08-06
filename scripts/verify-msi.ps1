@@ -65,10 +65,19 @@ Write-Host "All $($expected.Count) packaged files are installed in $InstallDir"
 $marker = Get-ItemProperty -Path 'HKCU:\Software\stuffbucket\Stuffbucket' -Name installed
 if ($marker.installed -ne 1) { throw 'HKCU installed marker not set' }
 
-$arp = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' |
-    ForEach-Object { Get-ItemProperty $_.PSPath } |
-    Where-Object { $_.DisplayName -eq 'Stuffbucket' }
-if (-not $arp) { throw 'No Add/Remove Programs entry' }
+# A per-user MSI registers with Windows Installer rather than under the
+# Uninstall key, which does not exist at all in a fresh profile's hive. The
+# assertion that named only Uninstall had never run: the check above it failed
+# first, every time.
+$registered = @(
+    'HKCU:\Software\Microsoft\Installer\Products',
+    'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall'
+) |
+    ForEach-Object { Get-ChildItem -Path $_ -ErrorAction SilentlyContinue } |
+    ForEach-Object { Get-ItemProperty -Path $_.PSPath } |
+    Where-Object { $_.ProductName -eq 'Stuffbucket' -or $_.DisplayName -eq 'Stuffbucket' }
+if (-not $registered) { throw 'Stuffbucket is not registered for uninstall' }
+Write-Host "Registered for uninstall at $($registered[0].PSPath)"
 
 # A complete tree still does not prove the application starts. Electron exits
 # within a second or two when the asar is unreadable or a native module is the

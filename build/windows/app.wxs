@@ -48,8 +48,13 @@
 
     <MediaTemplate EmbedCab="yes" />
 
-    <Icon Id="AppIcon" SourceFile="!(bindpath.AppDir)\Stuffbucket.exe" />
-    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <!--
+      The Add or Remove Programs icon. WiX embeds this file whole, so pointing
+      it at the Electron executable put a 226 MB copy of it in the MSI (#86).
+      IconDir follows STUFFBUCKET_ICON_DIR, the seam a consumer swaps.
+    -->
+    <Icon Id="AppIcon.ico" SourceFile="!(bindpath.IconDir)\icon.ico" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" />
     <Property Id="ARPNOREPAIR" Value="1" />
 
     <Feature Id="Main" Title="Stuffbucket" Level="1">

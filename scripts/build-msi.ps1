@@ -12,10 +12,13 @@ param(
     [Parameter(Mandatory = $true)][string] $Version,
     [Parameter(Mandatory = $true)][string] $Out,
     [string] $AppDir = 'out\Stuffbucket-win32-x64',
+    [string] $IconDir = $env:STUFFBUCKET_ICON_DIR,
     [int] $MinimumFiles = 50
 )
 
 $ErrorActionPreference = 'Stop'
+
+if (-not $IconDir) { $IconDir = 'build\icons' }
 
 if (-not (Test-Path -LiteralPath (Join-Path $AppDir 'Stuffbucket.exe'))) {
     throw "Packaged app not found at $AppDir"
@@ -25,6 +28,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $AppDir 'Stuffbucket.exe'))) {
 # file's own directory, not the working directory, then warns and harvests
 # nothing. That shipped an MSI with no application in it (#86).
 $appRoot = (Resolve-Path -LiteralPath $AppDir).Path
+$iconRoot = (Resolve-Path -LiteralPath $IconDir).Path
 
 $outDir = Split-Path -Parent $Out
 if ($outDir) { New-Item -ItemType Directory -Path $outDir -Force | Out-Null }
@@ -36,6 +40,7 @@ wix build build\windows\app.wxs `
     -d "Version=$Version" `
     -arch x64 `
     -bindpath "AppDir=$appRoot" `
+    -bindpath "IconDir=$iconRoot" `
     -ext WixToolset.Util.wixext `
     -wx8600 `
     -wx8601 `

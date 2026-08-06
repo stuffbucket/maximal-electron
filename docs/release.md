@@ -163,11 +163,18 @@ calls `wix build` around it.
 
 `scripts/verify-msi.ps1` installs the MSI silently, compares the installed
 tree against that manifest file by file and byte for byte, asserts the registry
-marker and the Add or Remove Programs entry, launches the installed executable
-and requires it to still be running twenty seconds later, then uninstalls and
-asserts clean removal. It takes the MSI from `windows-msi` as a workflow
-artifact: `gh release download` cannot resolve a draft by tag name, and the
-release was a detour between two jobs that already have the file.
+marker and the Windows Installer product registration, launches the installed
+executable and requires it to still be running twenty seconds later, then
+uninstalls and asserts clean removal. It takes the MSI from `windows-msi` as a
+workflow artifact: `gh release download` cannot resolve a draft by tag name,
+and the release was a detour between two jobs that already have the file.
+
+A per-user MSI does not write to
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall`. It registers under
+`HKCU\Software\Microsoft\Installer\Products`, and on a fresh profile the
+`Uninstall` key does not exist at all. The old assertion named only
+`Uninstall`, and had never run: the file check above it failed first, every
+time.
 
 The tree comparison replaced a check for `Stuffbucket.exe` alone. An installer
 can carry the executable and none of the asar, the locales, or the resources
