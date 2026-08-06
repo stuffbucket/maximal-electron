@@ -65,9 +65,9 @@ much as a private one. `docs/consuming.md` has both, and says what that costs.
 
 It exposes the secured host window at `@stuffbucket/maximal-electron/host` and
 the generic renderer frame at `@stuffbucket/maximal-electron/renderer`. The
-renderer entry exports `ShellLayout`,
-`TitleBar`, `TabBar`, `NavRail`, `Canvas`, and `IconButton`. It does not export
-the reference application, terminal, agent, sample data, or fixtures.
+renderer entry exports `ShellLayout`, `TitleBar`, `TabBar`, `NavRail`,
+`Canvas`, and `IconButton`. It does not export the reference application,
+terminal, agent, sample data, or fixtures.
 
 Import the structural styles separately:
 
