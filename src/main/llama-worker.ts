@@ -89,14 +89,36 @@ let loaded: { path: string; model: LoadedModel } | undefined;
 /** Load the library and report the backend it chose, and what it cost. */
 async function probe(id: string): Promise<string> {
   const started = Date.now();
-  const nlc = await library();
-  const getLlama = nlc.getLlama as () => Promise<{ gpu: string | false }>;
-  const llama = await getLlama();
-  const device = llama.gpu === false ? 'cpu' : llama.gpu;
-  // The number, not a round guess, is what a timeout on a platform nobody has
-  // measured should be derived from. Issue #133.
-  post({ kind: 'loaded', id, device, ms: Date.now() - started });
-  return device;
+  const trace = (line: string): void => {
+    process.stderr.write(`probe149 ${String(Date.now() - started)} ${line}\n`);
+  };
+  // A heartbeat tells a promise that never settles apart from an event loop
+  // that stopped turning. Issue #149.
+  const beat = setInterval(() => trace('alive'), 2000);
+  try {
+    trace('importing node-llama-cpp');
+    const nlc = await library();
+    trace('import returned');
+    const getLlamaAny = nlc.getLlama as (o?: unknown) => Promise<{ gpu: string | false }>;
+    trace('calling getLlama gpu=false');
+    try {
+      const cpu = await getLlamaAny({ gpu: false, build: 'never', progressLogs: false });
+      trace(`getLlama gpu=false returned ${String(cpu.gpu)}`);
+    } catch (error) {
+      trace(`getLlama gpu=false threw ${String(error)}`);
+    }
+    trace('calling getLlama auto');
+    const getLlama = nlc.getLlama as () => Promise<{ gpu: string | false }>;
+    const llama = await getLlama();
+    trace(`getLlama auto returned ${String(llama.gpu)}`);
+    const device = llama.gpu === false ? 'cpu' : llama.gpu;
+    // The number, not a round guess, is what a timeout on a platform nobody has
+    // measured should be derived from. Issue #133.
+    post({ kind: 'loaded', id, device, ms: Date.now() - started });
+    return device;
+  } finally {
+    clearInterval(beat);
+  }
 }
 
 /**
