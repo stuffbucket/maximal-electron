@@ -60,7 +60,7 @@ export function selfCheckCommand(token: string, platform: string): string {
   const first = token.slice(0, half);
   const second = token.slice(half);
   return platform === 'win32'
-    ? `echo ${first} ${second}\r`
+    ? `echo ${first}^${second}\r`
     : `printf '%s%s\\n' ${first} ${second}\r`;
 }
 
