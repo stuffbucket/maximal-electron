@@ -59,6 +59,7 @@ export const DEFERRED = new Map([
   ['scripts/mutation-scope.mjs', 125],
   ['scripts/neutrality.mjs', 125],
   ['scripts/package-contract.mjs', 125],
+  ['scripts/peer-table.mjs', 125],
   ['scripts/record.mjs', 125],
   ['scripts/resolve-exports.mjs', 125],
   ['scripts/smoke-packaged.mjs', 125],
