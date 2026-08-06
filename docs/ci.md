@@ -25,43 +25,60 @@ What was removed was the MSI and the dmg built on top of it, and
 
 `actions/setup-node` with `cache: npm` caches npm's own tarball cache, so a
 registry package does not download twice. Electron's binary is not a registry
-package. `node_modules/electron/install.js` fetches a platform zip from GitHub
-through `@electron/get`, into a directory that library manages itself, and
-nothing cached it until #129: every job that ran `npm ci` re-fetched around 120
-MB.
+package: it is fetched from GitHub through `@electron/get`, into a directory
+that library manages itself, and nothing cached it until #129.
 
-`@electron/get` reads its cache root from `electron_config_cache` and, unset,
-falls back to `env-paths`. That resolves to `~/Library/Caches/electron` on
-macOS, `~/.cache/electron` on Linux, and a `Cache` folder under
-`%LOCALAPPDATA%\electron` on Windows. Three directories, so
+**It is not `npm ci` that downloads it.** Electron 43 ships no `postinstall` at
+all. `node_modules/electron/index.js` fetches the binary the first time
+something resolves the executable path, and here that is
+`electron-forge package`. #129 opened on the assumption that every job paid for
+the download; the first run of the check below found the `lint, types, tests`
+job's cache root empty after `npm ci`, which is what disproved it. So the cache
+is restored in the four jobs that package — `package` and `end-to-end` on both
+hosts — and in no others.
+
+There are two downloads, not one. `install.js` reads `electron_config_cache`
+for its cache root; `@electron/packager` calls `@electron/get` without one and
+takes the default. CI therefore does **not** pin the variable: pinning it would
+move one download and leave the other in the default directory, so the cached
+path would hold half of what the job fetched and still look populated.
+
+The default is `env-paths('electron').cache`, which is
+`~/Library/Caches/electron` on macOS, `~/.cache/electron` (or `XDG_CACHE_HOME`)
+on Linux, and a `Cache` folder under `%LOCALAPPDATA%\electron` on Windows.
+`scripts/electron-cache.mjs` computes it, and
 [`.github/actions/electron-cache/action.yml`](../.github/actions/electron-cache/action.yml)
-pins the variable to one path under the runner's temporary directory and one
-`actions/cache` entry covers every runner.
+asks the script for it with `--path` rather than writing the three paths into
+YAML. The check reads the same function, so the directory that is cached and
+the directory that is asserted cannot drift apart.
 
 **The key carries the Electron version**, read out of `package-lock.json`, so a
 version bump misses rather than restoring the wrong binary. It deliberately
 does not carry a lockfile hash: this cache holds Electron and nothing else, and
 a hash would throw it away on every unrelated dependency bump. Underneath,
-`@electron/get` puts each version in its own directory and names the file
+`@electron/get` puts each version in its own hashed directory and names the file
 `electron-v<version>-<platform>-<arch>.zip`, so a stale binary cannot be served
 even when a key collides.
 
-`release.yml` does not use it. That job runs once per tag, the release path is
-the one that cannot be re-run, and a cache that rarely hits pays for nothing.
+`release.yml` does not use it. `package-tarball` never packages, so it never
+resolves the binary either.
 
 ### Why there is a check on it
 
-A cache is exactly the shape of defect this page is about. Misspell
-`electron_config_cache` and the pinned root stays empty, `actions/cache` saves
-an empty directory, and every later run restores it, reports a hit, and
-downloads the binary again. Nothing in the log says so.
+A cache is exactly the shape of defect this page is about. Put it in a job that
+never resolves Electron and the root stays empty, `actions/cache` saves an empty
+directory, and every later run restores it and reports a hit while nothing is
+cached. Nothing in the log says so.
 
-So every job that uses the action runs `npm run verify:electron-cache` straight
-after `npm ci`. It counts the files under the pinned root, fails on zero, and
+So every job that uses the action runs `npm run verify:electron-cache`, **after
+`npm run package`** rather than after `npm ci`, because packaging is the step
+that fills the cache. It counts the files under the root, fails on zero, and
 asserts that the download for this runner's platform and architecture is there
-at the version `node_modules/electron` actually installed. It reads
-`electron_config_cache` rather than falling back to the per-OS default, because
-a green run against a cache CI is not using is the same defect one level along.
+at the version `node_modules/electron` actually installed.
+
+It fails rather than reporting the run unverified. The condition it asserts is
+one those four jobs always meet, so a zero there is a real defect and not a
+question the check could not answer.
 
 ## The problem this page exists for
 

@@ -1,26 +1,29 @@
-# Cache Electron's own binary download.
+# Cache Electron's binary download.
 #
 # `actions/setup-node`'s `cache: npm` caches the npm tarball cache, which is a
-# different surface: `node_modules/electron/install.js` fetches the platform
-# zip from GitHub through `@electron/get`, not from the registry. Nothing here
-# cached it, and six jobs a pull request paid for that.
+# different surface. Electron's binary is fetched from GitHub through
+# `@electron/get`, and nothing cached it. Issue #129.
 #
-# `@electron/get` falls back to `env-paths`, which resolves to a different
-# directory on each runner OS — `~/Library/Caches/electron`,
-# `~/.cache/electron`, and `%LOCALAPPDATA%\electron\Cache`. Pinning
-# `electron_config_cache`, which `install.js` reads for its `cacheRoot`, makes
-# one path cover all three.
+# **Electron 43 has no `postinstall`.** `npm ci` downloads no binary at all:
+# `node_modules/electron/index.js` fetches it the first time something resolves
+# the executable, which here is `electron-forge package`. So this belongs only
+# in jobs that package, and `npm run verify:electron-cache` goes after
+# `npm run package` rather than after `npm ci`.
+#
+# The path is not written here. `scripts/verify-electron-cache.mjs --path`
+# computes it, and the same function decides what the check reads, so the
+# directory that is cached and the directory that is checked cannot drift
+# apart. It differs per operating system because `@electron/get` falls back to
+# `env-paths`, and CI does not pin `electron_config_cache`: `install.js` reads
+# that variable and `@electron/packager` does not, so pinning it would leave
+# half the downloads outside the cached path.
 #
 # The key carries the resolved Electron version, so a version bump misses. It
 # does not carry the lockfile hash: this cache holds Electron and nothing else,
 # and a hash would evict it on every unrelated dependency bump.
-#
-# Run `npm run verify:electron-cache` after `npm ci` in any job that uses this.
-# A misspelled variable leaves the pinned root empty, and an empty root saves
-# and restores forever without ever holding a binary.
 
 name: Cache the Electron binary
-description: Pin Electron's download cache to one path and restore it by version
+description: Restore Electron's download cache for this runner, by version
 
 outputs:
   cache-hit:
@@ -29,28 +32,30 @@ outputs:
   version:
     description: The Electron version the lockfile resolves to
     value: ${{ steps.resolve.outputs.version }}
+  root:
+    description: The download cache directory for this runner
+    value: ${{ steps.resolve.outputs.root }}
 
 runs:
   using: composite
   steps:
-    - name: Point @electron/get at one path on every runner
-      shell: bash
-      run: echo "electron_config_cache=${RUNNER_TEMP}/electron-cache" >> "$GITHUB_ENV"
-
-    - name: Read the Electron version the lockfile resolves to
+    - name: Resolve the download cache and the pinned version
       id: resolve
       shell: bash
       run: |
         set -euo pipefail
+        root="$(node scripts/verify-electron-cache.mjs --path)"
         version="$(node -p "require('./package-lock.json').packages['node_modules/electron'].version")"
+        [[ -n "$root" ]] || { echo "::error::no Electron cache root for ${RUNNER_OS}"; exit 1; }
         [[ -n "$version" ]] || { echo "::error::package-lock.json pins no electron version"; exit 1; }
+        echo "root=${root}" >> "$GITHUB_OUTPUT"
         echo "version=${version}" >> "$GITHUB_OUTPUT"
-        echo "Electron ${version}"
+        echo "electron ${version} caches in ${root}"
 
     - id: restore
       uses: actions/cache@v4
       with:
-        path: ${{ runner.temp }}/electron-cache
+        path: ${{ steps.resolve.outputs.root }}
         key: electron-${{ runner.os }}-${{ runner.arch }}-${{ steps.resolve.outputs.version }}
 
     - name: Report the hit
@@ -59,4 +64,4 @@ runs:
         HIT: ${{ steps.restore.outputs.cache-hit }}
         VERSION: ${{ steps.resolve.outputs.version }}
       run: |
-        echo "electron ${VERSION} on ${RUNNER_OS}/${RUNNER_ARCH}: cache-hit=${HIT:-false}"
+        echo "electron ${VERSION} on ${RUNNER_OS}/${RUNNER_ARCH}, cache-hit=${HIT:-false}"

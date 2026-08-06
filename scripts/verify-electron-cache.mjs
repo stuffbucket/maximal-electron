@@ -1,30 +1,34 @@
 #!/usr/bin/env node
 /**
- * The Electron download cache holds the binary this checkout installed.
+ * The Electron download cache holds the binary this job actually fetched.
  *
- * `.github/actions/electron-cache/action.yml` pins `electron_config_cache` and
- * restores that path by Electron version. Nothing about that arrangement is
- * visible when it breaks: a misspelled variable leaves the pinned root empty,
- * `actions/cache` saves an empty directory, and every later run restores it and
- * reports a hit while `npm ci` downloads the binary again. That is the defect
+ * Electron 43 downloads nothing at install time — `npm ci` in the `static` job
+ * leaves the cache root empty, which is how #129's premise turned out to be
+ * wrong. The download happens when `electron-forge package` first resolves the
+ * executable, so this runs after `npm run package` rather than after `npm ci`.
+ *
+ * Without it the arrangement fails silently: a job that never resolves Electron
+ * caches an empty directory, every later run restores it, `actions/cache`
+ * reports a hit, and the download happens anyway. That is the defect
  * `.claude/skills/write-a-check/SKILL.md` is written about, so this asserts the
  * root holds a download and says how many it counted.
  *
- * It reads `electron_config_cache`, which is the variable the arrangement turns
- * on. Unset, there is nothing to check and it says so rather than falling back
- * to the per-OS default and passing on a cache CI is not using.
+ * `--path` prints the root and exits. The composite action feeds that to
+ * `actions/cache`, so the directory that is cached and the directory that is
+ * checked cannot drift apart.
  */
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { scopedChecks } from './check-scope.mjs';
-import { inspectCache } from './electron-cache.mjs';
+import { inspectCache, resolveCacheRoot } from './electron-cache.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-/** Every file under `dir`, one level of version-hash directories deep. */
+/** Every file under `dir`. `@electron/get` nests one hashed directory deep. */
 function filesUnder(dir) {
   if (!existsSync(dir)) return [];
   const found = [];
@@ -37,23 +41,27 @@ function filesUnder(dir) {
 }
 
 function main() {
-  const { check, summary } = scopedChecks();
-
-  const root = process.env['electron_config_cache'];
-  const installed = path.join(ROOT, 'node_modules/electron/package.json');
-
-  check(root !== undefined && root !== '', 'electron_config_cache names a cache root', {
-    count: root === undefined || root === '' ? 0 : 1,
-    of: 'pinned cache roots',
+  const root = resolveCacheRoot({
+    platform: process.platform,
+    home: homedir(),
+    env: process.env,
   });
 
-  check(existsSync(installed), 'electron is installed, so there was a download to cache', {
+  if (process.argv.includes('--path')) {
+    console.log(root);
+    return;
+  }
+
+  const { check, summary } = scopedChecks();
+  const installed = path.join(ROOT, 'node_modules/electron/package.json');
+
+  check(existsSync(installed), 'electron is installed, so a version can be demanded', {
     count: existsSync(installed) ? 1 : 0,
     of: 'node_modules/electron manifests',
   });
 
-  if (root === undefined || root === '' || !existsSync(installed)) {
-    console.error('\nSet electron_config_cache and run npm ci before this check.');
+  if (!existsSync(installed)) {
+    console.error('\nRun npm ci before this check.');
     process.exit(summary('verify:electron-cache'));
   }
 
@@ -71,7 +79,7 @@ function main() {
   for (const file of files) console.log(`  ${path.relative(root, file)}`);
   console.log('');
 
-  check(downloads.length > 0, 'the pinned cache root holds an Electron download', {
+  check(downloads.length > 0, 'the cache root holds an Electron download', {
     count: files.length,
     of: 'files under the cache root',
   });

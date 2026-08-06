@@ -41,13 +41,11 @@ jobs:
           node-version: 22
           cache: npm
 
-      # `cache: npm` above covers the registry. Electron's own binary comes
-      # from GitHub through `@electron/get` and is a second cache surface.
-      # Issue #129.
-      - uses: ./.github/actions/electron-cache
+      # No Electron cache here. Electron 43 has no `postinstall`, so `npm ci`
+      # downloads no binary, and this job never resolves one. Caching an empty
+      # directory is worse than not caching: every later run restores nothing
+      # and reports a hit. Issue #129.
       - run: npm ci
-      - run: npm run verify:electron-cache
-
       - run: npm run lint
       - run: npm run typecheck
 
@@ -124,10 +122,13 @@ jobs:
         with:
           node-version: 22
           cache: npm
+
+      # `electron-forge package` is what downloads the Electron binary, so the
+      # cache is restored before it and asserted after it. Issue #129.
       - uses: ./.github/actions/electron-cache
       - run: npm ci
-      - run: npm run verify:electron-cache
       - run: npm run package
+      - run: npm run verify:electron-cache
 
       # asar contents plus the fuse values. The end-to-end tests cannot cover
       # these: the EnableNodeCliInspectArguments fuse stops Playwright
@@ -156,7 +157,6 @@ jobs:
           cache: npm
       - uses: ./.github/actions/electron-cache
       - run: npm ci
-      - run: npm run verify:electron-cache
 
       # Produces the .vite bundles the harness drives. Not the capture fixture:
       # no spec reaches it, and this job does not run `verify:package`, which is
@@ -164,6 +164,11 @@ jobs:
       - run: npm run package
         env:
           STUFFBUCKET_SKIP_FIXTURE: '1'
+
+      # After packaging, because that is the step that resolves the Electron
+      # binary and therefore the step that fills the cache. Issue #129.
+      - run: npm run verify:electron-cache
+
       - run: npm run test:e2e
 
       - if: failure()

@@ -1,15 +1,81 @@
 import { describe, expect, it } from 'vitest';
 
-import { inspectCache, parseDownload } from '../scripts/electron-cache.mjs';
+import {
+  defaultCacheRoot,
+  inspectCache,
+  parseDownload,
+  resolveCacheRoot,
+} from '../scripts/electron-cache.mjs';
 
 /**
- * The name `@electron/get` writes, and what the cache root is allowed to hold.
+ * Where Electron's download lands, and what the cache root is allowed to hold.
  *
- * The check over this decides whether CI's pinned `electron_config_cache` was
- * ever written to. An empty root saves and restores forever while every job
- * re-downloads the binary, which is the shape of every check this repository
- * has shipped with an empty scope.
+ * The path is asserted against `env-paths`, which is what `@electron/get` falls
+ * back to, because the composite action caches whatever this returns. The
+ * matching decides whether the job that was supposed to download Electron did.
+ * A job that never resolves it caches an empty directory and reports a hit
+ * forever, which is the shape of every check this repository has shipped with
+ * an empty scope.
  */
+
+describe('defaultCacheRoot', () => {
+  it('is under Library/Caches on macOS', () => {
+    expect(defaultCacheRoot({ platform: 'darwin', home: '/Users/x', env: {} })).toBe(
+      '/Users/x/Library/Caches/electron',
+    );
+  });
+
+  it('is a Cache folder under LOCALAPPDATA on Windows', () => {
+    // A value the home-directory fallback cannot also produce, or the
+    // assertion passes without ever reading the variable.
+    expect(
+      defaultCacheRoot({
+        platform: 'win32',
+        home: 'C:\\Users\\x',
+        env: { LOCALAPPDATA: 'D:\\local' },
+      }),
+    ).toBe('D:\\local\\electron\\Cache');
+  });
+
+  it('falls back to AppData/Local when Windows does not say', () => {
+    expect(defaultCacheRoot({ platform: 'win32', home: 'C:\\Users\\x', env: {} })).toBe(
+      'C:\\Users\\x\\AppData\\Local\\electron\\Cache',
+    );
+  });
+
+  it('follows the XDG rules everywhere else', () => {
+    expect(defaultCacheRoot({ platform: 'linux', home: '/home/x', env: {} })).toBe(
+      '/home/x/.cache/electron',
+    );
+    expect(
+      defaultCacheRoot({ platform: 'linux', home: '/home/x', env: { XDG_CACHE_HOME: '/tmp/c' } }),
+    ).toBe('/tmp/c/electron');
+  });
+});
+
+describe('resolveCacheRoot', () => {
+  it('takes electron_config_cache, because install.js does', () => {
+    expect(
+      resolveCacheRoot({
+        platform: 'linux',
+        home: '/home/x',
+        env: { electron_config_cache: '/pinned' },
+      }),
+    ).toBe('/pinned');
+  });
+
+  it('ignores the variable when it is empty, rather than caching the working directory', () => {
+    expect(
+      resolveCacheRoot({ platform: 'linux', home: '/home/x', env: { electron_config_cache: '' } }),
+    ).toBe('/home/x/.cache/electron');
+  });
+
+  it('falls back to the default when nothing pins it', () => {
+    expect(resolveCacheRoot({ platform: 'darwin', home: '/Users/x', env: {} })).toBe(
+      '/Users/x/Library/Caches/electron',
+    );
+  });
+});
 
 describe('parseDownload', () => {
   it('reads the version, the platform, and the arch off the name', () => {

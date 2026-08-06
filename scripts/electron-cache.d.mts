@@ -13,6 +13,15 @@ export interface ElectronDownload {
   arch: string;
 }
 
+export interface CacheRootInput {
+  platform: string;
+  home: string;
+  env: Record<string, string | undefined>;
+}
+
+export declare function defaultCacheRoot(input: CacheRootInput): string;
+export declare function resolveCacheRoot(input: CacheRootInput): string;
+
 export declare function parseDownload(name: string): ElectronDownload | undefined;
 
 export declare function inspectCache(input: {

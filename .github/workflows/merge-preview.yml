@@ -102,17 +102,16 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - uses: ./.github/actions/electron-cache
 
       # The fast half of ci.yml. Packaging and the end-to-end suite are left
       # out: they cost the most and have never been the thing two green
-      # branches broke between them.
+      # branches broke between them. Nothing here resolves the Electron
+      # binary, so there is no Electron cache either. Issue #129.
       - name: Lint, types, tests
         id: checks
         continue-on-error: true
         run: |
           npm ci
-          npm run verify:electron-cache
           npm run lint
           npm run typecheck
           npm test
