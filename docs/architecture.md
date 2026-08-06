@@ -366,7 +366,7 @@ was wrong. Building the environment one rung at a time on `windows-latest`,
 | An Electron main process | `gpu=false` in 438 ms |
 | An Electron `utilityProcess` | `gpu=false` in 440 ms |
 | The same two, against the packaged `node-llama-cpp` tree | `gpu=false` in 458 ms |
-| `.vite/build/llama-worker.js` forked as a `utilityProcess` | `device=cpu loadMs=877` |
+| `.vite/build/llama-worker-BREAK.js` forked as a `utilityProcess` | `device=cpu loadMs=877` |
 | The same bundle read out of `app.asar` | `device=cpu loadMs=943` |
 
 The last two are the application's own engine, driven the way
