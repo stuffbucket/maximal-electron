@@ -9,6 +9,8 @@ import { VitePlugin } from '@electron-forge/plugin-vite';
 import type { ForgeConfig } from '@electron-forge/shared-types';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 
+import { PACKAGE_FUSES, RUNTIME_ICONS } from './scripts/package-contract.mjs';
+
 /**
  * Where the application icons come from.
  *
@@ -22,21 +24,6 @@ import { FuseV1Options, FuseVersion } from '@electron/fuses';
  * here instead.
  */
 const ICON_DIR = path.resolve(process.env['STUFFBUCKET_ICON_DIR'] ?? 'build/icons');
-
-/**
- * Icons the main process loads at run time, rather than the bundle carrying
- * them. Copied beside `app.asar`, which is where `src/main/native/icons.ts`
- * looks. `scripts/verify-package.mjs` asserts they arrived.
- *
- * `trayTemplate@2x.png` is never named in code: `nativeImage` finds a `@2x`
- * variant beside the file it was given. It still has to ship.
- */
-const RUNTIME_ICONS = [
-  'icon.png',
-  'tray.png',
-  'trayTemplate.png',
-  'trayTemplate@2x.png',
-];
 
 const BUNDLE_ICON: string =
   { darwin: 'icon.icns', win32: 'icon.ico' }[process.platform as string] ??
@@ -223,14 +210,16 @@ const config: ForgeConfig = {
     }),
     // Fuses harden the packaged binary. Changing any value here invalidates an
     // existing signature, so a change must go through a fresh signed build.
+    // The values are in `scripts/package-contract.mjs`, which
+    // `scripts/verify-package.mjs` reads back off the built binary.
     new FusesPlugin({
       version: FuseVersion.V1,
-      [FuseV1Options.RunAsNode]: false,
-      [FuseV1Options.EnableCookieEncryption]: true,
-      [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
-      [FuseV1Options.EnableNodeCliInspectArguments]: false,
-      [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
-      [FuseV1Options.OnlyLoadAppFromAsar]: true,
+      ...Object.fromEntries(
+        Object.entries(PACKAGE_FUSES).map(([name, enabled]) => [
+          FuseV1Options[name as keyof typeof FuseV1Options],
+          enabled,
+        ]),
+      ),
     }),
   ],
 };
