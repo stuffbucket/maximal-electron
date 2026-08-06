@@ -4,9 +4,10 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 import { fork } from 'node:child_process';
 
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = process.env.PROBE_ROOT ?? process.cwd();
 const NLC = path.join(ROOT, 'node_modules', 'node-llama-cpp', 'dist');
 
@@ -67,7 +68,7 @@ export async function runSteps(label, log) {
 
   results.push(
     await timed(log, 'child_process.fork echo', STEP_MS, async () => {
-      const child = fork(path.join(ROOT, 'probe', 'echo-child.js'), [], {
+      const child = fork(path.join(HERE, 'echo-child.js'), [], {
         stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
       });
       return await new Promise((resolve, reject) => {
@@ -134,7 +135,7 @@ export async function runSteps(label, log) {
 
   results.push(
     await timed(log, 'getLlama gpu=false', LOAD_MS, async () => {
-      const { getLlama } = await import('node-llama-cpp');
+      const { getLlama } = await import(internal('index.js'));
       const llama = await getLlama({ gpu: false, build: 'never', progressLogs: false });
       return `gpu=${String(llama.gpu)}`;
     }),
@@ -142,7 +143,7 @@ export async function runSteps(label, log) {
 
   results.push(
     await timed(log, 'getLlama auto', LOAD_MS, async () => {
-      const { getLlama } = await import('node-llama-cpp');
+      const { getLlama } = await import(internal('index.js'));
       const llama = await getLlama();
       return `gpu=${String(llama.gpu)}`;
     }),

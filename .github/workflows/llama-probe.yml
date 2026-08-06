@@ -1,7 +1,7 @@
 # Temporary. Issue #149: which rung of the ladder does getLlama() hang on?
 #
-# Bare node, an Electron main process, and an Electron utilityProcess, on both
-# packaging hosts. Deleted once the answer is in the issue.
+# Bare node, an Electron main process, an Electron utilityProcess, and the same
+# three against a packaged tree. Deleted once the answer is in the issue.
 
 name: llama-probe
 
@@ -14,8 +14,8 @@ permissions:
   contents: read
 
 jobs:
-  probe:
-    name: probe (${{ matrix.os }})
+  unpackaged:
+    name: rungs 1-3 (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -40,3 +40,40 @@ jobs:
           PROBE_ROOT: ${{ github.workspace }}
           ELECTRON_ENABLE_LOGGING: '1'
         run: npx electron probe/electron-main.js
+
+  packaged:
+    name: rung 4 (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            binary: out/Stuffbucket-win32-x64/Stuffbucket.exe
+            unpacked: out/Stuffbucket-win32-x64/resources/app.asar.unpacked
+          - os: macos-latest
+            binary: out/Stuffbucket-darwin-arm64/Stuffbucket.app/Contents/MacOS/Stuffbucket
+            unpacked: out/Stuffbucket-darwin-arm64/Stuffbucket.app/Contents/Resources/app.asar.unpacked
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run package
+
+      - name: what the package ships
+        run: node probe/scope.mjs "${{ matrix.unpacked }}"
+
+      - name: rung 4a, the packaged tree under an unfused Electron
+        timeout-minutes: 15
+        env:
+          PROBE_ROOT: ${{ github.workspace }}/${{ matrix.unpacked }}
+          ELECTRON_ENABLE_LOGGING: '1'
+        run: npx electron probe/electron-main.js
+
+      - name: rung 4b, can the packaged binary start a node child of itself
+        timeout-minutes: 5
+        run: node probe/fuse-fork.mjs "${{ matrix.binary }}"
