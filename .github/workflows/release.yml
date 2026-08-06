@@ -438,6 +438,10 @@ jobs:
       # No token, deliberately. The condition above is the guard; an invalid
       # `NODE_AUTH_TOKEN` is the second one, so a dispatch that somehow reached
       # the registry authenticates as nobody.
+      #
+      # `./` is load-bearing. Without it npm reads `dist-release/name.tgz` as
+      # an `owner/repo` git shorthand and clones over SSH. The first dry run
+      # found that, which is what the dry run is for.
       - name: Dry run, so nothing is published
         if: github.event_name == 'workflow_dispatch'
         env:
@@ -447,7 +451,7 @@ jobs:
           set -euo pipefail
           shopt -s nullglob
           files=(dist-release/*.tgz)
-          npm publish "${files[0]}" --dry-run
+          npm publish "./${files[0]}" --dry-run
           echo "Dry run for ${TAG}. Nothing was uploaded to any registry."
 
       - name: Publish to GitHub Packages
@@ -459,7 +463,7 @@ jobs:
           set -euo pipefail
           shopt -s nullglob
           files=(dist-release/*.tgz)
-          npm publish "${files[0]}"
+          npm publish "./${files[0]}"
           echo "Published $(basename "${files[0]}") to https://npm.pkg.github.com"
 
   # The dry run's terminal job. Every attach step above is skipped on a

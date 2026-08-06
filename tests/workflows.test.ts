@@ -267,4 +267,32 @@ describe('publishing to a registry', () => {
   it('never publishes a package on a dispatch run', () => {
     expect(unguarded).toEqual([]);
   });
+
+  /**
+   * npm reads a bare `a/b` argument as an `owner/repo` git shorthand and
+   * clones it over SSH. The first dry run of `publish-package` failed exactly
+   * that way, on the path to the tarball it had just downloaded.
+   *
+   * A leading variable is not enough. `"${files[0]}"` is what failed, and what
+   * it expands to is not visible here.
+   */
+  const specifiers: string[] = [];
+
+  for (const [name, workflow] of parsed) {
+    for (const [id, job] of jobs(workflow)) {
+      for (const step of job.steps ?? []) {
+        for (const match of (step.run ?? '').matchAll(/npm publish\s+"?([^\s"]+)"?/g)) {
+          const specifier = match[1] ?? '';
+          specifiers.push(specifier);
+          it(`${name} ${id} publishes ${specifier} as a path, not a git shorthand`, () => {
+            expect(specifier).toMatch(/^(\.\/|\/)/);
+          });
+        }
+      }
+    }
+  }
+
+  it('found a publish specifier to check', () => {
+    expect(specifiers.length).toBeGreaterThan(0);
+  });
 });
