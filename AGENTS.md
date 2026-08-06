@@ -32,6 +32,8 @@ linked document.
 | Verify an install by specifier | `npm run verify:git-install` |
 | Verify the shell stays agnostic | `npm run verify:neutral` |
 | Verify the docs | `npm run verify:docs` |
+| Verify the repository rulesets | `npm run verify:rulesets` |
+| Verify a tag has never been cut | `npm run verify:tag` |
 | Regenerate icons | `npm run icons` |
 
 Run `npm run lint:fix` after you change code. Do not ask first.
@@ -152,7 +154,10 @@ checks names, not prose.
   so a moved tag changes what they install without changing anything they can
   see. `v0.0.2` was deleted and re-pushed eight minutes later. A tag now also
   publishes `@stuffbucket/maximal-electron` to the GitHub Packages registry,
-  and a published version cannot be replaced at all.
+  and a published version cannot be replaced at all. `npm run verify:tag` runs
+  in `tag-check` and refuses a ref that has already been built at another
+  commit. No ruleset stops the tag moving; see
+  `docs/admin/repository-settings.md` for the setting that would.
 - Bump the patch version on the release branch when the train reaches a stable
   state, so `main` never claims a version that has not shipped.
 
@@ -175,6 +180,7 @@ only background.
 | Trains, the draft release, macOS signing | `docs/release.md` |
 | The install specifiers a consumer may write, and the registry | `docs/consuming.md` |
 | The workflows, the release dry run, the merge race | `docs/ci.md` |
+| The rulesets, what only the owner can set, and what no check can see | `docs/admin/repository-settings.md` |
 | Code signing | `docs/signing.md` |
 | What is planned and what is deliberately not | `docs/roadmap.md` |
 
