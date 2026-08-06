@@ -6,7 +6,7 @@ import { VitePlugin } from '@electron-forge/plugin-vite';
 import type { ForgeConfig } from '@electron-forge/shared-types';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 
-import { PACKAGE_FUSES, RUNTIME_ICONS, LLAMA_BACKENDS_VARIABLE, hoistedDependencies, llamaPackagePlan, parseLlamaBackends } from './scripts/package-contract.mjs';
+import { PACKAGE_FUSES, RUNTIME_ICONS, LLAMA_BACKENDS_VARIABLE, bundleIcon, hoistedDependencies, llamaPackagePlan, parseLlamaBackends } from './scripts/package-contract.mjs';
 
 /**
  * The external native modules, and the packages npm hoisted out of them.
@@ -48,9 +48,7 @@ const HOISTED = hoistedDependencies(
  */
 const ICON_DIR = path.resolve(process.env['STUFFBUCKET_ICON_DIR'] ?? 'build/icons');
 
-const BUNDLE_ICON: string =
-  { darwin: 'icon.icns', win32: 'icon.ico' }[process.platform as string] ??
-  'icon.png';
+const BUNDLE_ICON = bundleIcon(process.platform);
 
 for (const file of [BUNDLE_ICON, ...RUNTIME_ICONS]) {
   if (!existsSync(path.join(ICON_DIR, file))) {

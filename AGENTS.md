@@ -228,5 +228,9 @@ that can take the application down. See `docs/architecture.md`.
 `scripts/verify-package.mjs` checks against, so there is one list rather than
 two. Resolution lives in `src/main/native/icons.ts`, which imports no `electron`
 and is on the mutate list — keep it that way, and leave `nativeImage` to
-`app-icon.ts`. A macOS development run shows Electron's own dock icon until
-`app.dock.setIcon` runs. That is not a defect, and packaging does not change it.
+`app-icon.ts`. **A platform decision is an argument here, never a
+`process.platform` read.** Everything reachable from `windowIcon`,
+`applyDockIcon` and `setTrayEnabled` takes the platform in, so one host tests
+every branch; issue #49 is what happens otherwise. A macOS development run shows
+Electron's own dock icon until `app.dock.setIcon` runs. That is not a defect, and
+packaging does not change it.

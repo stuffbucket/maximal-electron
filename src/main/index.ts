@@ -178,7 +178,7 @@ function bootstrap(): void {
   // An unpackaged run shows Electron's own dock icon until this call. A
   // packaged build already carries the bundle icon; this keeps the two the
   // same when `STUFFBUCKET_ICON_DIR` overrides it.
-  applyDockIcon();
+  applyDockIcon(process.platform);
 
   registerIpcHandlers();
 
@@ -205,14 +205,14 @@ function bootstrap(): void {
   });
 
   // The tray is a plain click target: it activates the application.
-  setTrayEnabled(prefs.menuBarIcon, activate);
+  setTrayEnabled(prefs.menuBarIcon, process.platform, activate);
 
   bindOverlayHotkey(prefs.overlayHotkey);
 
   // Preferences are the single source of truth, so react to a change from any
   // origin rather than only from the settings panel.
   onPreferencesChanged((next) => {
-    setTrayEnabled(next.menuBarIcon, activate);
+    setTrayEnabled(next.menuBarIcon, process.platform, activate);
     bindOverlayHotkey(next.overlayHotkey);
     // Turning the menu bar icon off while no window is open would otherwise
     // strand the application with no way to reach it.

@@ -2,7 +2,7 @@ import path from 'node:path';
 
 import { app, nativeImage, type NativeImage } from 'electron';
 
-import { APP_ICON, iconDirectory } from './icons.js';
+import { dockIconName, iconDirectory, windowIconName } from './icons.js';
 
 /**
  * The application icon: the macOS dock, and the Windows and Linux taskbar.
@@ -57,14 +57,15 @@ export function trayIcon(name: string): NativeImage | undefined {
 }
 
 /** Image for `BrowserWindow.icon`. macOS ignores it and uses the bundle. */
-export function windowIcon(): NativeImage | undefined {
-  if (process.platform === 'darwin') return undefined;
-  return loadIcon(APP_ICON);
+export function windowIcon(platform: NodeJS.Platform): NativeImage | undefined {
+  const name = windowIconName(platform);
+  return name === undefined ? undefined : loadIcon(name);
 }
 
 /** Put the icon in the macOS dock. Windows and Linux have no equivalent. */
-export function applyDockIcon(): void {
-  if (process.platform !== 'darwin' || !app.dock) return;
-  const image = loadIcon(APP_ICON);
+export function applyDockIcon(platform: NodeJS.Platform): void {
+  const name = dockIconName(platform);
+  if (name === undefined || !app.dock) return;
+  const image = loadIcon(name);
   if (image) app.dock.setIcon(image);
 }

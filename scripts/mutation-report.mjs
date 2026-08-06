@@ -29,7 +29,12 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
  * purpose: `embeddedEngineStatus` and the gated result `llamaCheckLine`
  * printed went with the Windows gate in #149, which is 15 mutants. Lowering it
  * for any other reason is the defect. Say which deletion paid for it.
- */export const MUTANT_FLOOR = 1721;
+ *
+ * 1721 to 1737 is `windowIconName`, `dockIconName` and `trayIconChoice` in
+ * `icons.ts`, which took the platform branches out of `app-icon.ts` and
+ * `tray.ts` where nothing could mutate them. `icons.ts` went from 6 mutants to
+ * 22. Issue #49.
+ */export const MUTANT_FLOOR = 1737;
 
 /**
  * `// Stryker disable` suppressions, counted in mutants rather than comments
