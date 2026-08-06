@@ -25,8 +25,10 @@ export default tseslint.config(
     languageOptions: {
       globals: {
         Buffer: 'readonly',
+        clearTimeout: 'readonly',
         console: 'readonly',
         process: 'readonly',
+        setTimeout: 'readonly',
       },
     },
     rules: { 'no-console': 'off' },
