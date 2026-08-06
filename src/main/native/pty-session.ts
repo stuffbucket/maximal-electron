@@ -1,7 +1,7 @@
 /**
  * The parts of session management that are decidable without a real pty.
  *
- * `pty.ts` owns `@lydell/node-pty` and `electron`, so Stryker cannot mutate it:
+ * `pty.ts` owns `node-pty` and `electron`, so Stryker cannot mutate it:
  * that code needs an Electron runtime rather than Node. What it does contain is
  * the two rules a terminal gets wrong, and both are pure. They live here so
  * they are mutation tested.

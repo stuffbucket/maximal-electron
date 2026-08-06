@@ -158,7 +158,9 @@ request: the macOS build must be redone.
 **External native modules.** Adding one means editing three places: the Vite
 external list, the `packagerConfig.ignore` filter in `forge.config.ts`, and
 `scripts/verify-package.mjs`. Miss one and the package builds, the tests pass,
-and the feature is absent for a user.
+and the feature is absent for a user. `node-pty` needs a fourth: `prunePrebuilds`
+in `forge.config.ts` drops the platforms a build cannot use, and it throws
+rather than skipping.
 
 **Icons** are a third instance of the same duplication. `STUFFBUCKET_ICON_DIR`
 names the directory, defaults to `build/icons`, and is the seam a consumer

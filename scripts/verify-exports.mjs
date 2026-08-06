@@ -84,6 +84,49 @@ check(
 );
 
 /*
+ * The packaging checks a consumer runs. Issue #76.
+ *
+ * Plain ESM under `scripts/` rather than TypeScript in `src/`, because `dist/`
+ * is ESM syntax in a package with no `"type": "module"`: a bundler reads it and
+ * `node` refuses it. This one is imported by a packaging script, not bundled
+ * into an application, so it has to load under plain `node`. Importing it here
+ * is what proves that.
+ */
+console.log('\nConsumer verification export');
+const verifySpecifier = `${manifest.name}/verify`;
+const verifyTarget = manifest.exports['./verify']?.default;
+check(typeof verifyTarget === 'string', 'the manifest declares a ./verify export');
+
+let verifyNames = [];
+let resolved;
+try {
+  resolved = import.meta.resolve(verifySpecifier);
+  verifyNames = Object.keys(await import(verifySpecifier)).sort();
+} catch (error) {
+  console.log(`         ${error.message}`);
+}
+
+check(
+  typeof verifyTarget === 'string' &&
+    resolved === new URL(verifyTarget, `file://${root}/`).href,
+  'the ./verify specifier resolves to the file the manifest names',
+);
+// The floor. A specifier that fails to load leaves the comparison below with
+// nothing to compare, and a bare mismatch says nothing about why.
+check(verifyNames.length > 0, 'the ./verify export loads under plain node');
+check(
+  JSON.stringify(verifyNames) ===
+    JSON.stringify([
+      'TERMINAL_CONTENT_SECURITY_POLICY',
+      'contentSecurityPolicyChecks',
+      'terminalNativeFiles',
+      'terminalPackageChecks',
+      'terminalPrebuildDirectory',
+    ]),
+  'the ./verify export exposes the documented names',
+);
+
+/*
  * `lib/` holds this application's own things — the bridge, the sample data, the
  * palette — so reaching one from the export means the package carries the
  * application with it. The exceptions are contracts: types and pure functions a
