@@ -48,6 +48,10 @@ const home = String(manifest.repository?.url ?? '')
   .replace(/^git\+/, '')
   .replace(/\.git$/, '');
 
+// npm's own name for a scoped tarball. Interpolating `manifest.name` gives
+// `@scope/name-<version>.tgz`, and that URL is a 404.
+const asset = manifest.name.replace('@', '').replace('/', '-');
+
 console.error(`
 ${manifest.name}@${manifest.version}: ${INSTALLED_WITHOUT_BUILD}.
 
@@ -58,9 +62,9 @@ ${missing.map((target) => `    ${target}`).join('\n')}
   dependency. It runs neither for an \`https://\` source archive, so a
   codeload.github.com URL installs source that was never built. This package is
   not on the public npm registry. Use one of:
-
+    ${manifest.name}@<range>, from ${manifest.publishConfig?.registry ?? 'the registry'}
     github:${home.replace(/^https:\/\/github\.com\//, '')}#<ref>
-    ${home}/releases/download/v<version>/${manifest.name}-<version>.tgz
+    ${home}/releases/download/v<version>/${asset}-<version>.tgz
 
   See docs/consuming.md in this package's repository.
 `);
