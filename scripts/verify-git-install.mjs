@@ -172,10 +172,9 @@ async function run() {
   }
 
   console.log('\nDependency contract of the installed package');
-  for (const { name: message, ok } of await dependencyContractChecks(
-    packageRoot,
-    installedManifest,
-  )) {
+  for (const { name: message, ok } of (
+    await dependencyContractChecks(packageRoot, installedManifest)
+  ).checks) {
     check(ok, message);
   }
 

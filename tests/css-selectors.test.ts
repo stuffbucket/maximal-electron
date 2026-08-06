@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { isScoped, selectors, unscopedSelectors } from '../scripts/css-selectors.mjs';
+import {
+  baseStyledClassNames,
+  isScoped,
+  selectorRules,
+  selectors,
+  styledClassNames,
+  unscopedSelectors,
+} from '../scripts/css-selectors.mjs';
 
 /**
  * The parser behind the scoping check on the package stylesheet.
@@ -75,6 +82,75 @@ describe('reading selectors out of a stylesheet', () => {
   it('returns nothing for a stylesheet with no rules', () => {
     expect(selectors('')).toEqual([]);
     expect(selectors('/* nothing here */')).toEqual([]);
+  });
+});
+
+/**
+ * The two the class checks in `tests/package-styles.test.ts` stand on.
+ *
+ * The set they replace was every `.name` in the file's text, which counted a
+ * class named in a comment and, worse, counted a class named in a descendant
+ * rule as one that had a rule of its own. Issue #118.
+ */
+describe('reading the classes a stylesheet styles', () => {
+  it('reads a class out of a selector rather than out of the text', () => {
+    expect(styledClassNames('.a .b { color: red; }')).toEqual(['a', 'b']);
+    expect(styledClassNames('/* .ghost { color: red; } */\n.a { top: 0; }')).toEqual(['a']);
+    expect(styledClassNames(".a::before { content: '.ghost'; }")).toEqual(['a']);
+  });
+
+  it('returns both sets in name order rather than in source order', () => {
+    expect(styledClassNames('.b { top: 0; }\n.a { top: 0; }')).toEqual(['a', 'b']);
+    expect(baseStyledClassNames('.b { top: 0; }\n.a { top: 0; }', '')).toEqual(['a', 'b']);
+  });
+
+  it('reads no class out of an attribute value or a pseudo-element', () => {
+    expect(styledClassNames(".a[title='.ghost'] { top: 0; }")).toEqual(['a']);
+    expect(styledClassNames('.a::-webkit-scrollbar { width: 0; }')).toEqual(['a']);
+  });
+
+  it('reports which rules a conditional at-rule encloses', () => {
+    expect(selectorRules('@media (min-width: 1px) { .a { top: 0; } }')).toEqual([
+      { selector: '.a', conditional: true },
+    ]);
+    expect(selectorRules('.a { top: 0; }')).toEqual([{ selector: '.a', conditional: false }]);
+    // `@layer` orders the cascade. Every reader gets the rule.
+    expect(selectorRules('@layer base { .a { top: 0; } }')).toEqual([
+      { selector: '.a', conditional: false },
+    ]);
+  });
+
+  it('counts a class styled under the root and nothing else', () => {
+    expect(baseStyledClassNames('.sb-shell .a { top: 0; }', '.sb-shell')).toEqual(['a']);
+    expect(baseStyledClassNames('.sb-shell.a { top: 0; }', '.sb-shell')).toEqual(['a']);
+    expect(baseStyledClassNames('.a { top: 0; }', '')).toEqual(['a']);
+  });
+
+  it('counts no class a rule reaches only through a condition', () => {
+    // The reproduction in issue #118: the base rule renamed, the descendants
+    // left naming the class. `styledClassNames` still finds it; this does not.
+    const css = `.sb-shell .b-typo { position: absolute; }
+      .sb-shell .c[data-x='1'] .b { top: 0; }
+      @media (prefers-reduced-motion: reduce) { .sb-shell .b { animation-duration: 0.01ms; } }`;
+    expect(styledClassNames(css)).toContain('b');
+    expect(baseStyledClassNames(css, '.sb-shell')).toEqual(['b-typo']);
+  });
+
+  it('counts no class a state or a second class qualifies', () => {
+    expect(baseStyledClassNames('.sb-shell .a:hover { top: 0; }', '.sb-shell')).toEqual([]);
+    expect(baseStyledClassNames('.sb-shell .a.b { top: 0; }', '.sb-shell')).toEqual([]);
+    expect(baseStyledClassNames(".sb-shell .a[data-x='1'] { top: 0; }", '.sb-shell')).toEqual([]);
+    expect(baseStyledClassNames('.sb-shell .a::after { top: 0; }', '.sb-shell')).toEqual([]);
+  });
+
+  it('counts no class outside the root', () => {
+    expect(baseStyledClassNames('.other .a { top: 0; }', '.sb-shell')).toEqual([]);
+    expect(baseStyledClassNames('.sb-shellish .a { top: 0; }', '.sb-shell')).toEqual([]);
+  });
+
+  it('returns nothing for a stylesheet with no rules', () => {
+    expect(styledClassNames('')).toEqual([]);
+    expect(baseStyledClassNames('', '.sb-shell')).toEqual([]);
   });
 });
 

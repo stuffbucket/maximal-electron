@@ -24,6 +24,23 @@ const NESTS_RULES = new Set([
   'document',
 ]);
 
+/**
+ * The subset of those whose rules reach only some readers. `@layer` is absent:
+ * it orders the cascade and applies to everyone.
+ */
+const CONDITIONAL = new Set([
+  'media',
+  'supports',
+  'container',
+  'scope',
+  'starting-style',
+  'document',
+]);
+
+/** The two block kinds whose body holds style rules. */
+const RULES = 'rules';
+const CONDITIONAL_RULES = 'conditional rules';
+
 /** The index after the string literal opening at `start`. */
 function endOfString(text, start) {
   const quote = text[start];
@@ -97,16 +114,22 @@ function splitSelectorList(prelude) {
 }
 
 /**
- * Every individual selector in a stylesheet, in source order.
+ * Every individual selector in a stylesheet, in source order, each with whether
+ * a conditional at-rule encloses it.
  *
  * A style rule's own body is stepped over rather than parsed: a rule nested
  * inside `.sb-shell .tab { … }` is already confined by the selector this
  * returns, so judging it again would report a scoped rule as bare.
+ *
+ * `conditional` is what tells a rule every reader gets from one only some do.
+ * `.tab__emphasis` is laid out by a rule at the top level and has its animation
+ * shortened by a second inside `@media (prefers-reduced-motion: reduce)`; a
+ * reader who loses the first still sees the second. Issue #118.
  */
-export function selectors(css) {
+export function selectorRules(css) {
   const found = [];
   /** What the innermost open block holds. The document holds rules. */
-  const holds = ['rules'];
+  const holds = [RULES];
   let prelude = '';
   let index = 0;
 
@@ -138,11 +161,15 @@ export function selectors(css) {
       prelude = '';
       index += 1;
 
-      if (holds.at(-1) !== 'rules') holds.push('declarations');
+      const top = holds.at(-1);
+      if (top !== RULES && top !== CONDITIONAL_RULES) holds.push('declarations');
       else if (head.startsWith('@')) {
-        holds.push(NESTS_RULES.has(atRuleName(head)) ? 'rules' : 'declarations');
+        const name = atRuleName(head);
+        if (CONDITIONAL.has(name)) holds.push(CONDITIONAL_RULES);
+        else holds.push(NESTS_RULES.has(name) ? RULES : 'declarations');
       } else {
-        found.push(...splitSelectorList(head));
+        const conditional = holds.includes(CONDITIONAL_RULES);
+        for (const selector of splitSelectorList(head)) found.push({ selector, conditional });
         holds.push('declarations');
       }
       continue;
@@ -168,6 +195,54 @@ export function selectors(css) {
   }
 
   return found;
+}
+
+/** Every individual selector in a stylesheet, in source order. */
+export function selectors(css) {
+  return selectorRules(css).map((rule) => rule.selector);
+}
+
+/** A class name, matched only where a selector attaches a rule to it. */
+const CLASS = /\.([a-z][a-z0-9_-]*)/gi;
+
+/**
+ * Every class a stylesheet writes a rule for.
+ *
+ * Read out of the parsed selectors rather than out of the file's text. The
+ * predecessor matched `.name` anywhere, so a class named in a comment, in a
+ * `content` string, or in nothing but prose counted as styled. Issue #118.
+ *
+ * An attribute selector's value is dropped first: `[title='.ghost']` selects on
+ * a title, not on a class.
+ */
+export function styledClassNames(css) {
+  const found = new Set();
+  for (const selector of selectors(css)) {
+    for (const match of selector.replace(/\[[^\]]*]/g, ' ').matchAll(CLASS)) found.add(match[1]);
+  }
+  return [...found].sort();
+}
+
+/**
+ * Every class a stylesheet styles on its own, under `root` and under nothing
+ * else.
+ *
+ * The selector has to reduce to the class alone: no second class, no attribute,
+ * no pseudo-class, and no conditional at-rule around it. That is the rule a
+ * consumer gets whatever the element's state, and it is the one whose loss
+ * `styledClassNames` cannot see — `.tab__emphasis` renamed in its base rule
+ * still appears in `.tab[data-emphasis='busy'] .tab__emphasis`. Issue #118.
+ *
+ * `root` may be empty, for a stylesheet that scopes nothing.
+ */
+export function baseStyledClassNames(css, root) {
+  const found = new Set();
+  for (const { selector, conditional } of selectorRules(css)) {
+    if (conditional || !isScoped(selector, root)) continue;
+    const name = /^\.([a-z][a-z0-9_-]*)$/i.exec(selector.slice(root.length).trim())?.[1];
+    if (name !== undefined) found.add(name);
+  }
+  return [...found].sort();
 }
 
 /**
