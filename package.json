@@ -34,6 +34,7 @@
     "build:renderer": "tsc -p tsconfig.renderer-package.json && node scripts/copy-renderer-css.mjs",
     "build:package": "npm run build:host && npm run build:renderer",
     "prepack": "npm run build:package",
+    "prepare": "npm run build:package",
     "package": "electron-forge package",
     "make": "electron-forge make",
     "icons": "node scripts/gen-icons.mjs",
