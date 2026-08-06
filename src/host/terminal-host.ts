@@ -7,9 +7,13 @@ import {
   cwdMessage,
   drain,
   emptyBuffer,
+  emptyRetained,
   Generations,
+  replay,
   resolveCwd,
+  retain,
   type Buffered,
+  type Retained,
 } from '../main/native/pty-session.js';
 
 /**
@@ -61,8 +65,26 @@ export interface TerminalHostOptions extends TerminalHostHandlers {
 interface Session {
   pty: IPty;
   pending: Buffered;
+  retained: Retained;
   timer: ReturnType<typeof setTimeout> | undefined;
   generation: number;
+  summary: TerminalSession;
+}
+
+/**
+ * A live session, for a consumer offering one back to a user.
+ *
+ * A view that unmounts without terminating leaves the session here. Enumerating
+ * is what keeps that a detach rather than a leak: a consumer diffs this against
+ * the views it holds to find the sessions nothing is showing.
+ */
+export interface TerminalSession {
+  id: string;
+  /** Where the shell started. Absolute, and already resolved. */
+  cwd: string;
+  shell: string;
+  /** Milliseconds since the epoch. */
+  startedAt: number;
 }
 
 /**
@@ -80,9 +102,19 @@ export class TerminalHost {
     this.options = { flushMs: 8, env: {}, ...options };
   }
 
+  /**
+   * Open a shell, or attach to the one this id already names.
+   *
+   * Attaching resizes to the new view's dimensions and replays the retained
+   * tail, so a view that arrives after a session started sees what it missed
+   * rather than an empty screen.
+   */
   spawn(request: SpawnOptions): void {
-    // Replacing a live session would leak its process.
-    if (this.sessions.has(request.id)) return;
+    const live = this.sessions.get(request.id);
+    if (live) {
+      this.attach(request, live);
+      return;
+    }
 
     const { homeDirectory, defaultShell, emit } = this.options;
     const resolved = resolveCwd(request.cwd, homeDirectory, (target) => {
@@ -104,11 +136,14 @@ export class TerminalHost {
       });
     }
 
-    const pty = spawn(request.shell ?? defaultShell, [], {
+    const cwd = resolved.ok ? resolved.cwd : homeDirectory;
+    const shell = request.shell ?? defaultShell;
+
+    const pty = spawn(shell, [], {
       name: 'xterm-256color',
       cols: Math.max(1, request.cols),
       rows: Math.max(1, request.rows),
-      cwd: resolved.ok ? resolved.cwd : homeDirectory,
+      cwd,
       env: {
         ...(process.env as Record<string, string>),
         TERM: 'xterm-256color',
@@ -120,13 +155,16 @@ export class TerminalHost {
     const session: Session = {
       pty,
       pending: emptyBuffer(),
+      retained: emptyRetained(),
       timer: undefined,
       generation,
+      summary: { id: request.id, cwd, shell, startedAt: Date.now() },
     };
     this.sessions.set(request.id, session);
 
     pty.onData((data) => {
       append(session.pending, data);
+      retain(session.retained, data);
       this.schedule(request.id, session);
     });
 
@@ -139,6 +177,12 @@ export class TerminalHost {
       this.options.onExit(request.id, exitCode);
     });
   }
+
+  /** Every session this owner holds, whether or not a view is showing one. */
+  list(): TerminalSession[] {
+    return [...this.sessions.values()].map((session) => ({ ...session.summary }));
+  }
+
 
   write(id: string, data: string): void {
     this.sessions.get(id)?.pty.write(data);
@@ -163,9 +207,21 @@ export class TerminalHost {
     }
   }
 
-  /** Every session this owner holds. Call when the window closes, and on quit. */
+  /**
+   * Every session this owner holds, detached ones included. Call when the
+   * window closes, and on quit.
+   */
   terminateAll(): void {
     for (const id of [...this.sessions.keys()]) this.terminate(id);
+  }
+
+  private attach(request: SpawnOptions, session: Session): void {
+    session.pty.resize(Math.max(1, request.cols), Math.max(1, request.rows));
+    const text = replay(session.retained);
+    if (text === '') return;
+    queueMicrotask(() => {
+      this.options.emit(request.id, text);
+    });
   }
 
   private flush(id: string, session: Session): void {

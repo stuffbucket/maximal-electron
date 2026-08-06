@@ -60,6 +60,10 @@ function coerce(raw: unknown): Preferences {
       input.theme === 'light' || input.theme === 'dark' || input.theme === 'system'
         ? input.theme
         : DEFAULT_PREFERENCES.theme,
+    terminalDetach:
+      typeof input.terminalDetach === 'boolean'
+        ? input.terminalDetach
+        : DEFAULT_PREFERENCES.terminalDetach,
   };
 }
 

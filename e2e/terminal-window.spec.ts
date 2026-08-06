@@ -1,6 +1,12 @@
 import { expect, test } from '@playwright/test';
 
-import { closeApp, launchApp, resetShell, type Harness } from './harness.js';
+import {
+  closeApp,
+  launchApp,
+  resetShell,
+  terminalScreen,
+  type Harness,
+} from './harness.js';
 
 /**
  * A window closing reaps its own shells.
@@ -46,31 +52,7 @@ test('closing a window reaps its shells and leaves the application running', asy
   await window.keyboard.type('echo SHELL_PID:$$');
   await window.keyboard.press('Enter');
 
-  // The emulator draws to a canvas, so its own buffer is the only readable
-  // record of what the shell printed.
-  const screen = () =>
-    terminal.evaluate((node) => {
-      const term = (node as HTMLElement & { __terminal?: unknown }).__terminal as
-        | {
-            buffer: {
-              active: {
-                length: number;
-                getLine: (
-                  y: number,
-                ) => { translateToString: (trim?: boolean) => string } | undefined;
-              };
-            };
-          }
-        | undefined;
-      if (!term) return '';
-
-      const active = term.buffer.active;
-      const lines: string[] = [];
-      for (let y = 0; y < active.length; y += 1) {
-        lines.push(active.getLine(y)?.translateToString(true) ?? '');
-      }
-      return lines.join('\n');
-    });
+  const screen = () => terminalScreen(terminal);
 
   await expect
     .poll(screen, { timeout: 20_000, message: 'the shell never reported its pid' })

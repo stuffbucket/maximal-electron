@@ -65,6 +65,7 @@ export const RENDERER_SURFACE = [
   'TerminalTabs',
   'TerminalView',
   'TitleBar',
+  'detachedSessions',
   'getTabPanelId',
   'getTabTriggerId',
   'readTerminalTheme',
@@ -107,7 +108,10 @@ export function reExportedNames(source) {
  * value, and this is what keeps it that way — re-adding that import puts
  * `lib/bridge.js` in the graph and fails here.
  */
-const CONTRACTS = [/(?:^|\/)lib\/terminal-transport(?:\.js)?$/];
+const CONTRACTS = [
+  /(?:^|\/)lib\/terminal-transport(?:\.js)?$/,
+  /(?:^|\/)lib\/terminal-sessions(?:\.js)?$/,
+];
 const APPLICATION_ONLY = [
   /(?:^|\/)App(?:\.js)?$/,
   /(?:^|\/)lib\//,
