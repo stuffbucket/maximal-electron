@@ -26,6 +26,9 @@ linked document.
 | Check the palette | `npm run check:contrast` |
 | Package | `npm run package` |
 | Verify a package | `npm run verify:package` |
+| Verify the exports | `npm run verify:exports` |
+| Verify a git-ref install | `npm run verify:git-install` |
+| Verify the shell stays agnostic | `npm run verify:neutral` |
 | Verify the docs | `npm run verify:docs` |
 | Regenerate icons | `npm run icons` |
 
@@ -135,6 +138,7 @@ only background.
 | Area | Document |
 | --- | --- |
 | Processes, the IPC contract, terminals, build output | `docs/architecture.md` |
+| The `--shell-*` contract the renderer package reads from its host | `docs/shell-variables.md` |
 | The overlay agent, the provider chain, the approval gate | `docs/agent.md` |
 | Random order, mutation testing, layout evidence, the off-screen suite | `docs/testing.md` |
 | Stories, the a11y run, what is deliberately not in CI | `docs/storybook.md` |

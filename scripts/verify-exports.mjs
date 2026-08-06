@@ -6,6 +6,16 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, URL } from 'node:url';
 
+import { selectors, unscopedSelectors } from './css-selectors.mjs';
+import {
+  RENDERER_SURFACE,
+  VERIFY_SURFACE,
+  dependencyContractChecks,
+  exportTargets,
+  moduleGraphChecks,
+  reExportedNames,
+} from './export-checks.mjs';
+
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const manifest = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
 const failures = [];
@@ -15,163 +25,57 @@ const check = (condition, message) => {
 };
 
 console.log('Package dependency contract');
-
-/**
- * Packages an entry point reaches, and the modules it took to get there.
- *
- * A specifier read out of anything but an import is a package that does not
- * exist. Two produced that here: a JSDoc line in `TabBar.js` contrasting
- * "reaches the edge" with "overflows it", and `export const
- * SHELL_TERMINAL_PROPERTIES = ['--shell-terminal-background', …]`. Hence the
- * anchor, the `from`, and the newline excluded from the run before it.
- */
-const IMPORT_PATTERNS = [
-  /^(?:import|export)[^'"\n]*\bfrom\s*['"]([^'"]+)['"]/gm,
-  /^import\s*['"]([^'"]+)['"]/gm,
-  /\b(?:import|require)\(\s*['"]([^'"]+)['"]/g,
-];
-
-const packageOf = (specifier) =>
-  specifier.split('/').slice(0, specifier.startsWith('@') ? 2 : 1).join('/');
-
-async function walk(entry) {
-  const files = [];
-  const packages = new Set();
-  const pending = [entry];
-  const seen = new Set();
-
-  while (pending.length > 0) {
-    const file = pending.pop();
-    if (!file || seen.has(file)) continue;
-    seen.add(file);
-    files.push(file);
-
-    const source = await readFile(file, 'utf8');
-    for (const pattern of IMPORT_PATTERNS) {
-      for (const [, specifier] of source.matchAll(pattern)) {
-        if (specifier.startsWith('.')) {
-          pending.push(path.resolve(path.dirname(file), specifier));
-        } else if (!specifier.startsWith('node:')) {
-          packages.add(packageOf(specifier));
-        }
-      }
-    }
-  }
-
-  return { files, packages };
-}
+for (const { name, ok } of await dependencyContractChecks(root, manifest)) check(ok, name);
 
 /*
- * npm resolves dependencies per package, not per export. One `dependencies`
- * entry therefore reaches every consumer of every entry point, and `./host`
- * used to install `node-llama-cpp`, `node-pty`, and six Radix packages for a
- * module that imports `electron` alone. Issue #31.
- *
- * Optional peers are the only npm mechanism that installs nothing.
- * `optionalDependencies` still install by default, and npm 7 and later
- * auto-installs a peer that is not marked optional.
+ * `scripts/export-checks.mjs` holds what an export has to satisfy.
+ * `verify-git-install.mjs` asks the same questions of a package installed by
+ * git ref, which runs `prepare` where this path runs `prepack`. Issue #83.
  */
-const runtimeEntries = Object.entries(manifest.exports ?? {})
-  .map(([name, entry]) => [name, typeof entry === 'string' ? entry : entry.default])
-  .filter(([, target]) => typeof target === 'string' && /\.m?js$/.test(target));
-
-const graphs = new Map();
-for (const [name, target] of runtimeEntries) {
-  graphs.set(name, await walk(path.join(root, target)));
-}
-
-// The floor. Every claim below is about a set the walk produced, so a walk that
-// reached nothing would report all of them as passing.
-check(runtimeEntries.length > 0, 'the manifest declares at least one JavaScript entry point');
-for (const [name, graph] of graphs) {
-  check(graph.files.length > 0, `${name} resolves to at least one module`);
-}
-
-const imported = new Set([...graphs.values()].flatMap((graph) => [...graph.packages]));
-check(imported.size > 0, 'the entry points import at least one package');
-
-check(
-  Object.keys(manifest.dependencies ?? {}).length === 0,
-  'the package declares no runtime dependencies',
-);
-check(
-  Object.keys(manifest.optionalDependencies ?? {}).length === 0,
-  'the package declares no optional dependencies, which npm installs by default',
-);
-
-const peers = Object.keys(manifest.peerDependencies ?? {});
-for (const [name, graph] of graphs) {
-  for (const dependency of [...graph.packages].sort()) {
-    check(peers.includes(dependency), `${name} imports ${dependency}, a declared peer`);
-  }
-}
-
-// The headline of issue #31, stated as an equality rather than an absence. A
-// subset check would pass on an entry point that imports nothing at all.
-check(
-  [...(graphs.get('./host')?.packages ?? [])].join(',') === 'electron',
-  './host imports electron and nothing else',
-);
-
-for (const peer of peers) {
-  check(
-    manifest.peerDependenciesMeta?.[peer]?.optional === true,
-    `${peer} is an optional peer, so a consumer installs it only when they need it`,
-  );
-  check(
-    typeof manifest.devDependencies?.[peer] === 'string',
-    `${peer} is a development dependency, so this repository builds against it`,
-  );
-}
-
-/*
- * Read from the manifest rather than listed here.
- *
- * A hardcoded list means a new entry in `exports` is unchecked until somebody
- * remembers to add it, and an export nothing verifies is one that can ship
- * pointing at a file the build does not produce.
- */
-const exportTargets = Object.values(manifest.exports ?? {}).flatMap((entry) =>
-  typeof entry === 'string' ? [entry] : Object.values(entry),
-);
+const targets = exportTargets(manifest.exports);
 
 console.log('Package export targets');
 // The floor. An empty map would report every check below as passing by
 // checking nothing.
-check(exportTargets.length > 0, 'the manifest declares at least one export');
-for (const target of exportTargets) {
-  check(
-    typeof target === 'string' && existsSync(path.join(root, target)),
-    `${String(target)} exists`,
-  );
+check(targets.length > 0, 'the manifest declares at least one export');
+for (const { subpath, condition, target } of targets) {
+  check(existsSync(path.join(root, target)), `${subpath} ${condition} -> ${target} exists`);
 }
+
+/*
+ * The stylesheet a consumer installs.
+ *
+ * `structural.css` ships unbundled and unscoped by anything but itself, so a
+ * selector that escapes `.sb-shell` restyles the consumer's whole application.
+ * `tests/package-exports.test.ts` judges the source; this judges the artifact,
+ * and asserts the two agree, which nothing did while
+ * `scripts/copy-renderer-css.mjs` was the only thing keeping them in step.
+ * Issue #51.
+ */
+console.log('\nShipped stylesheet');
+const SHELL_ROOT = '.sb-shell';
+const stylesheetSource = await readFile(
+  path.join(root, 'src/renderer/styles/structural.css'),
+  'utf8',
+);
+const stylesheetTarget = manifest.exports['./renderer/styles.css'];
+const shipped = existsSync(path.join(root, stylesheetTarget ?? ''))
+  ? await readFile(path.join(root, stylesheetTarget), 'utf8')
+  : '';
+const shippedSelectors = selectors(shipped);
+
+check(shipped === stylesheetSource, `${String(stylesheetTarget)} is the source stylesheet`);
+// The floor. A parse that found nothing would report every selector scoped by
+// judging none of them.
+check(shippedSelectors.length > 30, `${String(shippedSelectors.length)} selectors were read`);
+const escaping = unscopedSelectors(shipped, SHELL_ROOT);
+check(escaping.length === 0, `every selector is scoped under ${SHELL_ROOT}`);
+for (const selector of escaping) console.log(`         ${selector}`);
 
 const rendererEntry = path.join(root, manifest.exports['./renderer'].default);
 const rendererSource = await readFile(rendererEntry, 'utf8');
-const expectedExports = [
-  'Canvas',
-  'IconButton',
-  'NavRail',
-  'SHELL_TERMINAL_PROPERTIES',
-  'ShellLayout',
-  'TabBar',
-  'TerminalTabs',
-  'TerminalView',
-  'TitleBar',
-  'getTabPanelId',
-  'getTabTriggerId',
-  'readTerminalTheme',
-];
-const actualExports = [
-  ...rendererSource.matchAll(/export\s*\{([^}]+)}\s*from/g),
-].flatMap((match) =>
-  (match[1] ?? '')
-    .split(',')
-    .map((name) => name.trim())
-    .filter(Boolean),
-);
 check(
-  JSON.stringify(actualExports.sort()) === JSON.stringify(expectedExports),
+  JSON.stringify(reExportedNames(rendererSource)) === JSON.stringify(RENDERER_SURFACE),
   'renderer JavaScript exposes only the approved component surface',
 );
 check(
@@ -212,46 +116,13 @@ check(
 // nothing to compare, and a bare mismatch says nothing about why.
 check(verifyNames.length > 0, 'the ./verify export loads under plain node');
 check(
-  JSON.stringify(verifyNames) ===
-    JSON.stringify([
-      'TERMINAL_CONTENT_SECURITY_POLICY',
-      'contentSecurityPolicyChecks',
-      'terminalNativeFiles',
-      'terminalPackageChecks',
-      'terminalPrebuildDirectory',
-    ]),
+  JSON.stringify(verifyNames) === JSON.stringify(VERIFY_SURFACE),
   'the ./verify export exposes the documented names',
 );
 
-/*
- * `lib/` holds this application's own things — the bridge, the sample data, the
- * palette — so reaching one from the export means the package carries the
- * application with it. The exceptions are contracts: types and pure functions a
- * consumer implements against, with no import of their own.
- *
- * An allowlist rather than a dropped rule. `TerminalView` used to be forbidden
- * outright because it imported `bridge.js`; it now takes a transport as a
- * value, and this is what keeps it that way — re-adding that import puts
- * `lib/bridge.js` in the graph and fails here.
- */
-const contracts = [/(?:^|\/)lib\/terminal-transport(?:\.js)?$/];
-const forbidden = [
-  /(?:^|\/)App(?:\.js)?$/,
-  /(?:^|\/)lib\//,
-  /(?:^|\/)native\//,
-  /demo/i,
-  /fixture/i,
-  /\.stories\./,
-];
-const visited = graphs.get('./renderer').files;
-
-for (const file of visited) {
-  const relative = path.relative(root, file).split(path.sep).join('/');
-  const allowed =
-    contracts.some((pattern) => pattern.test(relative)) ||
-    !forbidden.some((pattern) => pattern.test(relative));
-  check(allowed, `${relative} is generic`);
-}
+console.log('\nRenderer import graph');
+const { checks: graphChecks, inspected } = await moduleGraphChecks(root, rendererEntry);
+for (const { name, ok } of graphChecks) check(ok, name);
 
 /*
  * Deliberately without `--ignore-scripts`. `dist/` is built by `prepack` and
@@ -267,9 +138,9 @@ const packed = JSON.parse(
 )[0].files.map((file) => file.path);
 
 console.log('\nPacked library artifacts');
-for (const target of exportTargets) {
-  const packedPath = target?.replace(/^\.\//, '');
-  check(packed.includes(packedPath), `${String(packedPath)} is included by npm pack`);
+for (const { target } of targets) {
+  const packedPath = target.replace(/^\.\//, '');
+  check(packed.includes(packedPath), `${packedPath} is included by npm pack`);
 }
 
 /* ------------------------------------------------------- artifact freshness */
@@ -330,4 +201,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log(`\nAll exports passed (${String(visited.length)} renderer modules inspected).`);
+console.log(`\nAll exports passed (${String(inspected)} renderer modules inspected).`);

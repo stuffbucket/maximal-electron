@@ -11,7 +11,14 @@ description: Tag and ship a release across macOS and Windows
 npm ci
 npm run lint && npm run typecheck && npm test
 npm run package && npm run verify:package && npm run test:e2e
+npm run verify:git-install
 ```
+
+`verify:git-install` installs this checkout the way `stuffbucket/maximal` pins
+it, by git ref, and resolves every export. It runs against the local clone, so
+it needs no network and no pushed tag. The tarball and the git ref are
+different lifecycle scripts, and a tag has shipped with only one of them
+wired.
 
 Set the version in `package.json`. The tag must match it exactly, or the
 `tag-check` job fails before anything builds.
@@ -43,7 +50,7 @@ Accepted tag shapes: `v1.2.3`, `v1.2.3-alpha`, `v1.2.3-alpha.1`, `v1.2.3-beta`,
 | `windows-msi` | Packages, builds the MSI with WiX, attaches it and a checksum. |
 | `windows-msi-verify` | Installs silently, asserts, uninstalls, asserts clean. |
 | `macos-dmg` | Dispatches the private builder, polls the draft for the dmg. |
-| `package-tarball` | Packs what a consumer installs, and attaches it. |
+| `package-tarball` | Packs what a consumer installs, installs the commit by git ref, and attaches the tarball. |
 | `publish` | Flips the draft to published, once, at the end. |
 
 `publish` gates on `package-tarball` alone. An installer that fails costs an
