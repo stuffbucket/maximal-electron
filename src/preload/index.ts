@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
+import { ipcRenderer, type IpcRendererEvent } from 'electron';
 
 import {
   BRIDGE_KEY,
@@ -11,6 +11,8 @@ import {
   type IpcResponse,
   type RendererApi,
 } from '../shared/ipc.js';
+
+import { exposeBridge } from './bridge.js';
 
 /**
  * The renderer never touches `ipcRenderer`. It gets this object and nothing
@@ -54,4 +56,6 @@ const api: RendererApi = {
   },
 };
 
-contextBridge.exposeInMainWorld(BRIDGE_KEY, api);
+// The exported bridge, driven by the application that exports it. `extend`
+// carries this shell's own twenty channels, which are no consumer's business.
+exposeBridge({ namespace: BRIDGE_KEY, extend: api });
