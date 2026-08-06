@@ -22,6 +22,10 @@ import path from 'node:path';
 const PREFIX = 'electron-v';
 const SUFFIX = '.zip';
 
+/** The line an `actions/cache` step declares its key on, and what it must name. */
+const KEY = 'key:';
+const KEY_MUST_NAME = ['runner.os', 'runner.arch', 'outputs.version'];
+
 /**
  * `@electron/get`'s default cache root, which is `env-paths('electron').cache`.
  *
@@ -46,6 +50,34 @@ export function resolveCacheRoot({ platform, home, env }) {
   return defaultCacheRoot({ platform, home, env });
 }
 
+/**
+ * The `key:` values an `actions/cache` step declares, in source order.
+ *
+ * A line scan rather than a YAML parse: this runs before `npm ci`, so it
+ * cannot import the `yaml` package, and the shape it reads is one line.
+ */
+export function cacheKeys(text) {
+  const keys = [];
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith(KEY)) continue;
+    keys.push(trimmed.slice(KEY.length).trim());
+  }
+  return keys;
+}
+
+/**
+ * What a cache key omits, of the three things that make it correct.
+ *
+ * Drop the version and a bump restores the previous binary. Drop the operating
+ * system or the architecture and a runner restores another platform's. This is
+ * checked against the key rather than against the symptom, because the symptom
+ * only appears on the run after the mistake.
+ */
+export function keyOmissions(key) {
+  return KEY_MUST_NAME.filter((term) => !key.includes(term));
+}
+
 /** The three fields that name a download, or undefined when it is not one. */
 export function parseDownload(name) {
   if (!name.startsWith(PREFIX)) return undefined;
@@ -62,12 +94,10 @@ export function parseDownload(name) {
 }
 
 /**
- * The downloads in a cache root, split by whether they are the one wanted.
+ * The downloads in a cache root, and the one this runner wanted.
  *
- * `stale` is what a cache key missing the Electron version would let
- * accumulate. `wanted` is empty when nothing in the job ever resolved the
- * Electron binary, which is what caching an empty directory forever looks like
- * from here.
+ * `wanted` is empty when nothing in the job ever resolved the Electron binary,
+ * which is what caching an empty directory forever looks like from here.
  */
 export function inspectCache({ names, version, platform, arch }) {
   const downloads = [];
@@ -78,7 +108,6 @@ export function inspectCache({ names, version, platform, arch }) {
 
   return {
     downloads,
-    stale: downloads.filter((download) => download.version !== version),
     wanted: downloads.filter(
       (download) =>
         download.version === version && download.platform === platform && download.arch === arch,
