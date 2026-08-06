@@ -31,7 +31,7 @@ Rules:
 - **Never name a model that might not exist.** The old code pinned
   `llama3.2`, which was both absent on most machines and the worst tested
   model for restraint.
-- The weights are **not** in the installer. `src/main/native/llama.ts` fetches
+- The weights are **not** in the package. `src/main/native/llama.ts` fetches
   them once into `userData` on first use.
 - `STUFFBUCKET_PROVIDER=embedded` pins a provider and
   `STUFFBUCKET_MODEL_PATH` points at existing weights. Without them the

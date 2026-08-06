@@ -6,10 +6,9 @@
 # ## The dry run
 #
 # A dispatch run is always a dry run. There is no input that makes one publish,
-# so the only way to touch a release is to push a tag. Everything builds, the
-# MSI is installed and removed, the tarball is packed and checked, and
-# `dry-run-artifacts` asserts both files exist rather than letting an empty
-# run look green. See `docs/ci.md`.
+# so the only way to touch a release is to push a tag. The tarball is packed,
+# installed by git ref, and checked, and `dry-run-artifacts` asserts the file
+# exists rather than letting an empty run look green. See `docs/ci.md`.
 #
 # ## Why every asset lands on a DRAFT
 #
@@ -18,19 +17,11 @@
 # and a single `publish` job flips it once at the end. This is the shape
 # stuffbucket/maximal uses, for exactly this reason.
 #
-# A failed macOS build no longer holds the release. `publish` gates on
-# `package-tarball` alone, so a tag with no dmg still ships the tarball.
+# ## There is no installer
 #
-# ## macOS
-#
-# This repository holds no Apple credential. The `macos-dmg` job dispatches the
-# private stuffbucket/macos-builder, which owns the only self-hosted Mac runner
-# and every Apple secret, then polls the draft for the signed dmg.
-#
-# One-time setup per repository, both manual:
-#   - Install the `app-repoman` GitHub App here with Contents: read and write.
-#   - Add secret MACOS_BUILDER_PAT: a fine-grained PAT scoped to Actions: write
-#     on stuffbucket/macos-builder ONLY.
+# No MSI and no dmg. Three jobs here built them. One had never once succeeded,
+# and the other shipped an installer containing zero files. See
+# `docs/release.md`. The tarball is the artifact, and `publish` gates on it.
 
 name: release
 
@@ -115,192 +106,13 @@ jobs:
         shell: bash
         run: echo "Dry run for ${TAG}. Nothing is created, attached, or published."
 
-  windows-msi:
-    needs: [tag-check, release]
-    runs-on: windows-2022
-    permissions:
-      contents: write
-    env:
-      TAG: ${{ needs.tag-check.outputs.tag }}
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Resolve version
-        id: ver
-        shell: bash
-        run: echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
-
-      - run: npm ci
-
-      - name: Stamp version
-        shell: bash
-        run: |
-          set -euo pipefail
-          node -e '
-            const fs = require("node:fs");
-            const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
-            pkg.version = process.argv[1];
-            fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
-          ' "${{ steps.ver.outputs.version }}"
-
-      - run: npm run package -- --arch=x64 --platform=win32
-      - run: npm run verify:package
-
-      - name: Install WiX
-        shell: pwsh
-        run: |
-          dotnet tool install --global wix --version 5.0.2
-          $userBin = Join-Path $env:USERPROFILE '.dotnet\tools'
-          echo $userBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          & "$userBin\wix.exe" --version
-          & "$userBin\wix.exe" extension add -g WixToolset.Util.wixext/5.0.2
-
-      - name: Build MSI
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          .\scripts\build-msi.ps1 `
-            -Version "${{ steps.ver.outputs.version }}" `
-            -Out "dist-release\stuffbucket-$env:TAG-windows-x64.msi"
-
-      - name: SHA-256
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd dist-release
-          MSI="stuffbucket-${TAG}-windows-x64.msi"
-          sha256sum "$MSI" > "$MSI.sha256"
-          cat "$MSI.sha256"
-
-      # How the MSI reaches windows-msi-verify. `gh release download` cannot
-      # resolve a draft by tag name (#81), and the release is a detour anyway.
-      - uses: actions/upload-artifact@v4
-        with:
-          name: windows-msi
-          path: dist-release/stuffbucket-${{ needs.tag-check.outputs.tag }}-windows-x64.msi*
-          if-no-files-found: error
-
-      - name: Attach MSI to the draft
-        if: github.event_name != 'workflow_dispatch'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
-            "dist-release/stuffbucket-${TAG}-windows-x64.msi" \
-            "dist-release/stuffbucket-${TAG}-windows-x64.msi.sha256"
-
-  # Silent install, assert the whole tree, launch, uninstall, assert clean
-  # removal. Copied in shape from maximal's windows-msi-verify. `publish` does
-  # not gate on this: a broken installer costs an installer, not the release.
-  windows-msi-verify:
-    needs: windows-msi
-    runs-on: windows-2022
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
-        with:
-          name: windows-msi
-          path: msi
-
-      # An empty download would otherwise reach msiexec as a null path and
-      # fail somewhere less legible. `-Filter` is avoided: 8.3 short names make
-      # it match beyond the extension.
-      - name: Assert exactly one MSI arrived
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $found = @(Get-ChildItem msi | Where-Object { $_.Extension -eq '.msi' })
-          if ($found.Count -ne 1) { Write-Error "Expected one MSI, found $($found.Count)" }
-          "MSI_PATH=$($found[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "Verifying $($found[0].Name)"
-
-      - name: Install, assert, launch, uninstall, assert
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          .\scripts\verify-msi.ps1 -Msi "$env:MSI_PATH"
-
-      - if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-msi-install-log
-          path: install.log
-          if-no-files-found: ignore
-
-  # No dry version. It needs a credential for the private builder, and its only
-  # product is an asset on the draft. Tag-only, so the ref names the tag.
-  macos-dmg:
-    if: github.event_name != 'workflow_dispatch'
-    needs: release
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    env:
-      TAG: ${{ github.ref_name }}
-    steps:
-      # v0.0.2 failed here in three seconds with gh's generic advice about
-      # GH_TOKEN. The secret was simply absent.
-      - name: Require the builder credential
-        env:
-          PAT: ${{ secrets.MACOS_BUILDER_PAT }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          [[ -n "${PAT}" ]] \
-            || { echo "::error::MACOS_BUILDER_PAT is not set. See docs/release.md."; exit 1; }
-
-      - name: Trigger the private macOS builder
-        env:
-          GH_TOKEN: ${{ secrets.MACOS_BUILDER_PAT }}
-          REPO: ${{ github.repository }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "Triggering macOS build for ${REPO} at ${TAG}"
-          gh workflow run build.yml \
-            --repo stuffbucket/macos-builder \
-            --ref main \
-            -f "repo=${REPO}" \
-            -f "ref=${TAG}"
-
-      - name: Wait for the signed dmg to land on the draft
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          VERSION="${TAG#v}"
-          DMG="stuffbucket-${VERSION}-darwin-arm64.dmg"
-
-          echo "Polling the draft for ${DMG} (sign and notarize take a few minutes)…"
-          for _ in $(seq 1 60); do
-            ASSETS="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
-              --json assets --jq '.assets[].name' 2>/dev/null || echo '')"
-            if grep -Fxq "$DMG" <<<"$ASSETS"; then
-              echo "Found ${DMG} on the draft."
-              exit 0
-            fi
-            sleep 30
-          done
-
-          echo "::error::Timed out waiting for ${DMG}. Check the stuffbucket/macos-builder run. The release stays a draft rather than publishing without a macOS build." >&2
-          exit 1
-
-  # What a consumer installs. `stuffbucket/maximal` depends on this shell as a
-  # library and signs its own application, so the tarball is the artifact that
-  # matters to it and the installers below are for the fork-this audience.
+  # What a consumer installs, and the only artifact a release carries.
+  # `stuffbucket/maximal` depends on this shell as a library and packages and
+  # signs its own application, so the tarball is the artifact that matters.
   #
-  # `publish` gates on this job alone. Gating it on the installers made a
-  # package release depend on a credential for a private signing repository,
-  # which is how `v0.0.1` produced a draft nobody could publish.
+  # `publish` gates on this job alone. Gating it on an installer made a package
+  # release depend on a credential for a private signing repository, which is
+  # how `v0.0.1` produced a draft nobody could publish.
   package-tarball:
     needs: [tag-check, release]
     runs-on: ubuntu-latest
@@ -378,15 +190,23 @@ jobs:
 
   # The dry run's terminal job. Every attach step above is skipped on a
   # dispatch, so without this a run that produced nothing would end green.
+  #
+  # It outlived the installers rather than going with them. One artifact is not
+  # zero artifacts, and `if-no-files-found: error` is not this check: that
+  # setting proves a file existed in the producing job's own directory. It says
+  # nothing about whether the name resolves on the download side, which is what
+  # #81 was, or whether the file that crossed has any bytes.
   dry-run-artifacts:
     if: github.event_name == 'workflow_dispatch'
-    needs: [tag-check, windows-msi-verify, package-tarball]
+    needs: [package-tarball]
     runs-on: ubuntu-latest
-    env:
-      TAG: ${{ needs.tag-check.outputs.tag }}
     steps:
+      # By name, not the whole run. An unnamed download would pass by finding
+      # some other job's artifact, and `tests/workflows.test.ts` pairs the name
+      # against the upload.
       - uses: actions/download-artifact@v4
         with:
+          name: package-tarball
           path: artifacts
       - name: Assert the release would have had something to attach
         shell: bash
@@ -394,15 +214,11 @@ jobs:
           set -euo pipefail
           shopt -s nullglob
 
-          msi="artifacts/windows-msi/stuffbucket-${TAG}-windows-x64.msi"
-          tarballs=(artifacts/package-tarball/*.tgz)
+          tarballs=(artifacts/*.tgz)
 
           [[ ${#tarballs[@]} -eq 1 ]] \
             || { echo "::error::Expected one tarball, found ${#tarballs[@]}"; exit 1; }
 
-          for file in "$msi" "${tarballs[0]}"; do
-            [[ -s "$file" ]] || { echo "::error::Missing or empty: ${file}"; exit 1; }
-            echo "$(stat -c %s "$file") bytes  ${file}"
-          done
-
-          (cd "$(dirname "$msi")" && sha256sum -c "$(basename "$msi").sha256")
+          file="${tarballs[0]}"
+          [[ -s "$file" ]] || { echo "::error::Missing or empty: ${file}"; exit 1; }
+          echo "$(stat -c %s "$file") bytes  ${file}"
