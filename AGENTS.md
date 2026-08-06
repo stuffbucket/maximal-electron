@@ -179,7 +179,7 @@ only background.
 | Capture and compose, the pacing constants | `docs/recording.md` |
 | Trains, the draft release, macOS signing | `docs/release.md` |
 | The install specifiers a consumer may write, and the registry | `docs/consuming.md` |
-| The workflows, the release dry run, the merge race | `docs/ci.md` |
+| The workflows, the release rehearsal and retry, the merge race | `docs/ci.md` |
 | The rulesets, what only the owner can set, and what no check can see | `docs/admin/repository-settings.md` |
 | Code signing | `docs/signing.md` |
 | What is planned and what is deliberately not | `docs/roadmap.md` |

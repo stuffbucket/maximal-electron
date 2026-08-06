@@ -12,7 +12,7 @@ its own header.
 | --- | --- | --- |
 | `ci.yml` | pull request, push to `main` and `release/**` | Lint, types, unit and mutation tests, a git-ref install, packaging and the end-to-end suite on macOS and Windows, and the packaged smoke test on macOS |
 | `merge-preview.yml` | push to `main` and `release/**` | Replays every open pull request against the new tip |
-| `release.yml` | tag `v*.*.*`, or a dispatch for a dry run | The draft release, the tarball, the registry publish, publish |
+| `release.yml` | tag `v*.*.*`, or a dispatch to rehearse or to retry | The draft release, the tarball, the registry publish, publish |
 | `watch-rulesets.yml` | daily, or a dispatch | Reads the live repository rulesets and files one issue when a protection drops below its floor |
 
 This repository ships no installer. `npm run package`, `npm run
@@ -110,26 +110,35 @@ failure carries that refusal. "npm exited non-zero" alone would pass on a
 network error, so the refusal text is the assertion. Issue #100, and
 `docs/consuming.md` is the consumer-facing version.
 
-## The release dry run
+## The release rehearsal, and the retry
 
-`release.yml` accepts a dispatch, and **a dispatch run is always a dry run**.
-There is no input that makes one publish, so the only way to touch a release is
-to push a tag. Run it from the Actions tab against any branch.
+`release.yml` runs on a tag push and on a dispatch. What a run may do is one
+expression, and both halves are required:
 
-A dry run does everything a tag does, except attach and publish:
+```
+github.ref_type == 'tag' && (github.event_name == 'push' || inputs.publish == true)
+```
+
+A dispatch against a branch fails the first half whatever input it passes, so
+no input makes a branch publishable. A dispatch against a tag with `publish`
+left at its default fails the second, and rehearses. Run it from the Actions
+tab against any branch.
+
+A rehearsal does everything a tag does, except attach and publish:
 
 - `tag-check` takes the tag from `package.json` rather than the ref, and still
   checks the format.
 - `package-tarball` runs `npm run verify:exports`, packs, and installs the
   commit by git ref.
 - `publish-package` runs `npm run verify:publish` against the packed archive,
-  then `npm publish --dry-run` with an invalid token. Nothing is uploaded.
+  then `scripts/publish-package.mjs --mode rehearse`, which is
+  `npm publish --dry-run` with an invalid token. Nothing is uploaded.
 - `publish` does not run at all.
 
-`dry-run-artifacts` is what stops a dry run being green for nothing. Every
-attach step is skipped on a dispatch, so the run would otherwise end without
-producing anything and still pass. That job downloads the tarball by name and
-asserts exactly one arrived and is non-empty.
+`dry-run-artifacts` is what stops a rehearsal being green for nothing. Every
+attach step is skipped, so the run would otherwise end without producing
+anything and still pass. That job downloads the tarball by name and asserts
+exactly one arrived and is non-empty.
 
 It survived the removal of the installers rather than going with them. The
 tarball is now the only artifact, which makes it look redundant with
@@ -138,9 +147,86 @@ file existed in the producing job's working directory. It says nothing about
 whether the name resolves on the download side, which is the failure #81 was,
 nor about whether the file that crossed the boundary has any bytes in it.
 
-`DRY_RUN` is the shell-visible form of the same condition, used inside
-`tag-check`. Job and step conditions spell it out as an event name, because the
-`env` context is not available to a job-level condition.
+`DRY_RUN` is the shell-visible form of the same expression, negated, used
+inside `tag-check`. Job and step conditions spell the expression out, because
+the `env` context is not available to a job-level condition, and
+`tests/workflows.test.ts` pins the two to the same string.
+
+### Why a dispatch can publish at all
+
+It could not, until #141. The rule was "a dispatch run is always a dry run",
+and it held because no input existed to make one publish.
+
+That made a tag push a one-shot fuse. A tag is immutable, so a run that does
+not complete spends the version, and the remedy was to bump the patch and cut
+again. On 2026-07-29 an Actions outage held `tag-check` in the queue from
+18:47:28 and cancelled it at 19:02:30 with no runner ever assigned; every
+downstream job was skipped. `stuffbucket/maximal-core` lost `v0.4.4` in the
+same hour, on the same fifteen-minute queue timeout: the tag is correct, and
+nothing was built or published against it. Neither repository had done anything
+wrong, and both had to burn a version.
+
+So the tag is a pointer, and publishing is an operation invoked against it:
+
+```
+gh workflow run release.yml --ref v0.0.5 -f publish=true
+```
+
+Every job is re-runnable against a tag that already exists. `release` reuses a
+draft it finds. `package-tarball` attaches under `--clobber` while the release
+is a draft, reports `ALREADY ATTACHED` when the asset is already on a published
+release, and fails only in the state no retry can repair — published, and
+missing the asset, which is the HTTP 422 case. `publish` reads `isDraft` before
+flipping it. `publish-package` reports `ALREADY PUBLISHED` rather than a 409.
+
+`verify:tag` does not stand in the way. It refuses a ref whose earlier runs
+built a **different** commit, and every retry of a tag builds the same one.
+
+The workflow that runs is the one at the dispatched ref, so this reaches a tag
+only if the tag carries it. `v0.0.5` is the first that will.
+
+### The rail that replaced the old one
+
+The old rule was a comment. What replaces it is three things that run:
+
+- `tests/workflows.test.ts` compares the exact expression, not a substring, on
+  every step that creates, moves, or publishes anything. `github.ref_type ==
+  'tag'` alone would satisfy a `contains` test while letting any dispatch of a
+  tag publish.
+- `scripts/publish-decision.mjs` refuses `--mode publish` on a non-tag ref
+  independently of the workflow file, and `tests/publish-decision.test.ts`
+  walks a table of ref shapes over it. The rail is executable, not only
+  readable.
+- `--ref-type` comes from `GITHUB_REF_TYPE`, which the runner sets and a
+  workflow input cannot reach.
+
+`npm publish` appears in no workflow. Every registry call goes through
+`scripts/publish-package.mjs`, and a test asserts that, because a step that
+spelled the command out would carry none of the above.
+
+### Idempotency, and the `nothing to check` rule applied to a publish
+
+`scripts/publish-package.mjs` asks the registry what it holds before it uploads
+anything, and prints one line naming the outcome:
+
+```
+PUBLISHED          @stuffbucket/maximal-electron@0.0.5 at …: this run uploaded it.
+ALREADY PUBLISHED  @stuffbucket/maximal-electron@0.0.5 at …: this run uploaded nothing.
+```
+
+Both are exit 0, and a reader can tell them apart. An operation that did
+nothing must not read like one that did something, which is the rule the scoped
+checks apply to an empty set, one level up.
+
+`npm view` reports three things and two of them look alike. A version that is
+present prints itself. A version absent from a package that exists prints
+nothing and still exits 0. A package that does not exist at all exits non-zero
+with `E404`. Anything else — a 401, a proxy — is unreadable, and an unreadable
+probe must not read as absent: that is the difference between "upload this" and
+"we could not tell". An unreadable probe still attempts the upload, and a 409
+from that attempt is reported as `ALREADY PUBLISHED`, because the probe and the
+upload are two calls and the registry can change between them.
+
 
 ## The tag gate, and the setting it cannot replace
 
@@ -272,13 +358,18 @@ what a compiler would if YAML went through one:
 - Every `npm pack --pack-destination` step creates the directory first.
 - `publish` needs `package-tarball` and nothing else. See `docs/release.md` for
   why that is deliberate.
-- Every step in `release.yml` that creates, uploads to, or edits a release is
-  guarded, so a dry run cannot publish.
-- Every `npm publish` that is not a dry run is guarded, in every workflow
-  rather than `release.yml` alone. A release can be redone. A version in a
+- Every step in `release.yml` that creates, uploads to, or edits a release
+  carries the whole rail, compared as a string rather than by substring.
+- The rail names a tag ref, and the `publish` input is a boolean that defaults
+  to false. Both halves, asserted separately.
+- `DRY_RUN` is that rail negated, so the shell-visible form and the conditions
+  cannot disagree.
+- No workflow calls `npm publish`. Every registry call goes through
+  `scripts/publish-package.mjs`, and each invocation states its mode and
+  carries the rail that mode requires. A release can be redone. A version in a
   registry cannot.
-- `publish-package` asks for `packages: write`, and a dispatch run rehearses
-  the publish with `--dry-run`.
+- `publish-package` asks for `packages: write`, and a run that is not
+  publishing rehearses instead.
 - Every `needs` names a job that exists.
 
 Each rule also asserts that it found something to check, because a rule that

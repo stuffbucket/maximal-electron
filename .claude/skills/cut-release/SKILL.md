@@ -28,10 +28,11 @@ tag has shipped with only one of them wired.
 Set the version in `package.json`. The tag must match it exactly, or the
 `tag-check` job fails before anything builds.
 
-Then dispatch `release.yml` from the branch. A dispatch is always a dry run: it
-packs the tarball, installs the commit by git ref, asserts the artifact exists,
-and attaches nothing. Every release defect this repository has shipped was in a
-job that had never run. See `docs/ci.md`.
+Then dispatch `release.yml` from the branch. With the `publish` input left at
+its default it rehearses: it packs the tarball, installs the commit by git ref,
+runs the registry publish with `--dry-run` and no valid token, asserts the
+artifact exists, and attaches nothing. Every release defect this repository has
+shipped was in a job that had never run. See `docs/ci.md`.
 
 ```bash
 gh workflow run release.yml --ref release/0.1.0
@@ -46,15 +47,34 @@ git push origin v0.1.0
 Accepted tag shapes: `v1.2.3`, `v1.2.3-alpha`, `v1.2.3-alpha.1`, `v1.2.3-beta`,
 `v1.2.3-beta.4`.
 
+## When the tag's run does not complete
+
+An outage, a cancelled queue, a runner that never arrived. The tag is not
+spent. Dispatch the same workflow against the **tag**, asking it to publish:
+
+```bash
+gh workflow run release.yml --ref v0.1.0 -f publish=true
+```
+
+Every job is re-runnable, so this picks up wherever the last attempt stopped.
+Read the log for which of the two outcomes each step reported: `CREATED` or
+`REUSED`, `ATTACHED` or `ALREADY ATTACHED`, `PUBLISHED` or `ALREADY PUBLISHED`.
+
+Two things this does not fix. A release that is already published and does not
+carry the tarball cannot gain one — HTTP 422, so cut the next patch. And the
+workflow that runs is the one at the dispatched ref, so a tag cut before #141
+landed does not carry the input.
+
 ## What the workflow does
 
 | Job | What it does |
 | --- | --- |
 | `tag-check` | Asserts the tag matches `package.json`. Fails fast. |
-| `release` | Creates a **draft** release with generated notes. |
+| `release` | Creates a **draft** release with generated notes, or reuses one. |
 | `package-tarball` | Packs what a consumer installs, installs the commit by git ref, and attaches the tarball. |
 | `publish` | Flips the draft to published, once, at the end. |
-| `dry-run-artifacts` | Dispatch only. Asserts the dry run produced a tarball. |
+| `publish-package` | Publishes to GitHub Packages, or reports the version as already there. |
+| `dry-run-artifacts` | Rehearsals only. Asserts the run produced a tarball. |
 
 `publish` gates on `package-tarball`.
 
