@@ -28,6 +28,11 @@
 export const AA_NORMAL = 4.5;
 /** 18pt, or 14pt bold. Nothing in this shell qualifies at present. */
 export const AA_LARGE = 3;
+/**
+ * WCAG 2.2 SC 1.4.11. For a shape that carries meaning and holds no text: a
+ * status dot, a tab's emphasis marker, the accent along a selected tab.
+ */
+export const AA_NON_TEXT = 3;
 
 export interface ContrastPair {
   /** The token drawn in the foreground. */
@@ -46,6 +51,10 @@ export interface ContrastPair {
  * Derived from the stylesheets rather than from what looks plausible. A pair
  * missing here is a pair nothing checks, so add one when a component starts
  * drawing a token on a surface that is not already listed.
+ *
+ * `tests/contrast-coverage.test.ts` finds the pairs a single rule states
+ * outright. A shape drawn by one rule onto a surface set by another is issue
+ * #65 and has to be added by hand; the tab markers below are three of those.
  */
 export const CONTRAST_PAIRS: ContrastPair[] = [
   { foreground: '--text-primary', background: '--bg-app', where: 'body text', minimum: AA_NORMAL },
@@ -61,7 +70,10 @@ export const CONTRAST_PAIRS: ContrastPair[] = [
   { foreground: '--text-muted', background: '--bg-app', where: 'nav heading, tab label, placeholder', minimum: AA_NORMAL },
   { foreground: '--text-muted', background: '--bg-raised', where: 'row subtitle, hint', minimum: AA_NORMAL },
   { foreground: '--text-muted', background: '--bg-canvas', where: 'empty state', minimum: AA_NORMAL },
-  { foreground: '--accent', background: '--bg-app', where: 'current nav item', minimum: AA_NORMAL },
+  { foreground: '--accent', background: '--bg-app', where: 'current nav item, busy tab marker', minimum: AA_NORMAL },
+  { foreground: '--accent', background: '--tab-active', where: 'selected tab accent, busy marker on the selected tab', minimum: AA_NON_TEXT },
+  { foreground: '--warning', background: '--bg-app', where: 'attention tab marker', minimum: AA_NON_TEXT },
+  { foreground: '--warning', background: '--tab-active', where: 'attention marker on the selected tab', minimum: AA_NON_TEXT },
   { foreground: '--accent-contrast', background: '--accent', where: 'primary button label', minimum: AA_NORMAL },
   { foreground: '--text-on-solid', background: '--danger-fill', where: 'danger button label', minimum: AA_NORMAL },
   { foreground: '--text-invalid', background: '--bg-app', where: 'field error', minimum: AA_NORMAL },

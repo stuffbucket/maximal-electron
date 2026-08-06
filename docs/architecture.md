@@ -119,15 +119,51 @@ Four details are load-bearing.
   `BrowserWindow` and reaps it on `closed`, so a window that goes away takes
   its shells with it and cannot reach another window's. Quit reaps every one.
   A request that arrives with no window is refused: nothing would reap it.
+  A detached session is reaped the same way; detach is a view's lifetime, not
+  a window's.
 - **`TerminalHost` batches output.** A build log emits thousands of small
   writes per second. One message each would swamp the channel, so it coalesces
   on an 8 millisecond timer.
 - **Terminals stay mounted.** Switching tabs hides the inactive host rather
-  than unmounting it. A remount would kill the shell and lose the scrollback.
+  than unmounting it. A remount loses the scrollback, which lives in the
+  emulator, and by default kills the shell as well.
 - **The content policy needs two additions.** `script-src` needs
   `'wasm-unsafe-eval'`, and `connect-src` needs `data:`. `ghostty-web` inlines
   its WebAssembly module as a data URL and fetches it at startup, so there is
   no separate asset to serve.
+
+### Detaching a session from its view
+
+Unmounting a `TerminalView` terminates its session. That is the default, and
+changing it would leak a process for every caller that relies on a view going
+away ending a shell. `disposition="detach"` opts out, and then the shell keeps
+running with nothing showing it, which is what a long build needs and what
+`tmux detach` means.
+
+Three things make that a detach rather than a leak.
+
+- **It still has an owner.** `TerminalHost.terminateAll` covers every session
+  it holds, so closing the window and quitting reap a detached shell exactly as
+  they reap an attached one.
+- **It can be found.** `TerminalHost.list` returns every live session, and the
+  `pty:list` channel carries that to the renderer. Nothing signals a detach,
+  because a detach is the absence of a terminate, so the set of detached
+  sessions is derived: `detachedSessions` subtracts the ids the renderer holds
+  views for. There is no attached flag in the main process to fall out of step
+  with the views.
+- **It can be attached to.** `TerminalHost.spawn` on an id it already holds
+  resizes that session and replays what it retained, rather than refusing.
+
+**What survives a detach is the process, not the screen.** The scrollback lives
+in the `ghostty-web` emulator, in the renderer, and it dies with the view. The
+host keeps its own tail instead, bounded by `MAX_RETAINED_BYTES`, and a view
+that attaches is sent that and nothing older. A session whose output has run
+past the limit says so once, in the replay. `MAX_PENDING_BYTES` is a different
+buffer and records nothing: it is drained on every flush.
+
+In this shell the `terminalDetach` preference is off by default. With it on,
+closing a terminal tab leaves the shell running, the inspector lists what is
+running with no tab, and clicking one reopens its tab and attaches.
 
 ### The terminal and the theme
 
@@ -160,6 +196,13 @@ because it assumes everything is bundled. That excluded the module entirely.
 The package built, every test passed, and a user would still have had no
 terminal. `forge.config.ts` now supplies its own `ignore`, and
 `scripts/verify-package.mjs` asserts the module is present.
+
+That `ignore` is the whole filter, because `packagerConfig.prune` is `false`.
+Packager's own walk keeps `dependencies` and drops the rest, and this package
+declares no runtime dependencies at all — a consumer importing `./host` would
+otherwise install `node-llama-cpp` for a module that imports `electron` alone.
+A new external native module therefore goes in `devDependencies`, and reaches
+the package through the keep-list rather than through `dependencies`.
 
 `*.node` is not the whole of it. On macOS `node-pty` `execvp`s `spawn-helper`,
 which sits beside `pty.node` and has no extension, at a path it rewrites from
@@ -231,14 +274,23 @@ It is plain ESM under `scripts/`, not TypeScript in `src/`, because `dist/` is
 ESM syntax in a package with no `"type": "module"`: a bundler reads it and
 `node` refuses it. A packaging check runs under plain `node`.
 
-The first two checks it returns are floors. Point either list at the wrong
-directory and it is empty, at which point every assertion over it would
-otherwise report a pass. `contentSecurityPolicy` is optional and covers the
-`ghostty-web` directives above; omit it and those two checks are not returned.
+The first three checks it returns are floors. Point either list at the wrong
+directory and it is empty, and omit `contentSecurityPolicy` and there is no
+policy to measure; in each case every assertion over the missing input would
+otherwise report a pass. That is not hypothetical: the policy was optional and
+this repository's own caller supplied none, so the two `ghostty-web` grants
+above were never measured against a shipped document. Read the policy out of the
+HTML the build produced, as `scripts/verify-package.mjs` does, rather than
+restating it beside the call.
 
 `TerminalView` takes its transport as a value. It knows nothing about an IPC
 contract, so a consumer wires `TerminalHost` to whatever channels they already
 have and implements the five transport methods against them.
+
+A consumer that wants `disposition="detach"` implements a sixth, `list`, and
+passes a `DetachableTerminalTransport`. The type demands it: a shell that
+outlives every view and that nothing can enumerate is a process the user cannot
+see and cannot stop, so the prop refuses the half of the pair that leaks.
 
 `TerminalHost` is an instance, not module state, so a consumer with two windows
 gets two registries and closing one cannot reap the other's shells. This shell
@@ -364,7 +416,7 @@ application a user installs. `forge.config.ts` excludes its output, and
 | --- | --- | --- |
 | Unit | Vitest | Main-process logic and contract types. |
 | End to end | Playwright | Behaviour and computed layout, against the built bundles. |
-| Packaging | `scripts/verify-package.mjs` | asar contents and fuse values. |
+| Packaging | `scripts/verify-package.mjs` | asar contents, the shipped content policy, and fuse values. |
 
 The third layer exists because the second cannot reach it. Playwright attaches
 through the Node inspector, and `EnableNodeCliInspectArguments: false` disables

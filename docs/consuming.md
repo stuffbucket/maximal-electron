@@ -1,16 +1,29 @@
 # Consuming this package
 
-This package publishes to the **GitHub Packages npm registry** as
-`@stuffbucket/maximal-electron`. Issue #22 named it. The first publish happens
-on the next tag; nothing is in the registry before then.
+`@stuffbucket/maximal-electron` ships its library exports from `dist/`, which is
+built rather than committed. Which install specifier you write decides whether
+that build ever runs, and whether you need a token.
 
-Before the registry there were three install paths and they behaved
-differently. `npm pack` runs `prepack`. A `github:` ref runs `prepare`. An
-`https://` codeload tarball runs neither, which is why `v0.0.2` installed with
-no `dist/` at all. The registry collapses all three: it serves one archive,
-already built, and npm resolves a version range against it.
+## The four forms
 
-## The cost, stated first
+| Specifier | Lifecycle script npm runs | Token | Result |
+| --- | --- | --- | --- |
+| `@stuffbucket/maximal-electron@^0.0.5` from GitHub Packages | None. The archive is already built | Required | Works |
+| `https://github.com/.../releases/download/v0.0.5/stuffbucket-maximal-electron-0.0.5.tgz` | `prepack`, at pack time | No | Works |
+| `github:stuffbucket/maximal-electron#<ref>` | `prepare`, in the clone | No | Works |
+| `https://codeload.github.com/.../tar.gz/<sha>` | None | No | Refused |
+
+The registry is the supported path from `v0.0.5`. The other two working forms
+are not deprecated, and the reason to keep them is in the next section.
+
+A release asset from `v0.0.4` or earlier is named `stuffbucket-electron-<version>.tgz`,
+because the rename lands in `v0.0.5`. The URL and the package name both move
+together.
+
+This package is not on the public npm registry. `npm install
+@stuffbucket/maximal-electron` with no `.npmrc` finds nothing.
+
+## The registry, and what it costs
 
 **GitHub Packages requires authentication to install, including for a public
 package.** GitHub's own documentation says it plainly: "You need an access
@@ -22,20 +35,21 @@ Two consequences, and neither is small.
 - Every consumer writes an `.npmrc` and holds a token. A developer cloning
   `stuffbucket/maximal` cannot run `npm install` until they have made one.
 - The registry only supports a **personal access token (classic)**. A
-  fine-grained token does not authenticate to it. Classic tokens are the coarse
-  kind, and `read:packages` is the narrowest scope that works.
+  fine-grained token does not authenticate to it. `read:packages` is the
+  narrowest scope that works.
 
 `stuffbucket/maximal` needs that token in GitHub Actions **and** on its
 self-hosted macOS signing runner, which is a machine somebody configures by
 hand. That is the price of the registry, and it is paid by the consuming
-repository rather than this one.
+repository rather than this one. It is also why the release tarball stays
+attached to every tag: a consumer who will not hold a token has a form that
+still works.
 
 The public npm registry avoids the burden entirely. It needs no token to
 install. It needs a publish credential this repository does not hold, and that
 is a decision for the owner rather than a change an agent makes.
-`docs/roadmap.md` is where that argument belongs if the burden proves too high.
 
-## What a consumer writes
+### What a consumer writes
 
 An `.npmrc` beside `package.json`, committed:
 
@@ -51,12 +65,11 @@ a workflow reads it from a secret.
 Then a range rather than a pin:
 
 ```json
-{
-  "dependencies": {
-    "@stuffbucket/maximal-electron": "^0.0.5"
-  }
-}
+"@stuffbucket/maximal-electron": "^0.0.5"
 ```
+
+A range is the thing the other three forms cannot give. Each of those pins a
+ref, a SHA, or a URL, and moving one forward is a deliberate edit.
 
 ### The token
 
@@ -70,47 +83,118 @@ In GitHub Actions, `secrets.GITHUB_TOKEN` reads a package published by the
 repository read access to the package from the package settings page, and the
 token still has to carry `read:packages`.
 
-## Migrating from a git ref or a codeload URL
+## Migrating from the unscoped name
 
-`stuffbucket/maximal` currently depends on one of these:
-
-```
-"stuffbucket-electron": "github:stuffbucket/maximal-electron#<sha>"
-"stuffbucket-electron": "https://github.com/.../stuffbucket-electron-0.0.1.tgz"
-```
-
-Both break. The rename changes the package identity, not only where it comes
-from: `node_modules/stuffbucket-electron` becomes
+The package was `stuffbucket-electron` through `v0.0.4`. Every form above names
+`@stuffbucket/maximal-electron` from `v0.0.5`, including the git ref and the
+release tarball, because the name is the package's identity rather than a
+property of where it came from. `node_modules/stuffbucket-electron` becomes
 `node_modules/@stuffbucket/maximal-electron`, and every import changes with it.
 
 Three edits, in one commit:
 
-1. Add the `.npmrc` above, and the token to CI and to the signing runner.
-2. Replace the dependency with `"@stuffbucket/maximal-electron": "^0.0.5"`.
+1. Add the `.npmrc` above, and the token to CI and to the signing runner. Skip
+   this if you are staying on the git ref or the release tarball.
+2. Rename the dependency, and take a range if you took the registry.
 3. Rewrite every import specifier. `stuffbucket-electron/host` becomes
-   `@stuffbucket/maximal-electron/host`, and the same for `/renderer`,
-   `/renderer/styles.css`, `/host/terminal`, and `/verify`.
+   `@stuffbucket/maximal-electron/host`, and the same for `/main`, `/renderer`,
+   `/renderer/styles.css`, `/host/terminal`, `/verify`, and
+   `/verify/shell-variables`.
 
 Every `exports` subpath keeps its shape, so only the package part of each
 specifier moves. `sed -i 's|stuffbucket-electron/|@stuffbucket/maximal-electron/|g'`
 over the source is the whole of step three.
 
-The old specifiers keep working against the tags that already exist. Nothing
-published before the rename changes.
+Nothing published before the rename changes. A pin to `v0.0.4` or earlier keeps
+resolving under the old name, so the migration happens when the consumer
+chooses.
 
-## What is checked, and when
+## The unsupported form
 
-`npm run verify:publish` reads the archive `npm pack` produces, and asserts the
-things a publish depends on: the name is scoped to the account that owns the
-repository, `publishConfig` names the registry, the file is named for the
-scoped package, and every `exports` target inside the archive is a file with
-bytes in it. It runs on every dry run and on every tag, before `npm publish`.
+A codeload archive:
+
+```
+https://codeload.github.com/stuffbucket/maximal-electron/tar.gz/<sha>
+```
+
+npm treats that URL as a packed tarball. It is not one: codeload serves the
+repository tree, and `dist/` is not in the tree. npm runs no lifecycle script
+for an `https://` tarball dependency other than `install` and `postinstall`, so
+nothing builds the package, and every entry in `exports` names a file the
+install does not carry. An archive of `main` holds 287 entries and none of them
+is under `dist/`.
+
+A pin of this form that still works pins a commit older than #70, which is when
+`dist/` stopped being committed. Moving that pin forward to any later commit
+produces a package whose exports resolve to nothing. Use one of the three
+supported forms instead.
+
+### What happens if you use one anyway
+
+`scripts/check-install.mjs` runs at `postinstall`, which is the one lifecycle
+script npm runs for all four forms. It compares the `exports` map against the
+files on disk and refuses the install:
+
+```
+@stuffbucket/maximal-electron@0.0.5: installed without a build step.
+
+  7 of the 9 files this package's exports name are not here:
+    ./dist/host/host-window.d.ts
+    ./dist/host/host-window.js
+    ...
+```
+
+`npm install` then exits 1. The failure is at install time rather than at your
+compile step, which is the whole point of the guard. Issue #100.
+
+`npm install --ignore-scripts` disables it, along with `prepare` for the git
+form. A consumer who installs that way gets an unbuilt package from either form
+and no warning, and that is the one case this cannot cover.
+
+### The guard is transitional
+
+It costs every consumer a `postinstall` on every install, permanently, for a
+problem that is not permanent. A registry install is `npm pack` output by
+construction, so it cannot reach the state the guard catches, and codeload
+becomes a legacy hazard rather than a live one.
+
+The condition for removing it is that `stuffbucket/maximal` consumes this
+package from the registry, not that the registry publish works: the guard
+protects a consumer who is on the broken path today. Issue #117 holds the
+condition and what removal touches. The registry existing is the first half of
+that condition, and it is what this train adds. The second half is `maximal`'s
+migration, which is theirs to make.
+
+## Why `dist/` is not committed
+
+Committing it would make every form work, and #70 removed it for two reasons
+that have not gone away. A tracked build artifact is rewritten by any build,
+silently, because `.gitignore` stops applying once a file is tracked. And the
+published export can then disagree with the source it was built from, which it
+did: the `./renderer` export shipped one merged pull request behind `src/`.
+
+## What checks this, and when
+
+`npm run verify:git-install` installs a git ref into a scratch directory and
+resolves every export, then archives the same ref and asserts the install of
+that archive fails carrying the refusal above. Both halves run in the
+`git-install` job on every pull request.
+
+`node scripts/verify-git-install.mjs --tarball <url>` runs the export half
+against a release asset. It needs a published release, so it runs by hand
+before a cut rather than in CI. `.claude/skills/cut-release/SKILL.md` lists it.
+
+`npm run verify:publish` reads the archive `npm pack` produces — the bytes, not
+a file listing — and asserts the things a registry publish depends on: the name
+is scoped to the account that owns the repository, `publishConfig` names the
+registry, the file is named for the scoped package, and every `exports` target
+inside the archive is a file with bytes in it. It runs on every dry run and on
+every tag, before `npm publish`.
 
 **That is everything answerable before a version exists in the registry.** The
-real proof is the other one: install `@stuffbucket/maximal-electron` from the
-registry in a scratch directory and resolve every export, the way issue #96's
-git-ref check does for a `github:` specifier. That check cannot be written yet.
-It would have nothing to install, and a check with nothing to check passes. It
-is the first thing to add after the first publish lands, and it belongs on top
-of the export-checking modules arriving with the `0.0.4` train rather than a
-second copy of them.
+registry equivalent of `verify:git-install` — install
+`@stuffbucket/maximal-electron` from the registry and resolve every export — is
+the real proof, and it cannot be written yet. It would have nothing to install,
+and a check with nothing to check passes. It is the first thing to add after
+the first publish lands, and `scripts/export-checks.mjs` already holds
+everything it needs.

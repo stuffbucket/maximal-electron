@@ -1,36 +1,47 @@
 import type { ITheme } from 'ghostty-web';
 
-import type { TerminalTransport } from '../lib/terminal-transport.js';
+import type {
+  DetachableTerminalTransport,
+  TerminalTransport,
+} from '../lib/terminal-transport.js';
 import { TerminalView } from './TerminalView.js';
 
 /**
  * Every open terminal, with the inactive ones hidden.
  *
- * Hidden rather than unmounted, because a remount kills the shell and loses the
- * scrollback with it. That rule is easy to state and easy to lose in a refactor,
- * so it lives in one component instead of being repeated by every shell that
- * hosts a terminal.
+ * Hidden rather than unmounted, and that is a scrollback decision rather than a
+ * lifetime one. `disposition="detach"` keeps the shell alive across an unmount,
+ * but the scrollback lives in the emulator and dies with it, so a reattached
+ * view gets the tail the host retained and nothing older. An inactive tab stays
+ * mounted to keep all of it; detach covers the tab a user actually closes.
  */
-export function TerminalTabs({
-  ids,
-  activeId,
-  shell,
-  transport,
-  theme,
-}: {
+interface TerminalTabsCommonProps {
   /** Which sessions are open. Which tabs those are is the caller's taxonomy. */
   ids: string[];
   activeId: string;
   /** Overrides the login shell. A capture fixture passes an impersonal one. */
   shell?: string;
-  transport: TerminalTransport;
   theme?: ITheme;
-}) {
+}
+
+export type TerminalTabsProps = TerminalTabsCommonProps &
+  (
+    | { disposition?: 'terminate'; transport: TerminalTransport }
+    | { disposition: 'detach'; transport: DetachableTerminalTransport }
+  );
+
+export function TerminalTabs(props: TerminalTabsProps) {
+  const { ids, activeId, shell, theme } = props;
+  const session =
+    props.disposition === 'detach'
+      ? ({ disposition: 'detach', transport: props.transport } as const)
+      : ({ disposition: 'terminate', transport: props.transport } as const);
+
   return (
     <>
       {ids.map((id) => (
         <div key={id} className="terminal-host" hidden={id !== activeId}>
-          <TerminalView id={id} shell={shell} transport={transport} theme={theme} />
+          <TerminalView id={id} shell={shell} theme={theme} {...session} />
         </div>
       ))}
     </>

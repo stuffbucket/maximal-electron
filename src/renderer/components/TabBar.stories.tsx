@@ -1,5 +1,5 @@
-import { SquareTerminal } from 'lucide-react';
-import { useState } from 'react';
+import { Sparkles } from 'lucide-react';
+import { useState, type ComponentType } from 'react';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, userEvent, within } from 'storybook/test';
 
@@ -33,12 +33,29 @@ const RUNS: Tab[] = [
   { id: 'd', title: 'migrate tokens', status: 'failed' },
 ];
 
+/** One tab per name the shell sources, which is the whole registry. */
+const SOURCED: Tab[] = [
+  { id: 'a', title: 'Terminal 1', icon: 'terminal' },
+  { id: 'b', title: 'notes.md', icon: 'document' },
+  { id: 'c', title: 'src/renderer', icon: 'folder' },
+  { id: 'd', title: 'Settings', icon: 'settings' },
+];
+
+/** A session strip under load: something running, something waiting for a human. */
+const SESSIONS: Tab[] = [
+  { id: 'a', title: 'deploy staging', icon: 'terminal', emphasis: 'busy' },
+  { id: 'b', title: 'approve migration', icon: 'terminal', emphasis: 'attention' },
+  { id: 'c', title: 'build docs', icon: 'terminal', status: 'running', emphasis: 'busy' },
+  { id: 'd', title: 'idle shell', icon: 'terminal' },
+];
+
 function Strip({
   tabs,
   width,
   idBase = 'story',
   active: initial,
   label = 'Open documents',
+  icon,
 }: {
   tabs: Tab[];
   width: number;
@@ -46,6 +63,8 @@ function Strip({
   idBase?: string;
   active?: string;
   label?: string;
+  /** The caller-supplied override. Most strips let `tab.icon` decide. */
+  icon?: (tab: Tab) => ComponentType<{ size?: number }> | undefined;
 }) {
   const [open, setOpen] = useState(tabs);
   const [active, setActive] = useState(initial ?? tabs[0]?.id ?? '');
@@ -79,7 +98,7 @@ function Strip({
           onSelect={setActive}
           onClose={close}
           onNew={() => undefined}
-          icon={(tab) => (tab.title.startsWith('Terminal') ? SquareTerminal : undefined)}
+          icon={icon}
           label={label}
         />
         <span className="titlebar__grow" />
@@ -185,13 +204,61 @@ export const WithStatus: Story = {
   render: () => <Strip tabs={RUNS} width={640} />,
 };
 
-/** Every tab carrying an icon, which is the widest the chrome ever gets. */
-export const WithIcons: Story = {
+/**
+ * The icons the shell sources, one per name in `TAB_ICON_NAMES`.
+ *
+ * A tab names its icon rather than carrying a component, because a tab is data:
+ * it survives a session store and a `JSON.stringify`, and a function does not.
+ */
+export const WithSourcedIcons: Story = {
+  render: () => <Strip tabs={SOURCED} width={640} />,
+};
+
+/**
+ * An icon the shell does not source.
+ *
+ * The `icon` callback returns a component, so a consumer's own glyph needs no
+ * file read, no bundler plugin and no registration. It wins the slot outright:
+ * these tabs each name `document`, and none of them draws it.
+ */
+export const WithConsumerIcon: Story = {
   render: () => (
     <Strip
-      tabs={RUNS.map((tab) => ({ ...tab, title: `Terminal ${tab.title}` }))}
+      tabs={SOURCED.map((tab) => ({ ...tab, icon: 'document' as const }))}
       width={640}
+      icon={() => Sparkles}
     />
+  ),
+};
+
+/**
+ * Emphasis: what the tab says when a 7px dot is the wrong size to say it.
+ *
+ * Two treatments, and only two. `attention` is a rule down the leading edge,
+ * full height, for a tab that needs a human — the approval gate in
+ * stuffbucket/maximal#424. `busy` is a short bar travelling along the bottom,
+ * for work still in flight. Geometry carries both, so neither depends on hue,
+ * and `adornmentLabel` gives a screen reader the words.
+ *
+ * The third tab carries a status and an emphasis at once. The dot takes the
+ * slot; the emphasis is drawn on the tab, so both are visible and the name
+ * reads "build docs, Running, Working".
+ */
+export const WithEmphasis: Story = {
+  render: () => <Strip tabs={SESSIONS} width={640} />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    // The proof that the shape is not the whole message. A tab whose only
+    // signal was a coloured bar would be findable by nothing but its title.
+    await expect(canvas.getByRole('tab', { name: 'approve migration Needs attention' })).toBeVisible();
+    await expect(canvas.getByRole('tab', { name: 'build docs Running, Working' })).toBeVisible();
+  },
+};
+
+/** Emphasis on the selected tab, where it competes with the accent underline. */
+export const EmphasisSelected: Story = {
+  render: () => (
+    <Strip tabs={SESSIONS} width={640} idBase="emphasis-selected" active="b" />
   ),
 };
 

@@ -211,6 +211,8 @@
   color: var(--shell-text-subtle);
   white-space: nowrap;
   border-radius: var(--shell-radius, 6px) var(--shell-radius, 6px) 0 0;
+  /* The emphasis marker is absolute inside the tab. */
+  position: relative;
 }
 
 .sb-shell .tab:hover {
@@ -294,6 +296,46 @@
 .sb-shell .tab__new:hover {
   color: var(--shell-text);
   background: var(--shell-hover);
+}
+
+/*
+ * Emphasis. Geometry carries the signal, so a consumer who supplies no
+ * `--shell-warning` still gets two shapes nothing else in the strip draws.
+ */
+.sb-shell .tab__emphasis {
+  position: absolute;
+  pointer-events: none;
+}
+
+.sb-shell .tab[data-emphasis='attention'] .tab__emphasis {
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  border-radius: var(--shell-radius, 6px) 0 0 0;
+  background: var(--shell-warning, var(--shell-accent));
+}
+
+.sb-shell .tab[data-emphasis='busy'] .tab__emphasis {
+  bottom: 5px;
+  left: var(--shell-space-3, 12px);
+  width: 34%;
+  height: 2px;
+  background: var(--shell-accent);
+  animation: sb-tab-busy 1.4s ease-out infinite;
+}
+
+/* Namespaced, because a keyframe name is global and this file is imported into
+   a consumer's application. */
+@keyframes sb-tab-busy {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  50% {
+    transform: translateX(150%);
+  }
 }
 
 .sb-shell .nav {
@@ -444,6 +486,10 @@
 @media (prefers-reduced-motion: reduce) {
   .sb-shell .nav__chevron {
     transition-duration: 0.01ms;
+  }
+
+  .sb-shell .tab__emphasis {
+    animation-duration: 0.01ms;
   }
 }
 

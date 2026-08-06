@@ -4,6 +4,7 @@ import path from 'node:path';
 import {
   _electron as electron,
   type ElectronApplication,
+  type Locator,
   type Page,
 } from '@playwright/test';
 
@@ -243,6 +244,38 @@ export async function resetShell({ app, window }: Harness): Promise<void> {
   // A known view and view mode, with nothing selected.
   await window.click('[data-testid="nav-library"]');
   await window.click('[data-testid="mode-grid"]');
+}
+
+/**
+ * Everything a terminal has drawn, read from the emulator's own buffer.
+ *
+ * `ghostty-web` renders to a canvas, so there is no DOM text to assert on and a
+ * pixel comparison would prove nothing about what the terminal parsed. The
+ * instance is exposed on the host element for exactly this.
+ */
+export function terminalScreen(terminal: Locator): Promise<string> {
+  return terminal.evaluate((node) => {
+    const term = (node as HTMLElement & { __terminal?: unknown }).__terminal as
+      | {
+          buffer: {
+            active: {
+              length: number;
+              getLine: (
+                y: number,
+              ) => { translateToString: (trim?: boolean) => string } | undefined;
+            };
+          };
+        }
+      | undefined;
+    if (!term) return '';
+
+    const active = term.buffer.active;
+    const lines: string[] = [];
+    for (let y = 0; y < active.length; y += 1) {
+      lines.push(active.getLine(y)?.translateToString(true) ?? '');
+    }
+    return lines.join('\n');
+  });
 }
 
 /**

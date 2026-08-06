@@ -1,6 +1,6 @@
 import { app, type BrowserWindow } from 'electron';
 
-import { TerminalHost } from '../../host/terminal-host.js';
+import { TerminalHost, type TerminalSession } from '../../host/terminal-host.js';
 import type { PtySpawnRequest } from '../../shared/ipc.js';
 
 import { Owners } from './pty-session.js';
@@ -105,6 +105,11 @@ export function resizePty(
 
 export function killPty(owner: BrowserWindow | undefined, id: string): void {
   hostFor(owner)?.terminate(id);
+}
+
+/** This window's live sessions, including any no view is showing. */
+export function listPtys(owner: BrowserWindow | undefined): TerminalSession[] {
+  return hostFor(owner)?.list() ?? [];
 }
 
 /** Kill every window's sessions. Call on quit, so no shell outlives the app. */

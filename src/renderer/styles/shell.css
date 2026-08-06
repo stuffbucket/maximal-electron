@@ -517,6 +517,55 @@ body {
   color: var(--text-primary);
 }
 
+/*
+ * Emphasis, for what a 7px dot is the wrong size to say.
+ *
+ * Geometry carries it, not hue. `attention` is a rule down the leading edge and
+ * `busy` a short bar travelling along the bottom; no other tab state draws
+ * either shape, so WCAG 1.4.1 holds for a reader who sees no colour. The words
+ * reach a screen reader from `adornmentLabel`.
+ */
+.tab__emphasis {
+  position: absolute;
+  pointer-events: none;
+}
+
+/* Full height, because this has to carry across a room and across a strip the
+   user is not looking at. Mitred at the top so it does not square the corner. */
+.tab[data-emphasis='attention'] .tab__emphasis {
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  border-radius: var(--radius-input) 0 0 0;
+  background: var(--warning);
+}
+
+/* Short, inset and lifted clear of the bottom edge, because the selected tab
+   draws the same colour at the same height there and swallowed this. */
+.tab[data-emphasis='busy'] .tab__emphasis {
+  bottom: 5px;
+  left: var(--space-3);
+  width: 34%;
+  height: 2px;
+  background: var(--accent);
+  animation: tab-busy 1.4s var(--ease-out) infinite;
+}
+
+/* Both ends of the cycle are the resting position. The reduced-motion override
+   collapses the duration rather than removing the animation, so the parked
+   frame is whichever one 100% names. */
+@keyframes tab-busy {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  50% {
+    transform: translateX(150%);
+  }
+}
+
 /* ---------------------------------------------------------------- toolbar */
 
 .toolbar {

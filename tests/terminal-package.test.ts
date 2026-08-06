@@ -33,7 +33,16 @@ const unpackedDarwin = [
   'node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper',
 ];
 
-const darwin = { packedFiles: packedDarwin, unpackedFiles: unpackedDarwin, platform: 'darwin', arch: 'arm64' };
+/** Shaped like the one `src/renderer/index.html` declares. */
+const shippedPolicy = "script-src 'self' 'wasm-unsafe-eval'; connect-src 'self' data:";
+
+const darwin = {
+  packedFiles: packedDarwin,
+  unpackedFiles: unpackedDarwin,
+  platform: 'darwin',
+  arch: 'arm64',
+  contentSecurityPolicy: shippedPolicy,
+};
 
 describe('terminalPrebuildDirectory', () => {
   it('joins the platform and the architecture', () => {
@@ -133,8 +142,13 @@ describe('terminalPackageChecks', () => {
     expect(failed(checks)).toContain('the unpacked listing is not empty');
   });
 
-  it('fails every native assertion when both listings are empty', () => {
-    const checks = terminalPackageChecks({ ...darwin, packedFiles: [], unpackedFiles: [] });
+  it('fails every assertion when nothing is supplied', () => {
+    const checks = terminalPackageChecks({
+      platform: 'darwin',
+      arch: 'arm64',
+      packedFiles: [],
+      unpackedFiles: [],
+    });
     expect(failed(checks)).toEqual(checks.map((entry) => entry.name));
   });
 
@@ -184,6 +198,7 @@ describe('terminalPackageChecks', () => {
     const checks = terminalPackageChecks({
       platform: 'darwin',
       arch: 'arm64',
+      contentSecurityPolicy: shippedPolicy,
       packedFiles: ['node-pty/lib/index.js'],
       unpackedFiles: ['prebuilds/darwin-arm64/pty.node', 'prebuilds/darwin-arm64/spawn-helper'],
     });
@@ -195,6 +210,7 @@ describe('terminalPackageChecks', () => {
     const checks = terminalPackageChecks({
       platform: 'darwin',
       arch: 'arm64',
+      contentSecurityPolicy: shippedPolicy,
       packedFiles: ['/node_modules/@lydell/node-pty-darwin-arm64/lib/index.js'],
       unpackedFiles: [`${prebuild}/pty.node`, `${prebuild}/spawn-helper`],
     });
@@ -205,6 +221,7 @@ describe('terminalPackageChecks', () => {
     const checks = terminalPackageChecks({
       platform: 'darwin',
       arch: 'arm64',
+      contentSecurityPolicy: shippedPolicy,
       packedFiles: [
         '/node_modules/@lydell/node-pty/index.js',
         '/node_modules/@lydell/node-pty-darwin-arm64/lib/index.js',
@@ -222,6 +239,7 @@ describe('terminalPackageChecks', () => {
     const checks = terminalPackageChecks({
       platform: 'linux',
       arch: 'x64',
+      contentSecurityPolicy: shippedPolicy,
       packedFiles: ['/node_modules/node-pty/lib/index.js', `/${prebuild}/pty.node`],
       unpackedFiles: [`${prebuild}/pty.node`],
     });
@@ -233,6 +251,7 @@ describe('terminalPackageChecks', () => {
     const checks = terminalPackageChecks({
       platform: 'win32',
       arch: 'x64',
+      contentSecurityPolicy: shippedPolicy,
       packedFiles: ['/node_modules/node-pty/lib/index.js', `/${prebuild}/conpty.node`],
       unpackedFiles: [
         `${prebuild}/conpty.node`,
@@ -243,12 +262,21 @@ describe('terminalPackageChecks', () => {
     expect(failed(checks)).toEqual(['conpty/OpenConsole.exe is unpacked']);
   });
 
-  it('skips the content policy when none is supplied', () => {
-    const names = terminalPackageChecks(darwin).map((entry) => entry.name);
-    expect(names.some((name) => name.includes('grants'))).toBe(false);
+  it('reports a missing content policy rather than dropping the two checks', () => {
+    const { contentSecurityPolicy: _omitted, ...withoutPolicy } = darwin;
+    expect(failed(terminalPackageChecks(withoutPolicy))).toEqual([
+      'a renderer content policy was supplied',
+      "script-src grants 'wasm-unsafe-eval'",
+      'connect-src grants data:',
+    ]);
   });
 
-  it('adds the content policy checks when one is supplied', () => {
+  it('reports an empty content policy as a missing one', () => {
+    const checks = terminalPackageChecks({ ...darwin, contentSecurityPolicy: '' });
+    expect(failed(checks)).toContain('a renderer content policy was supplied');
+  });
+
+  it('accepts a supplied policy without reporting it missing', () => {
     const checks = terminalPackageChecks({
       ...darwin,
       contentSecurityPolicy: "script-src 'self'; connect-src 'self'",

@@ -27,6 +27,10 @@ linked document.
 | Package | `npm run package` |
 | Verify a package | `npm run verify:package` |
 | Verify a publish | `npm run verify:publish` |
+| Launch a package | `npm run smoke:packaged` |
+| Verify the exports | `npm run verify:exports` |
+| Verify an install by specifier | `npm run verify:git-install` |
+| Verify the shell stays agnostic | `npm run verify:neutral` |
 | Verify the docs | `npm run verify:docs` |
 | Regenerate icons | `npm run icons` |
 
@@ -55,7 +59,8 @@ Each of these is load-bearing. Do not relax one to make a change fit.
 - **Never lower the mutation threshold.** `npm run mutate` breaks below 100.
 - **Never turn a fuse back on to make a test pass.**
   `EnableNodeCliInspectArguments: false` is why the end-to-end tests drive the
-  unpackaged build.
+  unpackaged build, and why `npm run smoke:packaged` drives the packaged one
+  through an argument the application answers itself.
 - **Never add an asset to a published release.** GitHub rejects it with HTTP
   422. Everything attaches to the draft.
 
@@ -148,12 +153,14 @@ only background.
 | Area | Document |
 | --- | --- |
 | Processes, the IPC contract, terminals, build output | `docs/architecture.md` |
+| The exports a consumer imports, `runMain`, the `options` shape | `docs/embedding.md` |
+| The `--shell-*` contract the renderer package reads from its host | `docs/shell-variables.md` |
 | The overlay agent, the provider chain, the approval gate | `docs/agent.md` |
 | Random order, mutation testing, layout evidence, the off-screen suite | `docs/testing.md` |
 | Stories, the a11y run, what is deliberately not in CI | `docs/storybook.md` |
 | Capture and compose, the pacing constants | `docs/recording.md` |
 | Trains, the draft release, macOS signing | `docs/release.md` |
-| The registry, the consumer's token, the migration | `docs/consuming.md` |
+| The install specifiers a consumer may write, and the registry | `docs/consuming.md` |
 | The workflows, the release dry run, the merge race | `docs/ci.md` |
 | Code signing | `docs/signing.md` |
 | What is planned and what is deliberately not | `docs/roadmap.md` |
@@ -163,24 +170,26 @@ goes stale; the one this replaces named three of the five that existed.
 
 ## Two rules that live outside those documents
 
-**Fuses.** `forge.config.ts` fuses the packaged binary, and
-`scripts/verify-package.mjs` holds a copy of the expected values. Change both in
-the same commit, or the check passes on a stale expectation. A change to
-`FusesPlugin` also invalidates an existing signature, so say so in the pull
-request: the macOS build must be redone.
+**Fuses.** `scripts/package-contract.mjs` holds the expected fuse values.
+`forge.config.ts` burns them into the binary and `scripts/verify-package.mjs`
+reads them back off it, both from that one list, so a seventh fuse is applied
+and checked from a single edit rather than from a review convention. A change to
+the values invalidates an existing signature, so say so in the pull request: the
+macOS build must be redone.
 
 **External native modules.** Adding one means editing three places: the Vite
 external list, the `packagerConfig.ignore` filter in `forge.config.ts`, and
 `scripts/verify-package.mjs`. Miss one and the package builds, the tests pass,
 and the feature is absent for a user. `node-pty` needs a fourth: `prunePrebuilds`
 in `forge.config.ts` drops the platforms a build cannot use, and it throws
-rather than skipping.
+rather than skipping. It goes in `devDependencies`: this package declares no
+runtime dependencies, so that one entry would land in every consumer's install.
 
-**Icons** are a third instance of the same duplication. `STUFFBUCKET_ICON_DIR`
-names the directory, defaults to `build/icons`, and is the seam a consumer
-swaps. `forge.config.ts` and `scripts/verify-package.mjs` each hold a copy of
-the run-time file names; change both in one commit. Resolution lives in
-`src/main/native/icons.ts`, which imports no `electron` and is on the mutate
-list — keep it that way, and leave `nativeImage` to `app-icon.ts`. A macOS
-development run shows Electron's own dock icon until `app.dock.setIcon` runs.
-That is not a defect, and packaging does not change it.
+**Icons.** `STUFFBUCKET_ICON_DIR` names the directory, defaults to
+`build/icons`, and is the seam a consumer swaps. The run-time file names live in
+`scripts/package-contract.mjs`, which `forge.config.ts` copies from and
+`scripts/verify-package.mjs` checks against, so there is one list rather than
+two. Resolution lives in `src/main/native/icons.ts`, which imports no `electron`
+and is on the mutate list — keep it that way, and leave `nativeImage` to
+`app-icon.ts`. A macOS development run shows Electron's own dock icon until
+`app.dock.setIcon` runs. That is not a defect, and packaging does not change it.
