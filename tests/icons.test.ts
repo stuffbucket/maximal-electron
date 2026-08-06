@@ -129,7 +129,7 @@ describe('bundleIcon', () => {
     ['darwin', 'icon.icns'],
     ['win32', 'icon.ico'],
     ['linux', 'icon.png'],
-  ])('embeds %s in a %s build', (platform, file) => {
+  ])('gives a %s build %s', (platform, file) => {
     expect(bundleIcon(platform)).toBe(file);
   });
 
