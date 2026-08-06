@@ -65,8 +65,9 @@ files on disk and refuses the install:
 ```
 stuffbucket-electron@0.0.2: installed without a build step.
 
-  9 of 5 exports name a file this install does not carry:
+  7 of the 9 files this package's exports name are not here:
     ./dist/host/host-window.d.ts
+    ./dist/host/host-window.js
     ...
 ```
 
