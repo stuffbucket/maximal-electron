@@ -106,8 +106,16 @@ const POSIX_FAULTS: Readonly<Record<string, number>> = {
 
 const SIGBUS: Readonly<Record<string, number>> = { darwin: 10, linux: 7 };
 
-/** Windows reports a status code rather than a signal. */
+/**
+ * Windows reports a status code rather than a signal.
+ *
+ * 134 is not one. It is the POSIX `128 + SIGABRT` convention, and it is what
+ * Electron reported for the engine's own `process.abort()` on `windows-latest`
+ * once the packaged self check got that far. Measured, not assumed: run
+ * 31108183394 printed `exited with code 134` and the check failed over it.
+ */
 const WINDOWS_FAULTS: Readonly<Record<number, string>> = {
+  134: 'SIGABRT',
   0xc0000005: 'access violation',
   0xc0000374: 'heap corruption',
   0xc0000409: 'stack buffer overrun',

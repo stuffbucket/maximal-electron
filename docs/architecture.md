@@ -364,11 +364,13 @@ either way once the Metal shader cache is warm — 206 ms relocated against
 231 ms in place. The first run from each temporary directory pays a cold cache
 and costs about 9.4 s, which is inside the 60 s `engineCheckTimeoutMs` allows.
 
-**The fault name is pinned per platform, and only where it has been seen.**
+**The fault name is pinned per platform, from a run rather than from a table.**
 macOS reports a signal death as the bare signal number, so `SIGABRT` is
-asserted by name. Windows reports a status code instead, and which one a CRT
-`abort()` produces has not been observed here. The assertion that holds
-everywhere is that the supervisor named it as a fault at all: a code
+asserted by name against 6. Windows reports 134 for the same abort, which is
+the POSIX `128 + SIGABRT` convention and not an NTSTATUS at all; that was
+measured the first time the packaged Windows check got far enough to crash,
+and it failed the run until `faultName` learned it. The assertion that holds
+everywhere is that the supervisor named it as a fault: a code
 `llama-protocol.ts` cannot name reads as "exited with code N", which fails the
 check and puts the number in the log to be pinned.
 

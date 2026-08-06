@@ -97,12 +97,10 @@ function fragility() {
     return {
       fragile: 'conpty.node',
       heading: 'The same defect as #88, one platform over: moving conpty.node aside',
-      // Windows reports a status code rather than a signal, and which one a
-      // CRT `abort()` produces has not been observed from a run. The check
-      // below still requires the supervisor to have named it as a fault, so
-      // an unrecognised code fails here with the number in the log rather
-      // than passing quietly. Issue #133.
-      abortName: undefined,
+      // Observed once the gate came off: Electron reports the engine's
+      // `process.abort()` as 134 here, which is `128 + SIGABRT` rather than
+      // the status code this comment used to say was unknown. Issue #149.
+      abortName: 'SIGABRT',
     };
   }
   return undefined;
@@ -303,16 +301,10 @@ check(
   'it names a native fault rather than a bare exit code',
   { count: 1, of: 'engine runs' },
 );
-// macOS reports a signal death as the bare signal number, so the name is
-// pinned there. Windows reports a status code, and none has been printed yet;
-// the assertion above is what holds until one is, and it fails with the number
-// in the log rather than passing quietly.
-if (platform.abortName !== undefined) {
-  check(engine.stdout.includes(platform.abortName), `it reports the fault as ${platform.abortName}`, {
-    count: 1,
-    of: 'named faults',
-  });
-}
+check(engine.stdout.includes(platform.abortName), `it reports the fault as ${platform.abortName}`, {
+  count: 1,
+  of: 'named faults',
+});
 
 /**
  * The floor for that one. With the prebuild scope gone, the engine cannot load

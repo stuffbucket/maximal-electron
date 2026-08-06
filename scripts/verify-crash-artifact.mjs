@@ -177,15 +177,27 @@ function launch(args, timeoutMs) {
 
     child.stdout.on('data', (chunk) => (stdout += chunk));
     child.stderr.on('data', (chunk) => (stderr += chunk));
-    child.on('close', (code) => {
+    child.on('close', (code, signal) => {
       clearTimeout(timer);
-      resolve({ profile, database: path.join(profile, DATABASE), stdout, stderr, code, timedOut });
+      resolve({
+        profile,
+        database: path.join(profile, DATABASE),
+        stdout,
+        stderr,
+        code,
+        signal,
+        timedOut,
+      });
     });
   });
 }
 
 function describe(run, timeoutMs) {
-  const status = run.timedOut ? `killed after ${String(timeoutMs)} ms` : `exit ${String(run.code)}`;
+  // The signal is named, not dropped. A run killed by one reports `exit null`
+  // without it, which reads as a check that could not tell what happened.
+  const status = run.timedOut
+    ? `killed after ${String(timeoutMs)} ms`
+    : `exit ${String(run.code)}${run.signal ? ` signal ${run.signal}` : ''}`;
   return `${status}\n${[run.stdout, run.stderr].join('').trimEnd()}`;
 }
 

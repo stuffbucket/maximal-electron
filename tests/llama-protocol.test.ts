@@ -63,6 +63,14 @@ describe('faultName', () => {
     expect(faultName(0xc000001d, 'win32')).toBe('illegal instruction');
   });
 
+  it('names the one Windows code that is not a status code', () => {
+    // The engine's own `process.abort()`. Electron reported 134 for it on
+    // `windows-latest`, which is `128 + SIGABRT` rather than an NTSTATUS, and
+    // the packaged check failed over it before this line existed.
+    expect(faultName(134, 'win32')).toBe('SIGABRT');
+    expect(faultName(134, 'darwin')).toBeUndefined();
+  });
+
   it('names an unlisted Windows status code by its number', () => {
     expect(faultName(0xc0000006, 'win32')).toBe('native fault 0xc0000006');
     expect(faultName(0xc0000000, 'win32')).toBe('native fault 0xc0000000');
