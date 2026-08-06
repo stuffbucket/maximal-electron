@@ -1,7 +1,15 @@
-# Tag-triggered release.
+# Tag-triggered release, and a dry run of the same jobs from any branch.
 #
 #   git tag -a v0.1.0 -m "Release 0.1.0"
 #   git push origin v0.1.0
+#
+# ## The dry run
+#
+# A dispatch run is always a dry run. There is no input that makes one publish,
+# so the only way to touch a release is to push a tag. Everything builds, the
+# MSI is installed and removed, the tarball is packed and checked, and
+# `dry-run-artifacts` asserts both files exist rather than letting an empty
+# run look green. See `docs/ci.md`.
 #
 # ## Why every asset lands on a DRAFT
 #
@@ -10,8 +18,8 @@
 # and a single `publish` job flips it once at the end. This is the shape
 # stuffbucket/maximal uses, for exactly this reason.
 #
-# A failed macOS build therefore leaves the release as a draft rather than
-# publishing without a macOS artifact.
+# A failed macOS build no longer holds the release. `publish` gates on
+# `package-tarball` alone, so a tag with no dmg still ships the tarball.
 #
 # ## macOS
 #
@@ -29,52 +37,65 @@ name: release
 on:
   push:
     tags: ['v*.*.*']
+  workflow_dispatch:
 
+# A dry run must never queue behind a release, or hold one up.
 concurrency:
-  group: release
+  group: ${{ github.event_name == 'workflow_dispatch' && format('release-dry-{0}', github.ref) || 'release' }}
   cancel-in-progress: false
 
 permissions:
   contents: read
 
 env:
-  TAG: ${{ github.ref_name }}
+  DRY_RUN: ${{ github.event_name == 'workflow_dispatch' }}
 
 jobs:
   # Fail before the matrix spends any minutes. Mirrors codex's `tag-check`.
   tag-check:
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
     steps:
       - uses: actions/checkout@v6
-      - name: Validate tag against package.json
+      - name: Resolve the tag and validate it against package.json
+        id: resolve
         shell: bash
         run: |
           set -euo pipefail
 
-          [[ "${GITHUB_REF_TYPE}" == "tag" ]] \
-            || { echo "::error::Not a tag ref"; exit 1; }
-
-          [[ "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta)(\.[0-9]+)?)?$ ]] \
-            || { echo "::error::Tag '${TAG}' does not match the expected format"; exit 1; }
-
-          tag_ver="${TAG#v}"
           pkg_ver="$(node -p "require('./package.json').version")"
 
-          [[ "${tag_ver}" == "${pkg_ver}" ]] \
-            || { echo "::error::Tag ${tag_ver} != package.json ${pkg_ver}"; exit 1; }
+          if [[ "${DRY_RUN}" == "true" ]]; then
+            tag="v${pkg_ver}"
+          else
+            [[ "${GITHUB_REF_TYPE}" == "tag" ]] \
+              || { echo "::error::Not a tag ref"; exit 1; }
+            tag="${GITHUB_REF_NAME}"
+          fi
 
-          echo "Tag and package.json agree (${tag_ver})"
+          [[ "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta)(\.[0-9]+)?)?$ ]] \
+            || { echo "::error::Tag '${tag}' does not match the expected format"; exit 1; }
+
+          [[ "${tag#v}" == "${pkg_ver}" ]] \
+            || { echo "::error::Tag ${tag#v} != package.json ${pkg_ver}"; exit 1; }
+
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "Tag and package.json agree (${pkg_ver})"
 
   release:
     needs: tag-check
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      TAG: ${{ needs.tag-check.outputs.tag }}
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Create the draft release
+        if: github.event_name != 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -89,12 +110,18 @@ jobs:
             --title "$TAG" \
             --draft \
             --generate-notes
+      - name: Dry run, so no release is created
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: echo "Dry run for ${TAG}. Nothing is created, attached, or published."
 
   windows-msi:
-    needs: release
+    needs: [tag-check, release]
     runs-on: windows-2022
     permissions:
       contents: write
+    env:
+      TAG: ${{ needs.tag-check.outputs.tag }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v5
@@ -158,7 +185,16 @@ jobs:
           sha256sum "$MSI" > "$MSI.sha256"
           cat "$MSI.sha256"
 
+      # How the MSI reaches windows-msi-verify. `gh release download` cannot
+      # resolve a draft by tag name (#81), and the release is a detour anyway.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-msi
+          path: dist-release/stuffbucket-${{ needs.tag-check.outputs.tag }}-windows-x64.msi*
+          if-no-files-found: error
+
       - name: Attach MSI to the draft
+        if: github.event_name != 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -169,30 +205,37 @@ jobs:
             "dist-release/stuffbucket-${TAG}-windows-x64.msi.sha256"
 
   # Silent install, assert, run, uninstall, assert clean removal. Copied in
-  # shape from maximal's windows-msi-verify. `publish` gates on this, so a
-  # broken installer blocks the release rather than shipping.
+  # shape from maximal's windows-msi-verify. `publish` does not gate on this:
+  # a broken installer costs an installer, not the release.
   windows-msi-verify:
     needs: windows-msi
     runs-on: windows-2022
     permissions:
       contents: read
     steps:
-      - name: Download the MSI from the draft
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-msi
+          path: msi
+
+      # An empty download would otherwise reach msiexec as a null path and
+      # fail somewhere less legible. `-Filter` is avoided: 8.3 short names make
+      # it match beyond the extension.
+      - name: Assert exactly one MSI arrived
+        shell: pwsh
         run: |
-          set -euo pipefail
-          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
-            --pattern "stuffbucket-${TAG}-windows-x64.msi" --dir msi
+          $ErrorActionPreference = 'Stop'
+          $found = @(Get-ChildItem msi | Where-Object { $_.Extension -eq '.msi' })
+          if ($found.Count -ne 1) { Write-Error "Expected one MSI, found $($found.Count)" }
+          "MSI_PATH=$($found[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Verifying $($found[0].Name)"
 
       - name: Install silently
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $msi = (Get-ChildItem msi -Filter *.msi)[0].FullName
           $log = "install.log"
-          $p = Start-Process msiexec -ArgumentList "/i","`"$msi`"","/qn","/l*v",$log -Wait -PassThru
+          $p = Start-Process msiexec -ArgumentList "/i","`"$env:MSI_PATH`"","/qn","/l*v",$log -Wait -PassThru
           if ($p.ExitCode -ne 0) { Get-Content $log -Tail 60; Write-Error "Install failed: $($p.ExitCode)" }
 
       - name: Assert installed state
@@ -215,8 +258,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $msi = (Get-ChildItem msi -Filter *.msi)[0].FullName
-          $p = Start-Process msiexec -ArgumentList "/x","`"$msi`"","/qn" -Wait -PassThru
+          $p = Start-Process msiexec -ArgumentList "/x","`"$env:MSI_PATH`"","/qn" -Wait -PassThru
           if ($p.ExitCode -ne 0) { Write-Error "Uninstall failed: $($p.ExitCode)" }
 
       - name: Assert clean removal
@@ -226,12 +268,28 @@ jobs:
           if (Test-Path "$dir\Stuffbucket.exe") { Write-Error "Files left behind in $dir" }
           Write-Host "Removed cleanly"
 
+  # No dry version. It needs a credential for the private builder, and its only
+  # product is an asset on the draft. Tag-only, so the ref names the tag.
   macos-dmg:
+    if: github.event_name != 'workflow_dispatch'
     needs: release
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      TAG: ${{ github.ref_name }}
     steps:
+      # v0.0.2 failed here in three seconds with gh's generic advice about
+      # GH_TOKEN. The secret was simply absent.
+      - name: Require the builder credential
+        env:
+          PAT: ${{ secrets.MACOS_BUILDER_PAT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "${PAT}" ]] \
+            || { echo "::error::MACOS_BUILDER_PAT is not set. See docs/release.md."; exit 1; }
+
       - name: Trigger the private macOS builder
         env:
           GH_TOKEN: ${{ secrets.MACOS_BUILDER_PAT }}
@@ -277,10 +335,12 @@ jobs:
   # package release depend on a credential for a private signing repository,
   # which is how `v0.0.1` produced a draft nobody could publish.
   package-tarball:
-    needs: release
+    needs: [tag-check, release]
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      TAG: ${{ needs.tag-check.outputs.tag }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v5
@@ -297,24 +357,37 @@ jobs:
           # npm pack does not create the destination, and fails with ENOENT.
           mkdir -p dist-release
           npm pack --pack-destination dist-release
+          shopt -s nullglob
+          files=(dist-release/*.tgz)
+          [[ ${#files[@]} -eq 1 ]] \
+            || { echo "::error::Expected one tarball, found ${#files[@]}"; exit 1; }
+          echo "Packed $(basename "${files[0]}")"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-tarball
+          path: dist-release/*.tgz
+          if-no-files-found: error
 
       - name: Attach the tarball to the draft
+        if: github.event_name != 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           shopt -s nullglob
           files=(dist-release/*.tgz)
-          [[ ${#files[@]} -eq 1 ]] \
-            || { echo "::error::Expected one tarball, found ${#files[@]}"; exit 1; }
           gh release upload "$TAG" "${files[0]}" --repo "$GITHUB_REPOSITORY" --clobber
           echo "Attached $(basename "${files[0]}")"
 
   publish:
+    if: github.event_name != 'workflow_dispatch'
     needs: package-tarball
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      TAG: ${{ github.ref_name }}
     steps:
       - name: Flip the draft to published
         env:
@@ -325,3 +398,34 @@ jobs:
           gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
           echo "Published ${TAG}"
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name'
+
+  # The dry run's terminal job. Every attach step above is skipped on a
+  # dispatch, so without this a run that produced nothing would end green.
+  dry-run-artifacts:
+    if: github.event_name == 'workflow_dispatch'
+    needs: [tag-check, windows-msi-verify, package-tarball]
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ needs.tag-check.outputs.tag }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Assert the release would have had something to attach
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          msi="artifacts/windows-msi/stuffbucket-${TAG}-windows-x64.msi"
+          tarballs=(artifacts/package-tarball/*.tgz)
+
+          [[ ${#tarballs[@]} -eq 1 ]] \
+            || { echo "::error::Expected one tarball, found ${#tarballs[@]}"; exit 1; }
+
+          for file in "$msi" "${tarballs[0]}"; do
+            [[ -s "$file" ]] || { echo "::error::Missing or empty: ${file}"; exit 1; }
+            echo "$(stat -c %s "$file") bytes  ${file}"
+          done
+
+          (cd "$(dirname "$msi")" && sha256sum -c "$(basename "$msi").sha256")

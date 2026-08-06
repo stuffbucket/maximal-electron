@@ -9,11 +9,17 @@
 # a fast blocking gate here, and the expensive platform matrix at release time.
 # Packaging runs on both macOS and Windows, because most breakage between
 # `npm start` and a shipped build shows up only at package time.
+#
+# `merge_group` is inert until a merge queue is enabled in the repository
+# settings, which is the owner's call. `docs/ci.md` states what enabling it
+# would do and what it costs. Until then `merge-preview.yml` is what tests the
+# state a merge produces.
 
 name: ci
 
 on:
   pull_request:
+  merge_group:
   push:
     branches: [main, 'release/**']
 
