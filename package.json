@@ -35,6 +35,8 @@
   },
   "files": [
     "dist",
+    "scripts/check-install.mjs",
+    "scripts/export-checks.mjs",
     "scripts/terminal-package.mjs",
     "scripts/terminal-package.d.mts",
     "scripts/shell-variables.mjs",
@@ -51,6 +53,7 @@
     "build:package": "npm run build:host && npm run build:renderer",
     "prepack": "npm run build:package",
     "prepare": "npm run build:package",
+    "postinstall": "node scripts/check-install.mjs",
     "package": "electron-forge package",
     "make": "electron-forge make",
     "icons": "node scripts/gen-icons.mjs",
