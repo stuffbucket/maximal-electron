@@ -161,6 +161,13 @@ The package built, every test passed, and a user would still have had no
 terminal. `forge.config.ts` now supplies its own `ignore`, and
 `scripts/verify-package.mjs` asserts the module is present.
 
+That `ignore` is the whole filter, because `packagerConfig.prune` is `false`.
+Packager's own walk keeps `dependencies` and drops the rest, and this package
+declares no runtime dependencies at all — a consumer importing `./host` would
+otherwise install `node-llama-cpp` for a module that imports `electron` alone.
+A new external native module therefore goes in `devDependencies`, and reaches
+the package through the keep-list rather than through `dependencies`.
+
 `*.node` is not the whole of it. On macOS `node-pty` `execvp`s `spawn-helper`,
 which sits beside `pty.node` and has no extension, at a path it rewrites from
 `app.asar` to `app.asar.unpacked`. An `unpack` glob of only `*.node` leaves the

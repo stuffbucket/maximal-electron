@@ -97,6 +97,17 @@ function prunePrebuilds(buildPath: string, platform: string, arch: string): void
 const config: ForgeConfig = {
   packagerConfig: {
     /**
+     * Packager's own production-only walk, off.
+     *
+     * It reads `dependencies` to decide what survives, and this package
+     * declares none: a consumer importing `./host` would otherwise install
+     * `node-llama-cpp` for a file that imports `electron` alone (issue #31).
+     * The `ignore` predicate below is already an explicit keep-list, so it
+     * decides what reaches the package instead.
+     */
+    prune: false,
+
+    /**
      * Native code cannot be loaded from inside an asar, so it is unpacked
      * beside it. `OnlyLoadAppFromAsar` still applies to app code.
      *

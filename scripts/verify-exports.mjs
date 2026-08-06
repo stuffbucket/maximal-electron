@@ -15,15 +15,112 @@ const check = (condition, message) => {
 };
 
 console.log('Package dependency contract');
-for (const dependency of ['react', 'react-dom']) {
+
+/**
+ * Packages an entry point reaches, and the modules it took to get there.
+ *
+ * A specifier read out of anything but an import is a package that does not
+ * exist. Two produced that here: a JSDoc line in `TabBar.js` contrasting
+ * "reaches the edge" with "overflows it", and `export const
+ * SHELL_TERMINAL_PROPERTIES = ['--shell-terminal-background', …]`. Hence the
+ * anchor, the `from`, and the newline excluded from the run before it.
+ */
+const IMPORT_PATTERNS = [
+  /^(?:import|export)[^'"\n]*\bfrom\s*['"]([^'"]+)['"]/gm,
+  /^import\s*['"]([^'"]+)['"]/gm,
+  /\b(?:import|require)\(\s*['"]([^'"]+)['"]/g,
+];
+
+const packageOf = (specifier) =>
+  specifier.split('/').slice(0, specifier.startsWith('@') ? 2 : 1).join('/');
+
+async function walk(entry) {
+  const files = [];
+  const packages = new Set();
+  const pending = [entry];
+  const seen = new Set();
+
+  while (pending.length > 0) {
+    const file = pending.pop();
+    if (!file || seen.has(file)) continue;
+    seen.add(file);
+    files.push(file);
+
+    const source = await readFile(file, 'utf8');
+    for (const pattern of IMPORT_PATTERNS) {
+      for (const [, specifier] of source.matchAll(pattern)) {
+        if (specifier.startsWith('.')) {
+          pending.push(path.resolve(path.dirname(file), specifier));
+        } else if (!specifier.startsWith('node:')) {
+          packages.add(packageOf(specifier));
+        }
+      }
+    }
+  }
+
+  return { files, packages };
+}
+
+/*
+ * npm resolves dependencies per package, not per export. One `dependencies`
+ * entry therefore reaches every consumer of every entry point, and `./host`
+ * used to install `node-llama-cpp`, `node-pty`, and six Radix packages for a
+ * module that imports `electron` alone. Issue #31.
+ *
+ * Optional peers are the only npm mechanism that installs nothing.
+ * `optionalDependencies` still install by default, and npm 7 and later
+ * auto-installs a peer that is not marked optional.
+ */
+const runtimeEntries = Object.entries(manifest.exports ?? {})
+  .map(([name, entry]) => [name, typeof entry === 'string' ? entry : entry.default])
+  .filter(([, target]) => typeof target === 'string' && /\.m?js$/.test(target));
+
+const graphs = new Map();
+for (const [name, target] of runtimeEntries) {
+  graphs.set(name, await walk(path.join(root, target)));
+}
+
+// The floor. Every claim below is about a set the walk produced, so a walk that
+// reached nothing would report all of them as passing.
+check(runtimeEntries.length > 0, 'the manifest declares at least one JavaScript entry point');
+for (const [name, graph] of graphs) {
+  check(graph.files.length > 0, `${name} resolves to at least one module`);
+}
+
+const imported = new Set([...graphs.values()].flatMap((graph) => [...graph.packages]));
+check(imported.size > 0, 'the entry points import at least one package');
+
+check(
+  Object.keys(manifest.dependencies ?? {}).length === 0,
+  'the package declares no runtime dependencies',
+);
+check(
+  Object.keys(manifest.optionalDependencies ?? {}).length === 0,
+  'the package declares no optional dependencies, which npm installs by default',
+);
+
+const peers = Object.keys(manifest.peerDependencies ?? {});
+for (const [name, graph] of graphs) {
+  for (const dependency of [...graph.packages].sort()) {
+    check(peers.includes(dependency), `${name} imports ${dependency}, a declared peer`);
+  }
+}
+
+// The headline of issue #31, stated as an equality rather than an absence. A
+// subset check would pass on an entry point that imports nothing at all.
+check(
+  [...(graphs.get('./host')?.packages ?? [])].join(',') === 'electron',
+  './host imports electron and nothing else',
+);
+
+for (const peer of peers) {
   check(
-    typeof manifest.peerDependencies?.[dependency] === 'string' &&
-      typeof manifest.devDependencies?.[dependency] === 'string',
-    `${dependency} is a consumer peer and a development dependency`,
+    manifest.peerDependenciesMeta?.[peer]?.optional === true,
+    `${peer} is an optional peer, so a consumer installs it only when they need it`,
   );
   check(
-    manifest.dependencies?.[dependency] === undefined,
-    `${dependency} is not installed as a package runtime dependency`,
+    typeof manifest.devDependencies?.[peer] === 'string',
+    `${peer} is a development dependency, so this repository builds against it`,
   );
 }
 
@@ -146,28 +243,14 @@ const forbidden = [
   /fixture/i,
   /\.stories\./,
 ];
-const visited = new Set();
-const pending = [rendererEntry];
-const importPattern = /(?:from\s*|import\s*)['"](\.[^'"]+)['"]/g;
+const visited = graphs.get('./renderer').files;
 
-while (pending.length > 0) {
-  const file = pending.pop();
-  if (!file || visited.has(file)) continue;
-  visited.add(file);
-
+for (const file of visited) {
   const relative = path.relative(root, file).split(path.sep).join('/');
   const allowed =
     contracts.some((pattern) => pattern.test(relative)) ||
     !forbidden.some((pattern) => pattern.test(relative));
   check(allowed, `${relative} is generic`);
-
-  const source = await readFile(file, 'utf8');
-  for (const match of source.matchAll(importPattern)) {
-    const specifier = match[1];
-    if (!specifier) continue;
-    const dependency = path.resolve(path.dirname(file), specifier);
-    pending.push(dependency);
-  }
 }
 
 /*
@@ -247,4 +330,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log(`\nAll exports passed (${String(visited.size)} renderer modules inspected).`);
+console.log(`\nAll exports passed (${String(visited.length)} renderer modules inspected).`);

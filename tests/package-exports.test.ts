@@ -10,8 +10,10 @@ interface PackageManifest {
   exports: Record<string, unknown>;
   scripts: Record<string, string>;
   files: string[];
-  dependencies: Record<string, string>;
+  dependencies?: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
   peerDependencies: Record<string, string>;
+  peerDependenciesMeta: Record<string, { optional?: boolean }>;
   devDependencies: Record<string, string>;
 }
 
@@ -43,29 +45,62 @@ describe('package exports', () => {
   });
 
   /*
-   * A caret on a runtime dependency is a version nobody chose. `^1.2.0-beta.14`
-   * admitted every later beta and every 1.x release from a prerelease line.
-   * Electron has always been pinned; issue #79 is the rest of them.
+   * A caret on a version this repository ships is a version nobody chose.
+   * `^1.2.0-beta.14` admitted every later beta and every 1.x release from a
+   * prerelease line. Issue #79.
+   *
+   * These moved to `devDependencies` when issue #31 took them off a consumer's
+   * install path, and a packaged build still contains them, so the pin still
+   * applies. `react` and `react-dom` are exempt because the consumer owns that
+   * instance, which is the reason they are a peer.
    */
-  it('pins every runtime dependency to an exact version', async () => {
+  it('pins every package a build ships to an exact version', async () => {
     const manifest = JSON.parse(
       await readFile(path.join(ROOT, 'package.json'), 'utf8'),
     ) as PackageManifest;
+    const mainConfig = await readFile(path.join(ROOT, 'vite.main.config.ts'), 'utf8');
 
-    const pinned = Object.entries(manifest.dependencies);
-    expect(pinned.length).toBeGreaterThan(0);
+    // The externals arrive as real files rather than bundled, so they are
+    // shipped whether or not an export imports them.
+    const externals = [...(/external:\s*\[([^\]]*)]/.exec(mainConfig)?.[1] ?? '').matchAll(
+      /'([^']+)'/g,
+    )].map((match) => match[1] ?? '');
+    expect(externals.length).toBeGreaterThan(0);
+
+    const shipped = [
+      ...new Set([...externals, ...Object.keys(manifest.peerDependencies)]),
+    ].filter((name) => name !== 'react' && name !== 'react-dom');
+    expect(shipped.length).toBeGreaterThan(0);
+
+    const pins = shipped.map((name) => [name, manifest.devDependencies[name] ?? ''] as const);
     expect(
-      pinned.filter(([, range]) => !/^\d+\.\d+\.\d+(?:-[\w.]+)?$/.test(range)),
+      pins.filter(([, range]) => !/^\d+\.\d+\.\d+(?:-[\w.]+)?$/.test(range)),
     ).toEqual([]);
   });
 
-  it('requires the consumer React instance while retaining local build versions', async () => {
+  /*
+   * npm resolves dependencies per package, not per export, so a runtime
+   * dependency reaches every consumer of every entry point. Issue #31.
+   *
+   * An optional peer is the only npm mechanism that installs nothing. An
+   * `optionalDependencies` entry installs by default, and npm 7 and later
+   * auto-installs a peer that is not marked optional.
+   */
+  it('leaves a consumer to install what the entry point they import needs', async () => {
     const manifest = JSON.parse(
       await readFile(path.join(ROOT, 'package.json'), 'utf8'),
     ) as PackageManifest;
 
+    expect(manifest.dependencies).toBeUndefined();
+    expect(manifest.optionalDependencies).toBeUndefined();
+
+    const peers = Object.keys(manifest.peerDependencies);
+    expect(peers.length).toBeGreaterThan(0);
+    expect(
+      peers.filter((name) => manifest.peerDependenciesMeta[name]?.optional !== true),
+    ).toEqual([]);
+
     for (const dependency of ['react', 'react-dom']) {
-      expect(manifest.dependencies[dependency]).toBeUndefined();
       expect(manifest.peerDependencies[dependency]).toBe('>=18.0.0 <20.0.0');
       expect(manifest.devDependencies[dependency]).toBe('^19.2.8');
     }
