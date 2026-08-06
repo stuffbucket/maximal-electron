@@ -31,7 +31,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { scopedChecks } from './check-scope.mjs';
-import { nodeModulesAbove, packagedApp, relocate } from './packaged-app.mjs';
+import { ancestors, nodeModulesAbove, packagedApp, relocate } from './packaged-app.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -195,8 +195,8 @@ console.log(`Launching ${path.basename(BINARY)} from ${packaged.root}\n`);
 
 const above = nodeModulesAbove(packaged.directory);
 check(above.length === 0, 'nothing above the launched package can be resolved from inside it', {
-  count: 1,
-  of: 'relocated packages',
+  count: ancestors(packaged.directory).length,
+  of: 'directories walked above it',
 });
 
 /* ---------------------------------- a run that does not crash writes none */
