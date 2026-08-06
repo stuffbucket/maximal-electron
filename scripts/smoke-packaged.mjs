@@ -38,6 +38,7 @@ const FAILED = 'self-check terminal: failed';
 const LLAMA_FLAG = '--self-check=llama';
 const LLAMA_OK = 'self-check llama: ok';
 const LLAMA_FAILED = 'self-check llama: failed';
+const LLAMA_NO_LIBRARY = 'did not load llama.cpp';
 
 const LAUNCH_TIMEOUT_MS = 90_000;
 
@@ -278,6 +279,15 @@ check(noEngine.code !== 0, 'the llama check fails with no prebuild scope');
 check(
   noEngine.stdout.includes(LLAMA_FAILED),
   'it fails by reporting the engine, not by dying before the check',
+);
+// Not merely "it failed". Removing the wait on `app.whenReady()` once made both
+// this run and the real one die at the fork with the same message, and the two
+// assertions above passed on it. This is the branch reached only after the
+// engine started, so it tells a library that will not load apart from an engine
+// that never ran.
+check(
+  noEngine.stdout.includes(LLAMA_NO_LIBRARY),
+  'it fails because the library would not load, not because nothing started',
 );
 check(!noEngine.stdout.includes(LLAMA_OK), 'no pass line comes back when nothing loaded');
 check(

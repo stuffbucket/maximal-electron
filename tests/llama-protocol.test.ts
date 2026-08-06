@@ -8,6 +8,7 @@ import {
   LLAMA_CHECK_FAILED,
   LLAMA_CHECK_FLAG,
   LLAMA_CHECK_OK,
+  LLAMA_NO_LIBRARY,
   describeEngineExit,
   exhaustedMessage,
   faultName,
@@ -188,6 +189,7 @@ describe('the packaged llama check', () => {
     expect(LLAMA_CHECK_FLAG).toBe('--self-check=llama');
     expect(LLAMA_CHECK_OK).toBe('self-check llama: ok');
     expect(LLAMA_CHECK_FAILED).toBe('self-check llama: failed');
+    expect(LLAMA_NO_LIBRARY).toBe('did not load llama.cpp');
   });
 
   it('answers only to the flag', () => {
@@ -229,7 +231,7 @@ describe('the driver and the application agree', () => {
     expect(driver.length).toBeGreaterThan(0);
   });
 
-  for (const value of [LLAMA_CHECK_FLAG, LLAMA_CHECK_OK, LLAMA_CHECK_FAILED]) {
+  for (const value of [LLAMA_CHECK_FLAG, LLAMA_CHECK_OK, LLAMA_CHECK_FAILED, LLAMA_NO_LIBRARY]) {
     it(`scripts/smoke-packaged.mjs names ${value}`, () => {
       expect(driver).toContain(value);
     });

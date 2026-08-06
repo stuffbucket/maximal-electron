@@ -194,6 +194,17 @@ export const LLAMA_CHECK_FLAG = '--self-check=llama';
 export const LLAMA_CHECK_OK = 'self-check llama: ok';
 export const LLAMA_CHECK_FAILED = 'self-check llama: failed';
 
+/**
+ * The failure that means the engine started and could not load the library.
+ *
+ * The negative control needs this and not merely a failure. Removing the wait
+ * on `app.whenReady()` once made both the real run and the control die at the
+ * fork with the same message, and the control's two assertions passed on it —
+ * the "failed for the wrong reason" case `.claude/skills/write-a-check` ends
+ * on. Naming the branch is what tells the two apart.
+ */
+export const LLAMA_NO_LIBRARY = 'did not load llama.cpp';
+
 export type LlamaCheckResult =
   | { ok: true; device: string; survived: string }
   | { ok: false; reason: string };

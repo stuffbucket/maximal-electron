@@ -5,6 +5,7 @@ import { app } from 'electron';
 
 import { listen, send } from './native/llama-host.js';
 import {
+  LLAMA_NO_LIBRARY,
   llamaCheckLine,
   type LlamaCheckResult,
 } from './native/llama-protocol.js';
@@ -64,7 +65,7 @@ export function runLlamaCheck(): void {
       // engine is killed on purpose below. Which one it is depends on whether
       // a device was reported first.
       if (device === undefined) {
-        report({ ok: false, reason: `the engine did not load llama.cpp: ${event.reason}` });
+        report({ ok: false, reason: `the engine ${LLAMA_NO_LIBRARY}: ${event.reason}` });
         return;
       }
       report({ ok: true, device, survived: event.reason });
