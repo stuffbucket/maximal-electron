@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Install this package by git ref, the way `stuffbucket/maximal` consumes it,
- * and resolve every entry in `exports`.
+ * Install this package the way a consumer does, and resolve every entry in
+ * `exports`.
  *
  * npm runs `prepare` for a git install and `prepack` for a tarball. #70 moved
  * the build into `prepack` alone, so a git install produced a package with no
@@ -9,25 +9,32 @@
  * which is the other path. #82 fixed it. This is what keeps it fixed. Issue
  * #83.
  *
- * The default installs a `git+file:` URL onto this checkout. npm treats that as
- * a git dependency like any other — clone the ref, run `prepare`, pack what
- * `files` lists — so it needs no network and no pushed ref, and a developer can
- * run it before cutting a release. `--repository github:owner/name` installs
- * the pushed ref instead, which is the exact specifier a consumer writes, and
- * is what CI passes for the branch under review.
+ * npm runs neither for an `https://` source archive. That third form cannot be
+ * made to work, so the second half of this check proves it fails loudly rather
+ * than installing an unbuilt package with exit 0. Issue #100.
+ *
+ * The default installs a `git+file:` URL onto this checkout, and archives the
+ * same ref with `git archive`, which is what codeload serves. npm treats both
+ * as it treats the remote forms, so the check needs no network and no pushed
+ * ref, and a developer can run it before cutting a release. `--repository
+ * github:owner/name` installs the pushed ref instead, which is the exact
+ * specifier a consumer writes, and is what CI passes for the branch under
+ * review.
  *
  *   node scripts/verify-git-install.mjs
  *   node scripts/verify-git-install.mjs --repository github:stuffbucket/maximal-electron --ref v0.0.4
+ *   node scripts/verify-git-install.mjs --tarball https://github.com/.../stuffbucket-electron-0.0.3.tgz
  */
 
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, realpathSync, statSync } from 'node:fs';
-import { copyFile, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
+  INSTALLED_WITHOUT_BUILD,
   RENDERER_SURFACE,
   VERIFY_SURFACE,
   exportTargets,
@@ -76,34 +83,42 @@ const repository = argv.repository || `git+${pathToFileURL(root).href}`;
 const ref =
   argv.ref ||
   execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
-const specifier = `${repository}#${ref}`;
+const specifier = argv.tarball || `${repository}#${ref}`;
 
 const scratch = await mkdtemp(path.join(tmpdir(), 'stuffbucket-git-install-'));
 console.log(`Installing ${specifier}`);
 console.log(`  scratch: ${scratch}\n`);
 
-async function run() {
+/** A scratch consumer with a manifest of its own, so npm installs rather than links. */
+async function consumer(directory) {
+  await mkdir(directory, { recursive: true });
   await writeFile(
-    path.join(scratch, 'package.json'),
+    path.join(directory, 'package.json'),
     `${JSON.stringify({ name: 'git-install-scratch', version: '0.0.0', private: true }, null, 2)}\n`,
   );
+  return directory;
+}
 
-  /*
-   * No `--ignore-scripts`. That flag reaches the clone as well, where it stops
-   * `prepare` running, which is the lifecycle script this whole check is
-   * about.
-   */
-  let installed = true;
-  try {
-    execFileSync('npm', ['install', '--no-audit', '--no-fund', specifier], {
-      cwd: scratch,
-      stdio: ['ignore', 'inherit', 'inherit'],
-    });
-  } catch {
-    installed = false;
-  }
+/*
+ * No `--ignore-scripts`. That flag reaches the clone as well, where it stops
+ * `prepare` running, and it stops `postinstall` running in the installed copy.
+ * Those are the two lifecycle scripts this whole check is about.
+ */
+function install(directory, target) {
+  const result = spawnSync('npm', ['install', '--no-audit', '--no-fund', target], {
+    cwd: directory,
+    encoding: 'utf8',
+  });
+  const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
+  process.stdout.write(output);
+  return { ok: result.status === 0, output };
+}
 
-  console.log('\nGit-ref install');
+async function run() {
+  await consumer(scratch);
+  const installed = install(scratch, specifier).ok;
+
+  console.log(`\n${argv.tarball === undefined ? 'Git-ref' : 'Tarball-URL'} install`);
   check(installed, `npm install ${specifier} succeeded`);
 
   const installedPath = path.join(scratch, 'node_modules', name);
@@ -229,8 +244,44 @@ async function run() {
   console.log(`         ${String(inspected)} ${inspected === 1 ? 'module' : 'modules'} reached`);
 }
 
+/**
+ * The archive form, which no lifecycle script covers.
+ *
+ * `git archive` of a ref is what codeload serves for it: the tree, under one
+ * prefix directory, with no `dist/`. `--repository github:owner/name` points
+ * this at the real codeload URL instead.
+ *
+ * The assertion is not that the install fails. A network error fails too, and
+ * "npm exited non-zero" would then pass while proving nothing. It is that the
+ * install fails carrying the refusal `scripts/check-install.mjs` prints, which
+ * only that script can produce. Issue #100.
+ */
+async function archiveRun() {
+  const github = /^github:([^/]+\/[^#]+)$/.exec(repository);
+  const target =
+    github === null ? path.join(scratch, 'source.tar.gz') : `https://codeload.github.com/${github[1]}/tar.gz/${ref}`;
+  if (github === null) {
+    execFileSync(
+      'git',
+      ['archive', '--format=tar.gz', `--prefix=${name}-${ref}/`, '--output', target, ref],
+      { cwd: root },
+    );
+  }
+
+  console.log(`\nSource-archive install\n  ${target}\n`);
+  const { ok, output } = install(await consumer(path.join(scratch, 'archive')), target);
+
+  console.log('\nSource-archive install refusal');
+  check(!ok, 'npm install of a source archive fails');
+  check(output.includes(INSTALLED_WITHOUT_BUILD), 'the failure carries the install-time refusal');
+  // The floor. The refusal names the export targets it found missing, so a
+  // message printed over an empty target list would not mention one.
+  check(/dist\//.test(output), 'the refusal names the export targets that are missing');
+}
+
 try {
   await run();
+  if (argv.tarball === undefined) await archiveRun();
 } finally {
   if (argv.keep === undefined) await rm(scratch, { recursive: true, force: true });
   else console.log(`\nLeft the scratch install at ${scratch}`);
@@ -241,4 +292,8 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log(`\nA git-ref install of ${ref} resolves every export.`);
+console.log(
+  argv.tarball === undefined
+    ? `\nA git-ref install of ${ref} resolves every export, and a source archive of it refuses to install.`
+    : `\nA tarball-URL install of ${specifier} resolves every export.`,
+);

@@ -8,6 +8,9 @@
  * and `prepack` for a tarball, so a check that walks one path says nothing
  * about the other. Issue #83.
  *
+ * `scripts/check-install.mjs` runs `missingTargets` inside a consumer's
+ * install, where npm runs neither. Issue #100.
+ *
  * Every function takes the package root as an argument, so the caller chooses
  * which copy is under test. That is the same reason `terminal-package.mjs`
  * takes its file lists rather than reading a directory.
@@ -17,6 +20,7 @@
  * `node` and are not bundled.
  */
 
+import { statSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -52,6 +56,59 @@ export function exportTargets(exports) {
       .filter(([, target]) => typeof target === 'string')
       .map(([condition, target]) => ({ subpath, condition, target: String(target) }));
   });
+}
+
+/**
+ * Whether a package directory carries the file an export names.
+ *
+ * Non-empty, not merely present. A zero-byte file resolves, and a build
+ * interrupted part way through leaves one.
+ *
+ * @param {string} root
+ * @param {string} target
+ * @returns {boolean}
+ */
+export function targetPresent(root, target) {
+  try {
+    return statSync(path.join(root, target)).size > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The first line `scripts/check-install.mjs` prints when it refuses an install.
+ *
+ * `scripts/verify-git-install.mjs` greps a failed install for it. "npm exited
+ * non-zero" is true of a network error as well, so the marker is what tells the
+ * two apart.
+ */
+export const INSTALLED_WITHOUT_BUILD = 'installed without a build step';
+
+/**
+ * Every distinct file an `exports` map names. One entry per file rather than
+ * per condition, because `types` and `default` often name the same one.
+ *
+ * @param {Record<string, unknown> | undefined} exports
+ * @returns {string[]}
+ */
+export function declaredTargets(exports) {
+  return [...new Set(exportTargets(exports).map(({ target }) => target))];
+}
+
+/**
+ * Export targets a package directory does not carry.
+ *
+ * `scripts/check-install.mjs` runs this from inside a consumer's
+ * `node_modules` at `postinstall`, which is the only lifecycle hook npm runs
+ * for all three install forms. Issue #100.
+ *
+ * @param {string} root
+ * @param {Record<string, unknown> | undefined} exports
+ * @returns {string[]}
+ */
+export function missingTargets(root, exports) {
+  return declaredTargets(exports).filter((target) => !targetPresent(root, target));
 }
 
 /** The component surface `./renderer` promises a consumer. */

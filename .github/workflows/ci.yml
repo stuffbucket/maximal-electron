@@ -72,11 +72,15 @@ jobs:
       # drift behind src/ — and did.
       - run: npm run verify:exports
 
-  # The other way this package is consumed. `stuffbucket/maximal` pins it as
+  # The other ways this package is consumed. `stuffbucket/maximal` pins it as
   # `github:stuffbucket/maximal-electron#<ref>`, and npm runs `prepare` for a
   # git install where it runs `prepack` for a tarball. #70 wired the build to
   # `prepack` alone and shipped a tag that installs with no `dist/` at all;
   # `verify:exports` above walks the tarball path and saw nothing. Issue #83.
+  #
+  # It then installs a codeload archive of the same ref, for which npm runs
+  # neither, and asserts that install fails carrying the refusal
+  # `scripts/check-install.mjs` prints. Issue #100.
   #
   # It runs on the head of the branch under review rather than on `main`, so a
   # regression fails here before it lands. The ref has to be pushed, which it

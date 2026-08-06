@@ -15,10 +15,11 @@ npm run verify:git-install
 ```
 
 `verify:git-install` installs this checkout the way `stuffbucket/maximal` pins
-it, by git ref, and resolves every export. It runs against the local clone, so
-it needs no network and no pushed tag. The tarball and the git ref are
-different lifecycle scripts, and a tag has shipped with only one of them
-wired.
+it, by git ref, and resolves every export. It then archives the same ref and
+asserts that installing the archive fails loudly, which is the form npm builds
+nothing for. It runs against the local clone, so it needs no network and no
+pushed tag. The tarball and the git ref are different lifecycle scripts, and a
+tag has shipped with only one of them wired.
 
 Set the version in `package.json`. The tag must match it exactly, or the
 `tag-check` job fails before anything builds.
@@ -76,6 +77,17 @@ gh release view v0.1.0 --json assets --jq '.assets[].name'
 ```
 
 Expect four assets: the dmg, the MSI, and a `.sha256` beside each.
+
+The release tarball is a supported install specifier, so install it once from
+its published URL and resolve every export:
+
+```bash
+node scripts/verify-git-install.mjs --tarball \
+  https://github.com/stuffbucket/maximal-electron/releases/download/v0.1.0/stuffbucket-electron-0.1.0.tgz
+```
+
+No job does this. The asset exists only after `publish`, which is after every
+job has run. See `docs/consuming.md`.
 
 Check the macOS signature on a Mac:
 

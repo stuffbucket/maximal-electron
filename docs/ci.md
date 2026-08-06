@@ -29,11 +29,12 @@ zero files, said so as a warning, and produced an MSI that installed an empty
 directory. Issue #86. A step that finds nothing now fails rather than reporting
 success.
 
-## The two install paths
+## The three install paths
 
-A consumer installs this package one of two ways, and npm runs a different
+A consumer installs this package one of three ways, and npm runs a different
 lifecycle script for each. `npm pack` and a registry publish run `prepack`. A
-git dependency runs `prepare`. `stuffbucket/maximal` pins the git form:
+git dependency runs `prepare`. An `https://` source archive runs neither.
+`stuffbucket/maximal` pins the git form:
 
 ```
 "stuffbucket-electron": "github:stuffbucket/maximal-electron#<ref>"
@@ -65,6 +66,23 @@ It runs in three places, because the ref it installs is the whole point:
 The local default is what makes it runnable before cutting. The CI job is what
 makes a regression fail before it lands rather than after a consumer installs
 it.
+
+### The archive path, which cannot be made to work
+
+The third form is a `codeload.github.com/.../tar.gz/<sha>` URL, which npm takes
+for a packed tarball. It is the repository tree, and `dist/` is not in the
+tree, so the install produces a package whose exports name files that are not
+there — with exit 0. `stuffbucket/maximal` pinned one, and it worked only
+because that commit predates #70 and still carried a committed `dist/`.
+
+No lifecycle script can build it, so the answer is to refuse it.
+`scripts/check-install.mjs` runs at `postinstall`, which npm does run for every
+install form, and exits 1 when an export names a file the install does not
+carry. The same `verify:git-install` run archives the ref under review with
+`git archive` — what codeload serves — installs that archive, and asserts the
+failure carries that refusal. "npm exited non-zero" alone would pass on a
+network error, so the refusal text is the assertion. Issue #100, and
+`docs/consuming.md` is the consumer-facing version.
 
 ## The release dry run
 

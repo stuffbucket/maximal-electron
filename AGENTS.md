@@ -27,7 +27,7 @@ linked document.
 | Package | `npm run package` |
 | Verify a package | `npm run verify:package` |
 | Verify the exports | `npm run verify:exports` |
-| Verify a git-ref install | `npm run verify:git-install` |
+| Verify an install by specifier | `npm run verify:git-install` |
 | Verify the shell stays agnostic | `npm run verify:neutral` |
 | Verify the docs | `npm run verify:docs` |
 | Regenerate icons | `npm run icons` |
@@ -144,6 +144,7 @@ only background.
 | Stories, the a11y run, what is deliberately not in CI | `docs/storybook.md` |
 | Capture and compose, the pacing constants | `docs/recording.md` |
 | Trains, the draft release, macOS signing | `docs/release.md` |
+| The install specifiers a consumer may write | `docs/consuming.md` |
 | The workflows, the release dry run, the merge race | `docs/ci.md` |
 | Code signing | `docs/signing.md` |
 | What is planned and what is deliberately not | `docs/roadmap.md` |

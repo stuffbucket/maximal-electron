@@ -59,7 +59,19 @@ A dock badge tracks real application state.
 
 ## Consume the shell frame
 
-GitHub and npm installs expose the secured host window at
+Install it from a git ref, or from the tarball a release attaches:
+
+```json
+"stuffbucket-electron": "github:stuffbucket/maximal-electron#<ref>"
+"stuffbucket-electron": "https://github.com/stuffbucket/maximal-electron/releases/download/v0.0.3/stuffbucket-electron-0.0.3.tgz"
+```
+
+`dist/` is built by a lifecycle script rather than committed, and npm runs a
+different one for each form. A `codeload.github.com` archive URL runs neither,
+so that form is unsupported and refuses to install. This package is not on the
+npm registry. Read [docs/consuming.md](./docs/consuming.md).
+
+Either supported form exposes the secured host window at
 `stuffbucket-electron/host` and the generic renderer frame at
 `stuffbucket-electron/renderer`. The renderer entry exports `ShellLayout`,
 `TitleBar`, `TabBar`, `NavRail`, `Canvas`, and `IconButton`. It does not export
