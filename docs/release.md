@@ -80,31 +80,58 @@ target, so `git push --delete origin v0.0.3` succeeds today.
 
 ## The shape
 
-Push a tag. Eight jobs run. Every asset lands on a **draft** release, one job
+Push a tag. Five jobs run. The tarball lands on a **draft** release, one job
 publishes the package to the registry, and one flips the draft to published at
 the end.
 
 ```
-tag-check ──> release (draft) ──┬─> package-tarball ──┬─> publish
-                                │                     └─> publish-package
-                                ├─> windows-msi ──> windows-msi-verify
-                                └─> macos-dmg
+tag-check ──> release (draft) ──> package-tarball ──┬─> publish
+                                                    └─> publish-package
 ```
 
 The same workflow runs from a dispatch as a dry run, which builds everything
 and attaches nothing. See `docs/ci.md`.
 
-**`publish` gates on the tarball alone.** The installers run on every tag and
-do not hold the release.
+## There is no installer
 
-That is deliberate, and it is a change. `publish` used to need the dmg and the
-verified MSI, on the reasoning that a release should not go out without a macOS
-artifact. That reasoning holds for someone installing this application, and it
-is wrong for the thing this repository now mostly is. `stuffbucket/maximal`
-depends on the shell as a **library** and signs its own application, so the
-tarball is the artifact it consumes and the dmg is one it never sees. Gating on
-the dmg made a package release depend on a credential for a private signing
-repository, and `v0.0.1` proved it: a draft nobody could publish.
+This repository ships one asset: the npm tarball. It builds no MSI and no dmg.
+
+That is a removal, and the reasons are on the record:
+
+- The dmg job never once succeeded, on any tag, including `v0.0.4`. It needed a
+  credential for the private signing repository, nobody ever minted one, and no
+  dmg was ever produced for this repository (#69). Its failure is why
+  `release.yml` has never had a green overall conclusion.
+- Every MSI this repository published contained zero files. `msiinfo export
+  <msi> File` returned no rows for `v0.0.2` and for `v0.0.3`. A 226 MB download
+  that installs nothing (#112). Both assets have since been deleted from the
+  published releases.
+- `stuffbucket/maximal` consumes this shell as a library and packages, signs,
+  and notarizes its own application. It has never consumed either installer.
+
+Three of the eight jobs in `release.yml` existed for those two artifacts, and a
+fourth workflow, `windows-msi-dev.yml`, existed only to iterate on one of them.
+
+The MSI work that #106 landed went with them: `scripts/build-msi.ps1`,
+`scripts/verify-msi.ps1`, `build/windows/app.wxs` and `tests/wxs.test.ts`. That
+work was correct. It made the harvest fail loudly, compared the installed tree
+against a manifest byte for byte, and launched the installed executable. It was
+correct maintenance of an artifact with no consumer, which is why it is the
+artifact and not the fix that was wrong. The lesson it paid for is kept in
+`.claude/skills/port-to-project/SKILL.md`: an installer check that does not look
+inside the installer proves nothing.
+
+**Packaging is kept.** `npm run package` produces a `.app` on macOS and a
+`win32` directory on Windows, `ci.yml` runs it on both platforms, `npm run
+verify:package` asserts the asar contents, the content policy, the native
+modules named file by file, the icons, and the fuses, and `npm run
+smoke:packaged` launches the result. Packaging correctness is a real property
+of the shell: it is how #88 was found, where `spawn-helper` was stranded inside
+`app.asar` and every terminal failed to start in a packaged build. What was
+deleted is the installer wrapped around the package, not the package.
+
+A fork that wants an installer adds one. `forge.config.ts` has no makers, so
+that is a maker plus a job, and nothing here fights it.
 
 ## What a consumer installs
 
@@ -152,125 +179,62 @@ release is still mutable.
 
 This is the same reason `stuffbucket/maximal` uses this shape.
 
-A consequence worth stating: if the macOS build fails, the release still
-publishes, carrying the tarball and no dmg. That is the trade made above. A
-consumer of the library is unaffected; somebody looking for an installer finds
-none, and the failed job says why.
+A consequence worth stating: a release carries the tarball and nothing else. A
+consumer of the library has everything. Somebody looking for an installer finds
+none, and this document is where they learn why.
 
 ## macOS
 
-This repository holds no Apple credential, and it must stay that way. Signing
-happens in the private `stuffbucket/macos-builder`. This repository is a
-client, and supplies two files:
+This repository holds no Apple credential, and it must stay that way.
 
-- `.macos-builder/config` declares the bundle identifier, the entitlement set,
-  and the artifact name.
-- `.macos-builder/build.sh` builds the unsigned `.app` and stops.
+It also no longer signs anything. Signing existed to produce the dmg, the dmg
+is gone, and the client contract for `stuffbucket/macos-builder` went with it:
+`.macos-builder/config` and `.macos-builder/build.sh` are deleted, and so is
+the repository secret the `macos-dmg` job required and never had (#69).
 
-The builder signs, packages, notarizes, staples, and checksums. It then uploads
-the dmg onto this repository's draft release.
+`npm run package` still produces an **unsigned** `Stuffbucket.app`, and `npm
+run smoke:packaged` still launches it. Gatekeeper refuses to open an unsigned
+bundle on a machine other than the one that built it, which is the expected
+behaviour for an unsigned bundle and not a defect. A consumer that distributes
+a macOS application signs it themselves; `stuffbucket/maximal` does exactly
+that.
 
-macOS ships **arm64 only**. The builder exports `ARCH=arm64`, and the runner is
-Apple Silicon. `maximal` ships arm64 only for the same reason.
+Restoring signing means restoring the builder client contract and one job. The
+shape is recorded in `docs/signing.md`.
 
 ## Windows
 
-An MSI, built with WiX 5 on a GitHub-hosted `windows-2022` runner.
+Windows ships no installer. `npm run package -- --platform=win32 --arch=x64`
+produces `out/Stuffbucket-win32-x64/`, which contains `Stuffbucket.exe` and its
+resources, and that directory is what a fork would wrap.
 
-```
-dotnet tool install --global wix --version 5.0.2
-wix extension add -g WixToolset.Util.wixext/5.0.2
-pwsh scripts/build-msi.ps1 -Version x.y.z -Out dist-release/out.msi
-```
-
-These live here rather than in a comment inside `app.wxs`, because an XML
-comment cannot contain a double hyphen and every one of these commands has a
-long option. That is not a style preference: the comment held these commands
-verbatim, `wix build` rejected the file with `WIX0104`, and the first tag ever
-pushed failed on it. `tests/wxs.test.ts` now parses every `.wxs` file, so a
-comment that breaks the XML fails before a release does.
-
-The source is `build/windows/app.wxs`, adapted from `maximal`'s
-`build/windows/maximal.wxs`. That file is the last known good Windows installer
-in this organisation. It installs per user, so there is no prompt for
-administrator rights.
-
-### Why the `wix build` command line is a script
-
-`app.wxs` harvests the packaged directory, and the bind path handed to a
-harvest **must be absolute**. WiX resolves a relative one against the `.wxs`
-file's own directory, not the working directory, then reports `WIX8601` as a
-warning and harvests nothing. `v0.0.2` shipped an MSI that installed, set its
-registry marker, registered itself with Add or Remove Programs, and contained
-no application. See issue #86.
-
-`scripts/build-msi.ps1` is the single copy of that command line. It resolves
-the bind path, promotes `WIX8600` and `WIX8601` to errors, and writes a
-manifest of every packaged file beside the MSI. `release.yml` and
-`windows-msi-dev.yml` both call it, so the dev harness cannot verify something
-the release build does not do. `tests/wxs.test.ts` asserts that no workflow
-calls `wix build` around it.
-
-### What the verify job proves
-
-`scripts/verify-msi.ps1` installs the MSI silently, compares the installed
-tree against that manifest file by file and byte for byte, asserts the registry
-marker and the Windows Installer product registration, launches the installed
-executable and requires it to still be running twenty seconds later, then
-uninstalls and asserts clean removal. It takes the MSI from `windows-msi` as a
-workflow artifact: `gh release download` cannot resolve a draft by tag name,
-and the release was a detour between two jobs that already have the file.
-
-A per-user MSI does not write to
-`HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall`. It registers under
-`HKCU\Software\Microsoft\Installer\Products`, and on a fresh profile the
-`Uninstall` key does not exist at all. The old assertion named only
-`Uninstall`, and had never run: the file check above it failed first, every
-time.
-
-The tree comparison replaced a check for `Stuffbucket.exe` alone. An installer
-can carry the executable and none of the asar, the locales, or the resources
-beside it, and that check would pass.
-
-`publish` does not gate on it. A broken installer costs an installer.
-
-To iterate without a release, dispatch `windows-msi-dev.yml` from a branch, or
-dispatch `release.yml` for a dry run of the whole pipeline. See `docs/ci.md`.
+`ci.yml` builds and verifies it on `windows-latest` on every pull request.
+There is no packaged smoke test on Windows; `docs/ci.md` states why.
 
 ## Auto-update: why there is none
 
-Neither installer carries an update channel. This is a documented position, not
-an oversight.
+There is no update channel, and now no installer to carry one. This is a
+documented position, not an oversight.
 
-- An MSI has no update feed.
-- The macOS builder **can** emit an updater artifact: a notarized and stapled
-  `.app.tar.gz` plus an Ed25519 signature. That pair is what
-  `tauri-plugin-updater` consumes.
-- Electron cannot read it. Squirrel.Mac installs from a `.zip`.
+- Electron's own updaters install over a delivered artifact. This repository
+  delivers a library tarball, which npm updates.
+- `stuffbucket/maximal` owns its own application and its own update story.
 
-### What would unblock it
-
-Two options, in rough order of effort.
-
-1. **Add a `zip` artifact to the builder.** Have it emit a notarized, stapled
-   `.zip` beside the dmg. Then `update-electron-app` works against GitHub
-   Releases, provided this repository is public.
-2. **Write a small updater in the main process** that consumes the existing
-   `.app.tar.gz` and verifies the Ed25519 signature. No builder change, but
-   real code to own.
-
-Windows would need a separate answer, because the MSI cannot self-update. One
-option is to ship Squirrel or NSIS beside the MSI.
+A fork that ships an application adds a maker, a release job, and an updater
+together. `update-electron-app` against GitHub Releases is the shortest path,
+and it needs a `.zip` artifact and a public repository.
 
 ## Extension points
 
 Deliberately not built. Each is a small, contained addition.
 
-- **Linux.** `forge.config.ts` configures the makers and scopes them to
-  `linux`. Add a job to `release.yml` on `ubuntu-22.04`. Build on 22.04 rather
-  than latest, for the older glibc baseline.
+- **Any installer at all.** `forge.config.ts` declares no makers. Adding one
+  plus a release job is the whole change; see the section above for why none is
+  here.
+- **Linux.** Add `@electron-forge/maker-deb` and `@electron-forge/maker-rpm`,
+  scope each to `linux`, and add a job to `release.yml` on `ubuntu-22.04`.
+  Build on 22.04 rather than latest, for the older glibc baseline.
 - **Windows Authenticode.** Deferred organisation-wide. See `docs/signing.md`.
-- **Universal macOS binaries.** The runner is Apple Silicon and the builder
-  pins `ARCH=arm64`.
-- **An NSIS installer.** `maximal` has one, but Tauri generates it, so there is
-  no source to copy.
+- **Universal macOS binaries.** Not built here, and untried. `prunePrebuilds`
+  in `forge.config.ts` already accepts `universal` and keeps both node-pty
+  prebuilds, so the native-module side of it is done.

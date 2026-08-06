@@ -1,8 +1,8 @@
 # Continuous integration
 
-Four workflows. `ci.yml` is the blocking gate, `release.yml` builds and ships a
-tag, `merge-preview.yml` tests what a merge would produce, and
-`windows-msi-dev.yml` iterates on the installer from a branch.
+Three workflows build. `ci.yml` is the blocking gate, `release.yml` builds and
+ships a tag, and `merge-preview.yml` tests what a merge would produce. A
+fourth, `triage.yml`, only labels issues and is described in its own header.
 
 ## What each one runs
 
@@ -10,8 +10,14 @@ tag, `merge-preview.yml` tests what a merge would produce, and
 | --- | --- | --- |
 | `ci.yml` | pull request, push to `main` and `release/**` | Lint, types, unit and mutation tests, a git-ref install, packaging and the end-to-end suite on macOS and Windows, and the packaged smoke test on macOS |
 | `merge-preview.yml` | push to `main` and `release/**` | Replays every open pull request against the new tip |
-| `release.yml` | tag `v*.*.*`, or a dispatch for a dry run | The draft release, the MSI, the dmg, the tarball, the registry publish, publish |
-| `windows-msi-dev.yml` | dispatch | Builds and installs the MSI from any branch |
+| `release.yml` | tag `v*.*.*`, or a dispatch for a dry run | The draft release, the tarball, the registry publish, publish |
+
+This repository ships no installer. `npm run package`, `npm run
+verify:package` and `npm run smoke:packaged` still run in `ci.yml`, because
+packaging is a property of the shell and it is where the defects were found.
+What was removed was the MSI and the dmg built on top of it, and
+`windows-msi-dev.yml` with them. See `docs/release.md`.
+>>>>>>> origin/release/0.0.5
 
 ## The problem this page exists for
 
@@ -26,8 +32,8 @@ before a tag, and it must fail when it has nothing to do.
 
 The first complete dry run found another, one level down: `wix build` harvested
 zero files, said so as a warning, and produced an MSI that installed an empty
-directory. Issue #86. A step that finds nothing now fails rather than reporting
-success.
+directory. Issue #86. That MSI is gone now, and the rule it produced is not:
+a step that finds nothing fails rather than reporting success.
 
 
 ## The packaged smoke test
@@ -112,28 +118,23 @@ A dry run does everything a tag does, except attach and publish:
 
 - `tag-check` takes the tag from `package.json` rather than the ref, and still
   checks the format.
-- `windows-msi` builds and checksums the MSI, and `windows-msi-verify` installs
-  it, compares the installed tree against a manifest of the packaged
-  application, asserts the registry entries, launches the executable,
-  uninstalls, and asserts clean removal.
 - `package-tarball` runs `npm run verify:exports`, packs, and installs the
   commit by git ref.
 - `publish-package` runs `npm run verify:publish` against the packed archive,
   then `npm publish --dry-run` with an invalid token. Nothing is uploaded.
-- `macos-dmg` and `publish` do not run at all. The first needs
-  `MACOS_BUILDER_PAT` and produces nothing but an asset on the draft.
-
-**The dry run does not cover macOS.** That is the remaining hole, and it is a
-real one: on `v0.0.2` the `macos-dmg` job failed in three seconds because
-`MACOS_BUILDER_PAT` was not set, and no dmg has ever been built for this
-repository. The job now says so by name instead of reporting the GitHub CLI's
-generic advice about a missing token, but only a tag reaches it.
+- `publish` does not run at all.
 
 `dry-run-artifacts` is what stops a dry run being green for nothing. Every
 attach step is skipped on a dispatch, so the run would otherwise end without
-producing anything and still pass. That job downloads the MSI and the tarball,
-asserts both are present and non-empty, and checks the MSI against its
-recorded SHA-256.
+producing anything and still pass. That job downloads the tarball by name and
+asserts exactly one arrived and is non-empty.
+
+It survived the removal of the installers rather than going with them. The
+tarball is now the only artifact, which makes it look redundant with
+`if-no-files-found: error` on the upload, and it is not. That setting proves a
+file existed in the producing job's working directory. It says nothing about
+whether the name resolves on the download side, which is the failure #81 was,
+nor about whether the file that crossed the boundary has any bytes in it.
 
 `DRY_RUN` is the shell-visible form of the same condition, used inside
 `tag-check`. Job and step conditions spell it out as an event name, because the
@@ -243,8 +244,8 @@ pays for itself.
 what a compiler would if YAML went through one:
 
 - Every artifact a job downloads by name is uploaded by name in the same
-  workflow. This is how the MSI reaches `windows-msi-verify`, and a rename on
-  one side would otherwise leave a download that finds nothing.
+  workflow. This is how the tarball reaches `dry-run-artifacts`, and a rename
+  on one side would otherwise leave a download that finds nothing.
 - Every `npm pack --pack-destination` step creates the directory first.
 - `publish` needs `package-tarball` and nothing else. See `docs/release.md` for
   why that is deliberate.

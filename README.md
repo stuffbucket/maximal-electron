@@ -5,7 +5,8 @@ A reference Electron application. It exists to be forked.
 It answers two questions that every desktop project has to answer, and that
 most templates leave out:
 
-1. How does this build and ship on macOS and Windows, with real signing?
+1. How does this build and package on macOS and Windows, and how is the package
+   proved correct?
 2. How does an agent work in this repository without breaking it?
 
 Screenshot of the shell: `test-results/shell.png`, after `npm run stills`.
@@ -19,8 +20,8 @@ Screenshot of the shell: `test-results/shell.png`, after `npm run stills`.
 | Layout | Radix and `react-resizable-panels`. |
 | Terminal | `ghostty-web` over `node-pty`. |
 | Agent | pi coding agent, or an embedded model. |
-| macOS | Signed dmg from a private builder. |
-| Windows | Per-user MSI from WiX 5. |
+| Packaging | Forge `package` on macOS and Windows, verified in CI. |
+| Release | An npm tarball on a GitHub release. No installer. |
 | Tests | Vitest and Playwright. |
 | Demos | A scripted screen recorder that drives the real app. |
 | Harness | `AGENTS.md` and `.claude/skills/`. |
@@ -246,16 +247,20 @@ See [docs/recording.md](./docs/recording.md).
 
 ## Release
 
-Push a tag. Every asset lands on a draft release, and one job publishes it.
+Push a tag. The npm tarball lands on a draft release, and one job publishes it.
 
 ```bash
 git tag -a v0.1.0 -m "Release 0.1.0"
 git push origin v0.1.0
 ```
 
-macOS signing runs in the private `stuffbucket/macos-builder`. **No Apple
-credential belongs in this repository.** Windows ships unsigned, which is an
-organisation-wide decision.
+**There is no installer.** No MSI and no dmg. `npm run package` produces an
+unsigned `.app` and an unsigned `win32` directory, `ci.yml` runs it on both
+platforms, `npm run verify:package` proves the result is correct, and `npm run
+smoke:packaged` launches it. Nothing wraps it. `docs/release.md` says why, and
+what a fork adds to change that.
+
+Nothing here is signed, and **no Apple credential belongs in this repository**.
 
 Read [docs/release.md](./docs/release.md) and
 [docs/signing.md](./docs/signing.md).
@@ -264,22 +269,21 @@ Read [docs/release.md](./docs/release.md) and
 
 Stated here rather than discovered later.
 
-- **No auto-update.** An MSI has no update feed, and the macOS builder's
-  updater artifact is in Tauri's format, which Electron cannot read.
-  `docs/release.md` gives the exact change that would unblock it.
+- **No installer, on either platform.** A release carries the library tarball
+  and nothing else. See `docs/release.md`.
+- **No auto-update.** There is no delivered artifact for an updater to replace.
+- **Nothing is signed.** macOS Gatekeeper refuses an unsigned bundle it did not
+  build, and Windows SmartScreen warns on first run.
 - **The overlay agent has shell access when tools are on.** That is what makes
   it a coding agent. It asks before it runs anything that can change the
   machine, and the "Ask before running" setting controls how much it asks.
   Turn the tools off entirely with the "Agent tools" switch.
 - **The summon accelerator is not a double tap of Ctrl.** Electron cannot bind
   a bare modifier without a native monitor.
-- **No Linux release.** The makers are configured but no job builds them.
 - **The concierge model downloads on first use.** About 610 MB, once, into the
-  user data directory. The installer stays small and the model can be upgraded
+  user data directory. The package stays smaller and the model can be upgraded
   without a new build, but a first run with no network and no proxy cannot
   answer.
-- **macOS is arm64 only.** The build runner is Apple Silicon.
-- **Windows is unsigned.** SmartScreen warns on first run.
 - **Placeholder icons.** `scripts/gen-icons.mjs` draws them. Replace the output
   with designer assets before a public release, or point
   `STUFFBUCKET_ICON_DIR` at your own set.
@@ -288,9 +292,9 @@ Stated here rather than discovered later.
 
 Read [.claude/skills/port-to-project/SKILL.md](./.claude/skills/port-to-project/SKILL.md).
 
-The short version: rename the app, and mint a new WiX `UpgradeCode`. Point
-`.macos-builder/config` at your build output, and `STUFFBUCKET_ICON_DIR` at
-your icons. Then do the two manual onboarding steps in the GitHub interface.
+The short version: rename the app, and point `STUFFBUCKET_ICON_DIR` at your own
+icons. If you distribute an application rather than a library, adding a maker
+and a release job is your first change.
 
 ## Credits
 
@@ -300,6 +304,5 @@ The release mechanics and the agent harness follow two existing projects.
   the prescriptive `AGENTS.md`, and the self-contained skill format. It
   contains no Electron; only these patterns transfer.
 - `stuffbucket/maximal` contributes the draft-then-publish release shape, the
-  private macOS builder contract, the WiX installer, the design token scale,
-  and the layout-verification discipline in
+  design token scale, and the layout-verification discipline in
   `.claude/skills/verify-ui/SKILL.md`.

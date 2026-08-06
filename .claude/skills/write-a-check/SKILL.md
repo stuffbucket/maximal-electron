@@ -80,7 +80,8 @@ A check you have not seen fail is a claim, not a check.
 
 Three of the four jobs in `release.yml` had never once completed successfully,
 and only a dispatch found that out. That is the same defect one level up: the
-scope is the set of runs, and it was empty.
+scope is the set of runs, and it was empty. Those three jobs were the
+installers, and they were eventually deleted rather than fixed.
 
 `docs/ci.md` holds the rule for anything added to a workflow. It must be
 possible to run before a tag, and it must fail when it has nothing to do. The
