@@ -60,6 +60,9 @@ tag-check ──> release (draft) ──┬─> package-tarball ──> publish
                                 └─> macos-dmg
 ```
 
+The same workflow runs from a dispatch as a dry run, which builds everything
+and attaches nothing. See `docs/ci.md`.
+
 **`publish` gates on the tarball alone.** The installers run on every tag and
 do not hold the release.
 
@@ -143,9 +146,14 @@ administrator rights.
 
 `windows-msi-verify` installs it silently. It asserts the files, the registry
 marker, and the Add or Remove Programs entry. It then uninstalls and asserts
-clean removal. `publish` gates on that job.
+clean removal. It takes the MSI from `windows-msi` as a workflow artifact:
+`gh release download` cannot resolve a draft by tag name, and the release was a
+detour between two jobs that already have the file.
 
-To iterate without a release, dispatch `windows-msi-dev.yml` from a branch.
+`publish` does not gate on it. A broken installer costs an installer.
+
+To iterate without a release, dispatch `windows-msi-dev.yml` from a branch, or
+dispatch `release.yml` for a dry run of the whole pipeline. See `docs/ci.md`.
 
 ## Auto-update: why there is none
 
