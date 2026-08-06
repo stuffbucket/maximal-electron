@@ -189,14 +189,40 @@ export function forbiddenImports(source, fileName, packages = FORBIDDEN_PACKAGES
 const SLUG_OWNER = /(?<!@)stuffbucket\/$/i;
 
 /**
+ * Every span in `text` covered by one of `exempt`.
+ *
+ * A package's own name is not a foreign name. `@stuffbucket/maximal-electron`
+ * carries a forbidden term and is not covered by `SLUG_OWNER`, deliberately:
+ * the `@` marks an npm scope, and exempting that shape wholesale would let
+ * `@stuffbucket/maximal-core` sit in a string literal unreported.
+ *
+ * So the exemption is the exact string and nothing else. The caller passes the
+ * manifest's own name, `verify-neutral.mjs` refuses to pass one that is a
+ * forbidden package, and every other scoped name stays reportable.
+ */
+function exemptSpans(text, exempt) {
+  const spans = [];
+  for (const phrase of exempt) {
+    if (phrase === '') continue;
+    let at = text.indexOf(phrase);
+    while (at !== -1) {
+      spans.push([at, at + phrase.length]);
+      at = text.indexOf(phrase, at + 1);
+    }
+  }
+  return spans;
+}
+
+/**
  * Every place a forbidden term appears in a text.
  *
  * The boundary treats `_` and `-` as separators, which `\b` does not:
  * `MAXIMAL_BASE` is the constant issue #16 exists to catch, and `\bmaximal\b`
  * does not match it.
  */
-export function termMatches(text, terms) {
+export function termMatches(text, terms, exempt = []) {
   const found = [];
+  const spans = exemptSpans(text, exempt);
 
   for (const term of terms) {
     const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -205,6 +231,7 @@ export function termMatches(text, terms) {
     for (const match of text.matchAll(pattern)) {
       const at = match.index;
       if (SLUG_OWNER.test(text.slice(Math.max(0, at - 13), at))) continue;
+      if (spans.some(([start, end]) => at >= start && at < end)) continue;
 
       const before = text.slice(0, at);
       const line = before.split('\n').length;

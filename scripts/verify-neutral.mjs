@@ -38,6 +38,7 @@ import {
   moduleSpecifiers,
   termMatches,
 } from './neutrality.mjs';
+import { packedName } from './export-checks.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const manifest = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
@@ -220,11 +221,30 @@ const terms = forbiddenTerms(process.env);
 const scanned = [...sourceFiles, 'README.md'];
 const allowed = new Map(ALLOWED.map((entry) => [entry.file, entry.reason]));
 
+/*
+ * This package's own name, which carries a forbidden term because the
+ * repository is called maximal-electron. Naming yourself is not depending on
+ * a sibling. Both forms: the specifier a consumer imports, and the flattened
+ * one npm writes as a release asset. The guard on the guard is below: the
+ * exemption may not be a package the import rule denies, so it can never
+ * cancel a real one.
+ */
+const selfNames = [manifest.name, packedName(manifest.name)];
+
 console.log(`\nNeutrality scan (${terms.join(', ')})`);
 // Two more floors. An empty term list matches nothing, and so does an empty
 // corpus.
 check(terms.length > 0, `${String(terms.length)} forbidden terms`);
 check(scanned.length > 20, `${String(scanned.length)} files scanned`);
+check(
+  !isForbiddenPackage(manifest.name),
+  `the self-name exemption ${manifest.name} is not a denied package`,
+);
+// A dead exemption is a rule nobody notices has stopped applying. If the name
+// stops carrying a term, these lines go.
+for (const self of selfNames) {
+  check(termMatches(self, terms).length > 0, `${self} needs the self-name exemption`);
+}
 
 for (const entry of ALLOWED) {
   check(scanned.includes(entry.file), `${entry.file} is a file the scan covers`);
@@ -232,7 +252,7 @@ for (const entry of ALLOWED) {
 
 let clean = 0;
 for (const file of scanned) {
-  const matches = termMatches(read(file), terms);
+  const matches = termMatches(read(file), terms, selfNames);
   const reason = allowed.get(file);
 
   if (reason === undefined) {

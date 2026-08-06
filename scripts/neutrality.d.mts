@@ -33,4 +33,8 @@ export declare function forbiddenImports(
   fileName: string,
   packages?: string[],
 ): ModuleSpecifier[];
-export declare function termMatches(text: string, terms: string[]): TermMatch[];
+export declare function termMatches(
+  text: string,
+  terms: string[],
+  exempt?: string[],
+): TermMatch[];

@@ -194,3 +194,47 @@ describe('scanning prose and code for a forbidden term', () => {
     expect(termMatches('maximal everywhere', [])).toEqual([]);
   });
 });
+
+/**
+ * A package's own name is not a foreign name.
+ *
+ * `@stuffbucket/maximal-electron` is an npm scope, so the slug rule above
+ * deliberately does not cover it, and must not: exempting that shape
+ * wholesale is what let `@stuffbucket/maximal-core` sit in a string literal
+ * unreported. So the exemption is the exact string, and these are the tests
+ * that say it stayed that narrow.
+ */
+describe('the self-name exemption', () => {
+  const terms = DEFAULT_FORBIDDEN_TERMS;
+  const self = ['@stuffbucket/maximal-electron', 'stuffbucket-maximal-electron'];
+  const found = (text: string): string[] =>
+    termMatches(text, terms, self).map((match) => match.term);
+
+  it('exempts the package specifier a consumer imports', () => {
+    expect(found("import { createHostWindow } from '@stuffbucket/maximal-electron/host';")).toEqual(
+      [],
+    );
+  });
+
+  it('exempts the flattened name npm writes as a release asset', () => {
+    expect(found('stuffbucket-maximal-electron-0.0.5.tgz')).toEqual([]);
+  });
+
+  it('still reports the sibling npm scope', () => {
+    expect(found("const p = '@stuffbucket/maximal-core';")).toEqual(['maximal', 'maximal-core']);
+  });
+
+  it('still reports the sibling in the same flattened shape', () => {
+    expect(found('stuffbucket-maximal-core-0.0.5.tgz')).toEqual(['maximal', 'maximal-core']);
+  });
+
+  it('still reports a bare term beside the exempt name', () => {
+    expect(found('@stuffbucket/maximal-electron, and maximal itself')).toEqual(['maximal']);
+  });
+
+  it('exempts nothing when no name is passed', () => {
+    expect(termMatches("'@stuffbucket/maximal-electron'", terms).map((m) => m.term)).toEqual([
+      'maximal',
+    ]);
+  });
+});

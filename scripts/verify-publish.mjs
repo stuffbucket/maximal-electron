@@ -26,6 +26,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { exportTargets, packedTarballName, targetPresent } from './export-checks.mjs';
+
 const REGISTRY = 'https://npm.pkg.github.com';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -43,15 +45,6 @@ const versionIndex = argv.indexOf('--version');
 const versionValue = versionIndex === -1 ? -1 : versionIndex + 1;
 const wanted = versionIndex === -1 ? undefined : (argv[versionValue] ?? '').replace(/^v/, '');
 const given = argv.find((value, index) => !value.startsWith('--') && index !== versionValue);
-
-/** Every `exports` leaf, flattened to one row per condition. */
-function exportTargets(exports_) {
-  return Object.entries(exports_ ?? {}).flatMap(([subpath, entry]) =>
-    typeof entry === 'string'
-      ? [{ subpath, condition: 'default', target: entry }]
-      : Object.entries(entry ?? {}).map(([condition, target]) => ({ subpath, condition, target })),
-  );
-}
 
 const scratch = await mkdtemp(path.join(tmpdir(), 'stuffbucket-publish-'));
 
@@ -103,8 +96,7 @@ async function run() {
   if (tarballs.length !== 1) return;
 
   const tarball = tarballs[0];
-  // npm's own name for a scoped tarball: the scope's `@` and `/` become `-`.
-  const expectedName = `${manifest.name.replace('@', '').replace('/', '-')}-${manifest.version}.tgz`;
+  const expectedName = packedTarballName(manifest.name, manifest.version);
   check(tarball === expectedName, `the tarball is named ${expectedName}`);
 
   const unpacked = path.join(scratch, 'unpacked');
@@ -140,8 +132,7 @@ async function run() {
 
   let present = 0;
   for (const { subpath, condition, target } of targets) {
-    const file = path.join(packageRoot, target);
-    const ok = existsSync(file) && statSync(file).size > 0;
+    const ok = targetPresent(packageRoot, target);
     if (ok) present += 1;
     check(ok, `${subpath} ${condition} -> ${target} exists and is not empty`);
   }
