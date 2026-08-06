@@ -77,8 +77,9 @@ neutral.
 
 Six checks here have passed while examining an empty set, and one of them
 shipped a broken terminal. A check you add or change reports how many things it
-examined and fails on zero. Break it on purpose, and put the failure message in
-the pull request. See `.claude/skills/write-a-check/SKILL.md`.
+examined and fails on zero. Commit your own work first, then break it on
+purpose and put the failure message in the pull request. See
+`.claude/skills/write-a-check/SKILL.md`.
 
 ## Writing code
 
