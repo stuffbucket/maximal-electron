@@ -27,6 +27,7 @@ linked document.
 | Package | `npm run package` |
 | Verify a package | `npm run verify:package` |
 | Verify the exports | `npm run verify:exports` |
+| Verify a git-ref install | `npm run verify:git-install` |
 | Verify the shell stays agnostic | `npm run verify:neutral` |
 | Verify the docs | `npm run verify:docs` |
 | Regenerate icons | `npm run icons` |
