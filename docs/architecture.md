@@ -213,8 +213,9 @@ the same treatment for `conpty.dll` and `OpenConsole.exe`, which `conpty.node`
 loads.
 
 **The package comes from Microsoft.** `@lydell/node-pty` repackages the same
-published tarball — the binaries and the seven `lib/*.js` files hash
-identically — and adds a single maintainer with no continuous integration.
+published tarball — the binaries and the seven files in the package's `lib`
+directory hash identically — and adds a single maintainer with no continuous
+integration.
 Microsoft ships every platform in one 26 MB package instead of a prebuild per
 platform (their issue #864), so `prunePtyPrebuilds` in `forge.config.ts` drops
 the ones a given build cannot use. It runs as `packageAfterCopy` rather than in

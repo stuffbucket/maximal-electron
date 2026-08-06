@@ -145,6 +145,19 @@ failed for the wrong reason. Counting the set an assertion ran over says
 nothing about whether the assertion measures what its message claims. That is a
 separate defect, and nothing here addresses it.
 
+### A scope that is honest and still misleading
+
+`npm run verify:docs` reported `205 backticked paths` while collecting only the
+paths under a declared source root. Two deliberate breaks passed: a build
+output path, and a module name written relative to `src/main`. Neither matched
+a root, so neither was counted, and the number was true about what the check
+examined and silent about what it declined. #152.
+
+So a check that narrows its input states what the narrowing dropped, and states
+it as a number. `verify:docs` prints the paths it declined beside the paths it
+checked, the way it prints out-of-scope `npm run` mentions after #126. An
+answer you could not compute must not read as one you did.
+
 ## Where this is written down
 
 `AGENTS.md` carries the one-line rule. `docs/ci.md` carries the workflow half.

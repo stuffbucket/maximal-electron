@@ -52,7 +52,6 @@ export const DEFERRED = new Map([
   ['scripts/compose.mjs', 125],
   ['scripts/copy-renderer-css.mjs', 125],
   ['scripts/css-selectors.mjs', 125],
-  ['scripts/docs-claims.mjs', 125],
   ['scripts/export-checks.mjs', 125],
   ['scripts/gen-icons.mjs', 125],
   ['scripts/mutation-report.mjs', 125],

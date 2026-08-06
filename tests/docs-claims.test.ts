@@ -6,7 +6,7 @@ import {
   links,
   npmScripts,
   npmScriptsOutOfScope,
-  repoPaths,
+  pathClaims,
   withoutFences,
 } from '../scripts/docs-claims.mjs';
 
@@ -39,6 +39,22 @@ describe('withoutFences', () => {
     expect(stripped).not.toContain('one');
     expect(stripped).not.toContain('two');
     expect(stripped).toContain('mid');
+  });
+
+  it('leaves an empty string where the block was', () => {
+    // Not a marker. Anything else would become a code span of its own.
+    expect(withoutFences(['a', '```', 'x', '```', 'b'].join('\n'))).toBe('a\n\nb');
+  });
+
+  it('opens a block only at the start of a line', () => {
+    // Three backticks inside a sentence are a span, not a fence.
+    const text = ['inline ```code``` here', '```', 'fenced', '```'].join('\n');
+    expect(withoutFences(text)).toBe('inline ```code``` here\n');
+  });
+
+  it('closes a block only at the start of a line', () => {
+    // A block showing markdown holds its own backticks mid-line.
+    expect(withoutFences(['```', 'a ``` b', '```'].join('\n'))).toBe('');
   });
 });
 
@@ -96,6 +112,10 @@ describe('npmScriptsOutOfScope', () => {
   it('is zero when every mention is a claim', () => {
     expect(npmScriptsOutOfScope('`npm run lint`')).toBe(0);
   });
+
+  it('counts a one-letter script name, which is still a name', () => {
+    expect(npmScriptsOutOfScope('You can npm run x today.')).toBe(1);
+  });
 });
 
 describe('codeSpans', () => {
@@ -109,42 +129,205 @@ describe('codeSpans', () => {
   });
 });
 
-describe('repoPaths', () => {
-  const roots = ['scripts', 'src', 'docs'];
+describe('pathClaims', () => {
+  const scope = {
+    roots: ['scripts', 'src', 'docs'],
+    buildRoots: ['.vite', 'out'],
+    moduleExtensions: ['.ts', '.js', '.css'],
+  };
 
-  it('finds a backticked path under a declared root', () => {
-    expect(repoPaths('See `scripts/verify-docs.mjs`.', roots)).toEqual([
-      'scripts/verify-docs.mjs',
-    ]);
+  describe('repo', () => {
+    it('finds a backticked path under a declared root', () => {
+      expect(pathClaims('See `scripts/verify-docs.mjs`.', scope).repo).toEqual([
+        'scripts/verify-docs.mjs',
+      ]);
+    });
+
+    it('trims a line reference to the file it points at', () => {
+      expect(pathClaims('`scripts/storybook-check.mjs:152` gives up.', scope).repo).toEqual([
+        'scripts/storybook-check.mjs',
+      ]);
+    });
+
+    it('keeps a colon inside a path, which is part of the name', () => {
+      // Only a trailing `:142` is a line reference.
+      expect(pathClaims('`src/x:1/y.ts`', scope).repo).toEqual(['src/x:1/y.ts']);
+    });
+
+    it('trims the padding a code span may carry', () => {
+      expect(pathClaims('` scripts/a.mjs `', scope).repo).toEqual(['scripts/a.mjs']);
+    });
+
+    it('keeps a glob, because a pattern matching nothing is the defect', () => {
+      expect(pathClaims('`src/renderer/*.html`', scope).repo).toEqual(['src/renderer/*.html']);
+    });
+
+    it('needs a directory boundary, not a matching prefix', () => {
+      const claims = pathClaims('`docsite/index.js`', scope);
+      expect(claims.repo).toEqual([]);
+      expect(claims.relative).toEqual(['docsite/index.js']);
+    });
+
+    it('ignores a span that is a command rather than a path', () => {
+      // `npm run x` and a sentence in backticks both start with no root, and a
+      // span with a space in it is prose however it starts.
+      const claims = pathClaims('`npm run package` and `scripts/a.mjs and more`', scope);
+      expect(claims.repo).toEqual([]);
+      expect(claims.declined).toEqual([]);
+    });
+
+    it('ignores a bare root, which is an English word', () => {
+      expect(pathClaims('The `scripts` directory and `src`.', scope).repo).toEqual([]);
+    });
+
+    it('ignores a path inside a fenced block', () => {
+      const text = ['```', 'scripts/from-another-project.mjs', '```'].join('\n');
+      expect(pathClaims(text, scope).repo).toEqual([]);
+    });
   });
 
-  it('trims a line reference to the file it points at', () => {
-    expect(repoPaths('`scripts/storybook-check.mjs:152` gives up.', roots)).toEqual([
-      'scripts/storybook-check.mjs',
-    ]);
+  describe('build', () => {
+    /**
+     * #152. A build path matched no root, so `.vite/build/llama-worker-BREAK.js`
+     * sat in `docs/architecture.md` through a green run reporting 205 paths.
+     */
+    it('collects a path under a build root', () => {
+      expect(pathClaims('`.vite/build/main.js`', scope).build).toEqual(['.vite/build/main.js']);
+    });
+
+    it('collects a path under any build root, not only the first', () => {
+      expect(pathClaims('`out/Stuffbucket-win32-x64/`', scope).build).toEqual([
+        'out/Stuffbucket-win32-x64/',
+      ]);
+    });
+
+    it('collects the build root itself, which a checkout does not hold', () => {
+      expect(pathClaims('`.vite/`', scope).build).toEqual(['.vite/']);
+    });
+
+    it('collects an archive listing entry, which carries a leading slash', () => {
+      expect(pathClaims('`/.vite/build/preload.js`', scope).build).toEqual([
+        '/.vite/build/preload.js',
+      ]);
+    });
+
+    it('collects a listing entry naming the root and nothing else', () => {
+      expect(pathClaims('`/.vite`', scope).build).toEqual(['/.vite']);
+    });
+
+    it('needs a directory boundary, not a matching prefix', () => {
+      const claims = pathClaims('`.vitepress/config.ts`', scope);
+      expect(claims.build).toEqual([]);
+      expect(claims.declined).toEqual(['.vitepress/config.ts']);
+    });
+
+    it('does not read a leading slash on anything else as a build path', () => {
+      // `/renderer/styles.css` is an export subpath in docs/consuming.md.
+      const claims = pathClaims('`/renderer/styles.css`', scope);
+      expect(claims.build).toEqual([]);
+      expect(claims.declined).toEqual(['/renderer/styles.css']);
+    });
   });
 
-  it('keeps a glob, because a pattern matching nothing is the defect', () => {
-    expect(repoPaths('`src/renderer/*.html`', roots)).toEqual(['src/renderer/*.html']);
+  describe('relative', () => {
+    /**
+     * The second break #152 reports. `docs/architecture.md` writes module paths
+     * from inside `src/`, and every one of them was invisible.
+     */
+    it('collects a module path written from inside the source tree', () => {
+      expect(pathClaims('`native/llama-host.ts` supervises.', scope).relative).toEqual([
+        'native/llama-host.ts',
+      ]);
+    });
+
+    it('collects one written from a different depth in the same row', () => {
+      expect(pathClaims('`host/crash-artifacts.ts`', scope).relative).toEqual([
+        'host/crash-artifacts.ts',
+      ]);
+    });
+
+    it('collects one whose directory is capitalised', () => {
+      expect(pathClaims('`Components/Panel.ts`', scope).relative).toEqual([
+        'Components/Panel.ts',
+      ]);
+    });
+
+    it('needs a directory, so a bare file name is not one', () => {
+      const claims = pathClaims('`llama-worker.ts`', scope);
+      expect(claims.relative).toEqual([]);
+      expect(claims.declined).toEqual(['llama-worker.ts']);
+    });
+
+    it('declines a package specifier and another repository', () => {
+      const claims = pathClaims('`@radix-ui/react-tabs` and `stuffbucket/maximal`', scope);
+      expect(claims.relative).toEqual([]);
+      expect(claims.declined).toEqual(['@radix-ui/react-tabs', 'stuffbucket/maximal']);
+    });
+
+    it('declines a relative import and an export subpath', () => {
+      const claims = pathClaims('`./renderer/styles.css` and `../harness.js`', scope);
+      expect(claims.relative).toEqual([]);
+      expect(claims.declined).toEqual(['./renderer/styles.css', '../harness.js']);
+    });
+
+    it('declines a dot directory, which is configuration and not a module', () => {
+      const claims = pathClaims('`.storybook/preview.css`', scope);
+      expect(claims.relative).toEqual([]);
+      expect(claims.declined).toEqual(['.storybook/preview.css']);
+    });
+
+    it("declines somebody else's installed tree", () => {
+      const claims = pathClaims('`node_modules/electron/index.js`', scope);
+      expect(claims.relative).toEqual([]);
+      expect(claims.declined).toEqual(['node_modules/electron/index.js']);
+    });
+
+    it('declines a name carrying no module extension', () => {
+      const claims = pathClaims('`demo/edits/*.json`', scope);
+      expect(claims.relative).toEqual([]);
+      expect(claims.declined).toEqual(['demo/edits/*.json']);
+    });
   });
 
-  it('ignores a span that is a command rather than a path', () => {
-    // `npm run x` and a sentence in backticks both start with no root, and a
-    // span with a space in it is prose however it starts.
-    expect(repoPaths('`npm run package` and `scripts/a.mjs and more`', roots)).toEqual([]);
-  });
+  describe('declined', () => {
+    /**
+     * The number this reports is only worth printing if nothing falls out of
+     * the partition, which is the defect #152 names: the spans under no root
+     * were dropped, and the run reported the rest as its scope.
+     */
+    it('takes every path-shaped span that no bucket claims', () => {
+      const text = '`scripts/a.mjs` `.vite/build/main.js` `native/b.ts` `openai/codex` `icon.png`';
+      const claims = pathClaims(text, scope);
+      expect(claims.repo).toEqual(['scripts/a.mjs']);
+      expect(claims.build).toEqual(['.vite/build/main.js']);
+      expect(claims.relative).toEqual(['native/b.ts']);
+      expect(claims.declined).toEqual(['openai/codex', 'icon.png']);
+    });
 
-  it('ignores a bare root, which is an English word', () => {
-    expect(repoPaths('The `scripts` directory and `src`.', roots)).toEqual([]);
-  });
+    it('does not read a version or an address as a file name', () => {
+      // `v0.0.2`, `0.0.4` and `127.0.0.1` all end in a dot and a digit, and
+      // `v1.2.3-alpha.1` carries a dot and a letter that ends nothing.
+      const text = '`v0.0.2` `0.0.4` `127.0.0.1` `^0.83.0` `v1.2.3-alpha.1`';
+      expect(pathClaims(text, scope).declined).toEqual([]);
+    });
 
-  it('ignores a path under a root that was not declared', () => {
-    expect(repoPaths('`node_modules/foo/index.js`', roots)).toEqual([]);
-  });
+    it('needs the extension to end the span, not merely to appear in it', () => {
+      // A settings key, not a file called `bounds`. `options.theme` and
+      // `process.arch` are the shape this shares.
+      expect(pathClaims('`window.bounds.0`', scope).declined).toEqual([]);
+    });
 
-  it('ignores a path inside a fenced block', () => {
-    const text = ['```', 'scripts/from-another-project.mjs', '```'].join('\n');
-    expect(repoPaths(text, roots)).toEqual([]);
+    it('reads a bare file name as declined rather than as nothing', () => {
+      expect(pathClaims('`llama-worker.ts` and `app.asar`', scope).declined).toEqual([
+        'llama-worker.ts',
+        'app.asar',
+      ]);
+    });
+
+    it('declines nothing inside a fenced block', () => {
+      const text = ['```', 'another-project/file.ts', '```'].join('\n');
+      expect(pathClaims(text, scope).declined).toEqual([]);
+    });
   });
 });
 
@@ -188,6 +371,10 @@ describe('links', () => {
     expect(links('[docs](https://example.com/a) and [mail](mailto:a@b.c)')).toEqual(
       [],
     );
+  });
+
+  it('ignores a link over plain http as well as https', () => {
+    expect(links('[a](http://example.com/a)')).toEqual([]);
   });
 
   it('ignores a bare anchor', () => {
