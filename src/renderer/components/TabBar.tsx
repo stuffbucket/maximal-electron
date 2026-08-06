@@ -1,6 +1,14 @@
 import * as Tabs from '@radix-ui/react-tabs';
-import { Plus, X } from 'lucide-react';
+import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
+import { FileText, Folder, Plus, Settings, SquareTerminal, X } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type ComponentType } from 'react';
+
+import {
+  adornmentLabel,
+  tabSlot,
+  type TabAdornment,
+  type TabIconName,
+} from '../lib/tab-adornment.js';
 
 /**
  * One tab. What it tabs is the caller's business.
@@ -9,13 +17,22 @@ import { useCallback, useEffect, useRef, useState, type ComponentType } from 're
  * copied by hand from the capture fixture's `RunStatus`. Neither belonged to a
  * tab strip: `kind` only ever selected an icon, and `run` was a concept from a
  * fixture that the product had no idea about.
+ *
+ * `TabAdornment` carries the status dot, the sourced icon and the emphasis.
+ * `src/renderer/lib/tab-adornment.ts` holds the rules for all three.
  */
-export interface Tab {
+export interface Tab extends TabAdornment {
   id: string;
   title: string;
-  /** Optional status dot. The stylesheet colours the ones it knows. */
-  status?: string;
 }
+
+/** The glyph behind each name in `TAB_ICON_NAMES`. */
+const TAB_ICON_GLYPHS: Record<TabIconName, ComponentType<{ size?: number }>> = {
+  document: FileText,
+  folder: Folder,
+  settings: Settings,
+  terminal: SquareTerminal,
+};
 
 /**
  * Everything needed to drive a tab strip.
@@ -34,7 +51,7 @@ export interface TabStripProps<T extends Tab> {
   /** Only one tab strip on a page can be the primary one. */
   tabsLabel?: string;
   newTabLabel?: string;
-  /** Optional leading icon per tab. */
+  /** A component for the slot, overriding whatever `tab.icon` names. */
   tabIcon?: (tab: T) => ComponentType<{ size?: number }> | undefined;
 }
 
@@ -121,7 +138,7 @@ export function TabBar<T extends Tab>({
   onSelect: (id: string) => void;
   onClose?: (id: string) => void;
   onNew?: () => void;
-  /** Optional leading icon per tab. */
+  /** A component for the slot, overriding whatever `tab.icon` names. */
   icon?: (tab: T) => ComponentType<{ size?: number }> | undefined;
   label?: string;
   newLabel?: string;
@@ -171,12 +188,17 @@ export function TabBar<T extends Tab>({
     >
       <Tabs.List className="tabbar" aria-label={label}>
         {tabs.map((tab, index) => {
-          const Icon = icon?.(tab);
+          const Custom = icon?.(tab);
+          const slot = tabSlot(tab, Custom !== undefined);
+          const Named = tab.icon === undefined ? undefined : TAB_ICON_GLYPHS[tab.icon];
+          const Glyph = slot === 'custom' ? Custom : slot === 'icon' ? Named : undefined;
+          const words = adornmentLabel(tab);
           return (
             <Tabs.Trigger
               key={tab.id}
               value={tab.id}
               className="tab"
+              data-emphasis={tab.emphasis}
               id={getTabTriggerId(tabIdBase, tab.id)}
               /*
                * The caller renders one panel, for the active tab. Naming a
@@ -196,9 +218,14 @@ export function TabBar<T extends Tab>({
                 closeAndRefocus(index);
               }}
             >
-              {Icon && <Icon size={13} />}
-              {tab.status && <span className="dot" data-status={tab.status} />}
+              {Glyph && <Glyph size={13} />}
+              {slot === 'status' && (
+                <span className="dot" data-status={tab.status} aria-hidden="true" />
+              )}
+              {tab.emphasis && <span className="tab__emphasis" aria-hidden="true" />}
               <TabLabel title={tab.title} />
+              {/* After the label, so the tab reads "Terminal 1, Working". */}
+              {words !== undefined && <VisuallyHidden>{words}</VisuallyHidden>}
               {closeTab && (
                 <span
                   aria-hidden="true"

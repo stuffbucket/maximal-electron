@@ -57,17 +57,23 @@ export function exportTargets(exports) {
 /** The component surface `./renderer` promises a consumer. */
 export const RENDERER_SURFACE = [
   'Canvas',
+  'EMPHASIS_LABELS',
   'IconButton',
   'NavRail',
   'SHELL_TERMINAL_PROPERTIES',
+  'STATUS_LABELS',
   'ShellLayout',
+  'TAB_EMPHASIS',
+  'TAB_ICON_NAMES',
   'TabBar',
   'TerminalTabs',
   'TerminalView',
   'TitleBar',
+  'adornmentLabel',
   'getTabPanelId',
   'getTabTriggerId',
   'readTerminalTheme',
+  'tabSlot',
 ];
 
 /** The names `./verify` exposes. `terminal-package.mjs` defines them. */
@@ -107,7 +113,10 @@ export function reExportedNames(source) {
  * value, and this is what keeps it that way — re-adding that import puts
  * `lib/bridge.js` in the graph and fails here.
  */
-const CONTRACTS = [/(?:^|\/)lib\/terminal-transport(?:\.js)?$/];
+const CONTRACTS = [
+  /(?:^|\/)lib\/terminal-transport(?:\.js)?$/,
+  /(?:^|\/)lib\/tab-adornment(?:\.js)?$/,
+];
 const APPLICATION_ONLY = [
   /(?:^|\/)App(?:\.js)?$/,
   /(?:^|\/)lib\//,
