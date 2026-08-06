@@ -16,6 +16,13 @@
  * `--path` prints the root and exits. The composite action feeds that to
  * `actions/cache`, so the directory that is cached and the directory that is
  * checked cannot drift apart.
+ *
+ * It asserts the cache **key** as well as the contents, out of the action's own
+ * YAML. A key that stops naming the Electron version restores the previous
+ * binary, and that shows up one run after the mistake, on a run nobody is
+ * looking at. The contents alone cannot see it: a developer's shared cache root
+ * legitimately holds several versions, so "only one version is here" is not a
+ * property that holds outside a restored CI cache.
  */
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
@@ -24,9 +31,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { scopedChecks } from './check-scope.mjs';
-import { inspectCache, resolveCacheRoot } from './electron-cache.mjs';
+import { cacheKeys, inspectCache, keyOmissions, resolveCacheRoot } from './electron-cache.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+const ACTION = '.github/actions/electron-cache/action.yml';
 
 /** Every file under `dir`. `@electron/get` nests one hashed directory deep. */
 function filesUnder(dir) {
@@ -66,9 +74,22 @@ function main() {
   }
 
   const version = JSON.parse(readFileSync(installed, 'utf8')).version;
+
+  // The key, not the symptom. A key that loses the version restores the
+  // previous binary, and that only shows up on the run after the mistake.
+  const action = path.join(ROOT, ACTION);
+  const keys = existsSync(action) ? cacheKeys(readFileSync(action, 'utf8')) : [];
+  const omissions = keys.flatMap((key) => keyOmissions(key).map((term) => `${key} omits ${term}`));
+  for (const problem of omissions) console.error(`    ${problem}`);
+
+  check(omissions.length === 0, 'the cache key names the runner and the Electron version', {
+    count: keys.length,
+    of: `cache keys in ${ACTION}`,
+  });
+
   const files = filesUnder(root);
   const bytes = files.reduce((total, file) => total + statSync(file).size, 0);
-  const { downloads, stale, wanted } = inspectCache({
+  const { downloads, wanted } = inspectCache({
     names: files.map((file) => path.basename(file)),
     version,
     platform: process.platform,
@@ -82,11 +103,6 @@ function main() {
   check(downloads.length > 0, 'the cache root holds an Electron download', {
     count: files.length,
     of: 'files under the cache root',
-  });
-
-  check(stale.length === 0, 'no download in the root is for another Electron version', {
-    count: downloads.length,
-    of: 'downloads',
   });
 
   check(wanted.length === 1, `the download for electron ${version} on this runner is cached`, {
