@@ -170,10 +170,11 @@ function bootstrap(): void {
   registerIpcHandlers();
 
   // Terminal output is pushed, not polled, so the pty layer needs a way to
-  // reach the window. It has no Electron import of its own.
+  // reach a window. It has no Electron import of its own, and it addresses the
+  // window that owns the session rather than whichever one is current.
   configurePty({
-    emit: (id, data) => sendEvent(mainWindow, 'pty:data', { id, data }),
-    onExit: (id, exitCode) => sendEvent(mainWindow, 'pty:exit', { id, exitCode }),
+    emit: (owner, id, data) => sendEvent(owner, 'pty:data', { id, data }),
+    onExit: (owner, id, exitCode) => sendEvent(owner, 'pty:exit', { id, exitCode }),
   });
 
   installApplicationMenu({

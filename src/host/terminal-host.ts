@@ -49,6 +49,13 @@ export interface TerminalHostOptions extends TerminalHostHandlers {
    * would swamp whatever channel carries them.
    */
   flushMs?: number;
+  /**
+   * Extra environment for every shell this manager opens.
+   *
+   * Applied over `TERM` and `COLORTERM`. A consumer names itself here through
+   * `TERM_PROGRAM`; the export carries no product string of its own.
+   */
+  env?: Record<string, string>;
 }
 
 interface Session {
@@ -70,7 +77,7 @@ export class TerminalHost {
   private readonly options: Required<TerminalHostOptions>;
 
   constructor(options: TerminalHostOptions) {
-    this.options = { flushMs: 8, ...options };
+    this.options = { flushMs: 8, env: {}, ...options };
   }
 
   spawn(request: SpawnOptions): void {
@@ -106,6 +113,7 @@ export class TerminalHost {
         ...(process.env as Record<string, string>),
         TERM: 'xterm-256color',
         COLORTERM: 'truecolor',
+        ...this.options.env,
       },
     });
 
