@@ -22,7 +22,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { scopedChecks } from './check-scope.mjs';
-import { constants, links, npmScripts, npmScriptsOutOfScope, repoPaths } from './docs-claims.mjs';
+import { constants, links, npmScripts, npmScriptsOutOfScope, pathClaims } from './docs-claims.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -75,6 +75,34 @@ const SOURCE_FILES = [
 const PATH_ROOTS = [...SOURCE_ROOTS, 'docs', '.claude'];
 
 /**
+ * Build output, which no checkout contains.
+ *
+ * A build produces `.vite/build/main.js`, so `existsSync` cannot decide it.
+ * What is decidable is whether the build configuration or a packaging check
+ * names the same string, which is the rule `constants` already uses. Before
+ * #152 a build path matched no root at all, and `.vite/build/llama-worker-BREAK.js`
+ * sat in `docs/architecture.md` through a green run.
+ *
+ * `out/` is not a root here. Packager composes that directory name from the
+ * product name and the target triple, so there is no literal in the source to
+ * match, and a bare `out` matches the English word in every file.
+ */
+const BUILD_ROOTS = ['.vite'];
+
+/**
+ * Bases that a document writes module paths relative to.
+ *
+ * The native integration table in `docs/architecture.md` reads
+ * `native/crash-reports.ts` and `host/crash-artifacts.ts` in one row, at two
+ * different depths, because a reader of that table is inside the source tree
+ * already. A name resolves when any base holds it.
+ */
+const RELATIVE_BASES = ['src', 'src/main', 'src/renderer'];
+
+/** The extensions that make a relative name a module rather than prose. */
+const MODULE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.css', '.html'];
+
+/**
  * Paths the documentation names that are deliberately not here.
  *
  * A document may name another repository's file, or record what a deletion
@@ -91,6 +119,11 @@ const PATHS_NOT_HERE = new Map([
   ['scripts/prebuild.js', "node-pty's, run by its own install"],
   ['src/main/shell.ts', "maximal/client's, named in docs/embedding.md as the consumer's side"],
   ['src/renderer/.vite/', 'the output path a misconfigured `root` produces, and must not exist'],
+  [
+    'client/src/renderer/styles/shell-adapter.css',
+    "maximal/client's adapter, counted in docs/shell-variables.md",
+  ],
+  ['shell/src/ui/styles/tokens.css', "stuffbucket/maximal's scale, followed by ours"],
 ]);
 
 const { check, summary } = scopedChecks();
@@ -137,6 +170,23 @@ function globMatches(pattern) {
 function pathExists(target) {
   if (target.includes('*')) return globMatches(target).length > 0;
   return existsSync(path.join(ROOT, target));
+}
+
+/** Whether a name written from inside the source tree resolves under a base. */
+function relativeExists(target) {
+  return RELATIVE_BASES.some((base) => pathExists(`${base}/${target}`));
+}
+
+/**
+ * The part of a build-output path a substring test can decide.
+ *
+ * A checkout has no `.vite/`, so existence is not the question and being named
+ * by the configuration that produces it is. A glob is read to its literal
+ * prefix, because expanding the rest would need a build.
+ */
+function buildLiteral(target) {
+  const star = target.indexOf('*');
+  return (star === -1 ? target : target.slice(0, star)).replace(/\/$/, '');
 }
 
 /* ------------------------------------------------------------- the corpus */
@@ -192,6 +242,19 @@ const scripts = Object.keys(JSON.parse(readFileSync(path.join(ROOT, 'package.jso
 
 /* -------------------------------------------------------------- the checks */
 
+/**
+ * How a backticked path is sorted before anything is asserted about it.
+ *
+ * Three assertions rather than one total, because a total hides a category
+ * that has fallen to zero. That is instance 6 in
+ * `.claude/skills/write-a-check/SKILL.md`, one level up.
+ */
+const PATH_SCOPE = {
+  roots: PATH_ROOTS,
+  buildRoots: BUILD_ROOTS,
+  moduleExtensions: MODULE_EXTENSIONS,
+};
+
 /** One assertion per claim kind, over every claim of that kind in the corpus. */
 const kinds = [
   {
@@ -218,14 +281,30 @@ const kinds = [
   {
     of: 'backticked paths',
     message: 'every backticked path names a file in this checkout',
-    claims: (text) => repoPaths(text, PATH_ROOTS).filter((p) => !PATHS_NOT_HERE.has(p)),
+    claims: (text) => pathClaims(text, PATH_SCOPE).repo.filter((p) => !PATHS_NOT_HERE.has(p)),
     holds: (target) => pathExists(target),
     say: (rel, target) => `${rel}: \`${target}\` does not exist`,
+  },
+  {
+    of: 'build-output paths',
+    message: 'every documented build-output path is named where the build produces it',
+    claims: (text) => pathClaims(text, PATH_SCOPE).build,
+    holds: (target) => haystack.includes(buildLiteral(target)),
+    say: (rel, target) =>
+      `${rel}: \`${target}\` is named by no build configuration and no packaging check`,
+  },
+  {
+    of: 'source-relative paths',
+    message: 'every module path written from inside the source tree resolves',
+    claims: (text) => pathClaims(text, PATH_SCOPE).relative.filter((p) => !PATHS_NOT_HERE.has(p)),
+    holds: (target) => relativeExists(target),
+    say: (rel, target) => `${rel}: \`${target}\` is under none of ${RELATIVE_BASES.join(', ')}`,
   },
 ];
 
 const failures = [];
 let outOfScope = 0;
+const declined = [];
 
 for (const kind of kinds) {
   let count = 0;
@@ -242,10 +321,14 @@ for (const kind of kinds) {
   failures.push(...broken);
 }
 
-for (const file of docs) outOfScope += npmScriptsOutOfScope(readFileSync(file, 'utf8'));
+for (const file of docs) {
+  const text = readFileSync(file, 'utf8');
+  outOfScope += npmScriptsOutOfScope(text);
+  declined.push(...new Set(pathClaims(text, PATH_SCOPE).declined));
+}
 
 check(
-  [...PATHS_NOT_HERE.keys()].every((target) => !pathExists(target)),
+  [...PATHS_NOT_HERE.keys()].every((target) => !pathExists(target) && !relativeExists(target)),
   'every path declared absent is still absent',
   { count: PATHS_NOT_HERE.size, of: 'declared absences' },
 );
@@ -254,9 +337,23 @@ check(
 
 for (const failure of failures) console.error(`       ${failure}`);
 
+/**
+ * What the run declined, in the same breath as what it examined.
+ *
+ * #152: the paths under no root were dropped in silence, so a reader saw 205
+ * and concluded every backticked path was checked. A count is not coverage,
+ * but it is the difference between a gap and an invisible one.
+ */
+const declinedPaths = declined.filter((span) => span.includes('/')).length;
+const declinedNames = declined.length - declinedPaths;
+
 console.log(
-  `\nOut of scope by construction: ${String(outOfScope)} \`npm run\` mentions` +
-    ' inside a fenced block or outside a code span.',
+  '\nOut of scope by construction:' +
+    `\n  ${String(outOfScope)} \`npm run\` mentions inside a fenced block or outside a code span.` +
+    `\n  ${String(declinedPaths)} backticked paths under no declared root: another repository's` +
+    "\n    files, package specifiers, git refs, and a running machine's directories." +
+    `\n  ${String(declinedNames)} backticked bare names, where a file name and a dotted` +
+    '\n    identifier are the same shape and this check cannot tell them apart.',
 );
 
 process.exit(summary('verify:docs'));
