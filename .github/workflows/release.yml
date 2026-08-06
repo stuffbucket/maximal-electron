@@ -6,8 +6,8 @@
 # ## The dry run
 #
 # A dispatch run is always a dry run. There is no input that makes one publish,
-# so the only way to touch a release is to push a tag. Everything builds, the
-# tarball is packed and checked, and `dry-run-artifacts` asserts the file
+# so the only way to touch a release is to push a tag. The tarball is packed,
+# installed by git ref, and checked, and `dry-run-artifacts` asserts the file
 # exists rather than letting an empty run look green. See `docs/ci.md`.
 #
 # ## Why every asset lands on a DRAFT
@@ -19,8 +19,8 @@
 #
 # ## There is no installer
 #
-# No MSI and no dmg. Three jobs here built them, one of which had never once
-# succeeded and one of which shipped an installer containing zero files. See
+# No MSI and no dmg. Three jobs here built them. One had never once succeeded,
+# and the other shipped an installer containing zero files. See
 # `docs/release.md`. The tarball is the artifact, and `publish` gates on it.
 
 name: release
@@ -106,7 +106,7 @@ jobs:
         shell: bash
         run: echo "Dry run for ${TAG}. Nothing is created, attached, or published."
 
-  # What a consumer installs, and now the only artifact a release carries.
+  # What a consumer installs, and the only artifact a release carries.
   # `stuffbucket/maximal` depends on this shell as a library and packages and
   # signs its own application, so the tarball is the artifact that matters.
   #
@@ -147,6 +147,16 @@ jobs:
           name: package-tarball
           path: dist-release/*.tgz
           if-no-files-found: error
+
+      # The other install path. `npm pack` runs `prepack`; a consumer pinning a
+      # git ref gets `prepare`, and a tag has shipped with only the first wired.
+      # Issue #83. The commit rather than the tag name, because a dry run has no
+      # tag to resolve and the two name the same objects on a tag push.
+      - name: Install this commit by git ref, the way a consumer pins it
+        env:
+          REPOSITORY: github:${{ github.repository }}
+          REF: ${{ github.sha }}
+        run: npm run verify:git-install -- --repository "$REPOSITORY" --ref "$REF"
 
       - name: Attach the tarball to the draft
         if: github.event_name != 'workflow_dispatch'

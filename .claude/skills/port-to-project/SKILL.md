@@ -49,10 +49,25 @@ end users, the installer is the part you have to supply yourself, and
 ## If you need an installer
 
 Nothing here helps directly, and that is deliberate rather than an omission.
-Add a Forge maker, a release job that runs it, and a check that the artifact it
-produces contains files. That last one is not optional: this repository
-published two MSIs containing zero files because nothing looked inside them
-(#112).
+Add a Forge maker, a release job that runs it, and a check that looks **inside**
+the artifact it produces.
+
+That last one is not optional, and it is the whole lesson this repository paid
+for. Two MSIs shipped containing zero files (#112). The verify job installed
+each one, found the install directory, found the registry marker, found the
+Add or Remove Programs entry, and passed. Every assertion it made was true of
+an installer with no application in it.
+
+What a real check looks like, from the version that was deleted:
+
+- Enumerate the packaged directory and write a manifest of every file and its
+  size, at build time.
+- Refuse a manifest shorter than a floor. A packaged Electron application is
+  hundreds of files, so fewer than fifty means the harvest failed.
+- After installing, compare the installed tree against that manifest file by
+  file, and fail on anything missing.
+- Launch the installed executable and require it to still be running twenty
+  seconds later. A complete tree still does not prove the thing starts.
 
 Signing is a separate problem again. `docs/signing.md` records the private
 builder shape that a personal account has to use, and why.

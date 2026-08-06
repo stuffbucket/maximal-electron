@@ -80,7 +80,7 @@ target, so `git push --delete origin v0.0.3` succeeds today.
 
 ## The shape
 
-Push a tag. Four jobs run. Every asset lands on a **draft** release, and one
+Push a tag. Four jobs run. The tarball lands on a **draft** release, and one
 job flips it to published at the end.
 
 ```
@@ -96,9 +96,10 @@ This repository ships one asset: the npm tarball. It builds no MSI and no dmg.
 
 That is a removal, and the reasons are on the record:
 
-- The dmg job never once succeeded. It needed a credential for the private
-  signing repository, nobody ever minted one, and no dmg was ever produced for
-  this repository (#69).
+- The dmg job never once succeeded, on any tag, including `v0.0.4`. It needed a
+  credential for the private signing repository, nobody ever minted one, and no
+  dmg was ever produced for this repository (#69). Its failure is why
+  `release.yml` has never had a green overall conclusion.
 - Every MSI this repository published contained zero files. `msiinfo export
   <msi> File` returned no rows for `v0.0.2` and for `v0.0.3`. A 226 MB download
   that installs nothing (#112). Both assets have since been deleted from the
@@ -106,18 +107,26 @@ That is a removal, and the reasons are on the record:
 - `stuffbucket/maximal` consumes this shell as a library and packages, signs,
   and notarizes its own application. It has never consumed either installer.
 
-Three of the eight jobs in `release.yml` existed for those two artifacts, and
-a fourth workflow, `windows-msi-dev.yml`, existed only to iterate on one of
-them. Nearly half the release pipeline was maintaining something no consumer
-used and one half of which had never worked.
+Three of the eight jobs in `release.yml` existed for those two artifacts, and a
+fourth workflow, `windows-msi-dev.yml`, existed only to iterate on one of them.
+
+The MSI work that #106 landed went with them: `scripts/build-msi.ps1`,
+`scripts/verify-msi.ps1`, `build/windows/app.wxs` and `tests/wxs.test.ts`. That
+work was correct. It made the harvest fail loudly, compared the installed tree
+against a manifest byte for byte, and launched the installed executable. It was
+correct maintenance of an artifact with no consumer, which is why it is the
+artifact and not the fix that was wrong. The lesson it paid for is kept in
+`.claude/skills/port-to-project/SKILL.md`: an installer check that does not look
+inside the installer proves nothing.
 
 **Packaging is kept.** `npm run package` produces a `.app` on macOS and a
-`win32` directory on Windows, `ci.yml` runs it on both platforms, and `npm run
-verify:package` asserts the asar contents, the native modules, the icons, and
-the fuses. Packaging correctness is a real property of the shell: it is how #88
-was found, where `spawn-helper` was stranded inside `app.asar` and every
-terminal failed to start in a packaged build. What was deleted is the installer
-wrapped around the package, not the package.
+`win32` directory on Windows, `ci.yml` runs it on both platforms, `npm run
+verify:package` asserts the asar contents, the content policy, the native
+modules named file by file, the icons, and the fuses, and `npm run
+smoke:packaged` launches the result. Packaging correctness is a real property
+of the shell: it is how #88 was found, where `spawn-helper` was stranded inside
+`app.asar` and every terminal failed to start in a packaged build. What was
+deleted is the installer wrapped around the package, not the package.
 
 A fork that wants an installer adds one. `forge.config.ts` has no makers, so
 that is a maker plus a job, and nothing here fights it.
@@ -128,6 +137,11 @@ that is a maker plus a job, and nothing here fights it.
 Nothing is committed. It runs `verify:exports` first, so a tarball missing an
 export target fails before it is attached rather than after somebody installs
 it.
+
+It then installs the same commit **by git ref**, which is the other path and a
+different lifecycle script: npm runs `prepare` for a git dependency and
+`prepack` for a tarball. `stuffbucket/maximal` pins the git form, and `v0.0.2`
+shipped installing to nothing on it. See `docs/ci.md`.
 
 The asset is `stuffbucket-electron-<version>.tgz`. A consumer installs it from
 the release:
@@ -160,11 +174,12 @@ is gone, and the client contract for `stuffbucket/macos-builder` went with it:
 `.macos-builder/config` and `.macos-builder/build.sh` are deleted, and so is
 the repository secret the `macos-dmg` job required and never had (#69).
 
-`npm run package` still produces an **unsigned** `Stuffbucket.app`. Gatekeeper
-refuses to open it on a machine other than the one that built it, which is the
-expected behaviour for an unsigned bundle and not a defect. A consumer that
-distributes a macOS application signs it themselves; `stuffbucket/maximal` does
-exactly that.
+`npm run package` still produces an **unsigned** `Stuffbucket.app`, and `npm
+run smoke:packaged` still launches it. Gatekeeper refuses to open an unsigned
+bundle on a machine other than the one that built it, which is the expected
+behaviour for an unsigned bundle and not a defect. A consumer that distributes
+a macOS application signs it themselves; `stuffbucket/maximal` does exactly
+that.
 
 Restoring signing means restoring the builder client contract and one job. The
 shape is recorded in `docs/signing.md`.
@@ -175,11 +190,8 @@ Windows ships no installer. `npm run package -- --platform=win32 --arch=x64`
 produces `out/Stuffbucket-win32-x64/`, which contains `Stuffbucket.exe` and its
 resources, and that directory is what a fork would wrap.
 
-The MSI that used to be built here was built with WiX 5 from
-`build/windows/app.wxs`. Every copy it ever published contained zero files
-(#112), and both published assets have been deleted. The `.wxs` source, the
-WiX build steps, the install-and-uninstall verification job, and the
-`windows-msi-dev.yml` iteration harness are all removed.
+`ci.yml` builds and verifies it on `windows-latest` on every pull request.
+There is no packaged smoke test on Windows; `docs/ci.md` states why.
 
 ## Auto-update: why there is none
 

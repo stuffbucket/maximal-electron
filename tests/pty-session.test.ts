@@ -5,10 +5,14 @@ import {
   cwdMessage,
   drain,
   emptyBuffer,
+  emptyRetained,
   Generations,
   MAX_PENDING_BYTES,
+  MAX_RETAINED_BYTES,
   Owners,
+  replay,
   resolveCwd,
+  retain,
 } from '../src/main/native/pty-session.js';
 
 /** A filesystem, as a lookup. */
@@ -258,5 +262,60 @@ describe('append and drain', () => {
 
   it('has a limit large enough for a build log burst', () => {
     expect(MAX_PENDING_BYTES).toBeGreaterThan(100_000);
+  });
+});
+
+describe('retain and replay', () => {
+  it('replays nothing for a session that has printed nothing', () => {
+    expect(replay(emptyRetained())).toBe('');
+  });
+
+  it('replays everything under the limit, in order', () => {
+    const retained = emptyRetained();
+    retain(retained, 'one');
+    retain(retained, 'two');
+    expect(replay(retained)).toBe('onetwo');
+  });
+
+  it('survives being read, unlike the pending buffer', () => {
+    // A second view attaching to the same session gets the same tail.
+    const retained = emptyRetained();
+    retain(retained, 'kept');
+    replay(retained);
+    expect(replay(retained)).toBe('kept');
+  });
+
+  it('keeps exactly the limit without saying anything was dropped', () => {
+    const retained = emptyRetained();
+    retain(retained, 'abcd', 4);
+    expect(replay(retained)).toBe('abcd');
+  });
+
+  it('drops from the front and says so', () => {
+    const retained = emptyRetained();
+    retain(retained, 'abcdef', 4);
+    expect(replay(retained)).toBe(
+      '\r\n\x1b[2m[earlier output dropped]\x1b[0m\r\ncdef',
+    );
+  });
+
+  it('keeps saying so after later output fits', () => {
+    // The notice is about the session, not about the last chunk.
+    const retained = emptyRetained();
+    retain(retained, 'abcdef', 4);
+    retain(retained, '', 400);
+    expect(replay(retained)).toContain('earlier output dropped');
+  });
+
+  it('reports a truncation that left nothing behind', () => {
+    const retained = emptyRetained();
+    retain(retained, 'abc', 0);
+    expect(replay(retained)).toBe('\r\n\x1b[2m[earlier output dropped]\x1b[0m\r\n');
+  });
+
+  it('is smaller than the pending buffer, and still worth replaying', () => {
+    // Charged for the life of a session rather than for one flush.
+    expect(MAX_RETAINED_BYTES).toBeLessThan(MAX_PENDING_BYTES);
+    expect(MAX_RETAINED_BYTES).toBeGreaterThan(10_000);
   });
 });

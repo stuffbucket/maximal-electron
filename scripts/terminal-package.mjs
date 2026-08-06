@@ -103,12 +103,16 @@ function prebuildDirectories(files) {
 export function terminalPackageChecks(input) {
   const { packedFiles, unpackedFiles, platform, arch, contentSecurityPolicy } = input;
   const directory = terminalPrebuildDirectory(platform, arch);
+  const policy = contentSecurityPolicy ?? '';
 
-  // The floor. Point either list at the wrong directory and it is empty, at
-  // which point every assertion over it reports a pass.
+  // The floor. Point either list at the wrong directory and it is empty, and
+  // supply no policy and there is nothing to measure. In each case every
+  // assertion over the missing input would otherwise report a pass, which is
+  // what an optional policy did here for as long as it existed. Issue #92.
   const checks = [
     { name: 'the archive listing is not empty', ok: packedFiles.length > 0 },
     { name: 'the unpacked listing is not empty', ok: unpackedFiles.length > 0 },
+    { name: 'a renderer content policy was supplied', ok: policy !== '' },
   ];
 
   checks.push({
@@ -133,9 +137,7 @@ export function terminalPackageChecks(input) {
     ok: directories.size > 0 && [...directories].every((entry) => entry === directory),
   });
 
-  if (contentSecurityPolicy !== undefined) {
-    checks.push(...contentSecurityPolicyChecks(contentSecurityPolicy));
-  }
+  checks.push(...contentSecurityPolicyChecks(policy));
 
   return checks;
 }

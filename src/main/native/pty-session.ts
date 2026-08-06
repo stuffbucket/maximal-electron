@@ -203,3 +203,51 @@ export function drain(buffer: Buffered): { text: string; dropped: number } {
   buffer.dropped = 0;
   return { text, dropped };
 }
+
+/**
+ * How much of a session's output to keep for a view that attaches later.
+ *
+ * Charged for the whole life of a session rather than only while a flush is
+ * outstanding, which is why it is a fifth of `MAX_PENDING_BYTES`.
+ */
+export const MAX_RETAINED_BYTES = 200_000;
+
+const TRUNCATION_NOTICE = '\r\n\x1b[2m[earlier output dropped]\x1b[0m\r\n';
+
+/**
+ * The tail of what a session has printed.
+ *
+ * `Buffered` is emptied on every flush, so it records nothing. A view that
+ * attaches to a session already running has missed everything printed before
+ * it existed, and a live shell under a blank screen reads as a broken one.
+ */
+export interface Retained {
+  text: string;
+  truncated: boolean;
+}
+
+export function emptyRetained(): Retained {
+  return { text: '', truncated: false };
+}
+
+/**
+ * Keep the newest output, dropping from the front at the limit.
+ *
+ * The front goes first for the reason `append` gives: the newest output is
+ * what a user is looking at.
+ */
+export function retain(
+  retained: Retained,
+  chunk: string,
+  limit = MAX_RETAINED_BYTES,
+): void {
+  const combined = retained.text + chunk;
+  const excess = Math.max(0, combined.length - limit);
+  retained.text = combined.slice(excess);
+  retained.truncated ||= excess > 0;
+}
+
+/** What an attaching view writes before anything else. */
+export function replay(retained: Retained): string {
+  return (retained.truncated ? TRUNCATION_NOTICE : '') + retained.text;
+}
