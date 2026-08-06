@@ -144,22 +144,6 @@ jobs:
       # repository above it is not the one a user installs. Issue #149.
       - run: npm run smoke:packaged
 
-      # TEMPORARY, for issue #149. The same self check launched in place,
-      # inside this checkout, so one run carries both numbers and the pull
-      # request can show the difference rather than assert it. Removed before
-      # this branch merges.
-      - name: The same self check, launched in place
-        continue-on-error: true
-        timeout-minutes: 10
-        shell: bash
-        run: |
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            binary="out/Stuffbucket-win32-x64/Stuffbucket.exe"
-          else
-            binary="out/Stuffbucket-darwin-arm64/Stuffbucket.app/Contents/MacOS/Stuffbucket"
-          fi
-          "$binary" --self-check=llama 2>&1 | grep -E "self-check llama|node-llama-cpp" || true
-
       # Crashes the packaged application's engine on purpose and reads the
       # minidump back off disk, against a control run that crashes nothing.
       # Issue #134.
