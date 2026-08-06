@@ -178,22 +178,39 @@ export const MAIN_SURFACE = [
   'MainRuntime',
 ];
 
+/** The names `./preload` promises a consumer. Issue #17. */
+export const PRELOAD_SURFACE = [
+  'exposeBridge',
+  'createBridge',
+  'capabilityArguments',
+  'BRIDGE_CAPABILITIES',
+  'CAPABILITY_CHANNELS',
+  'Bridge',
+  'BridgeCapability',
+  'BridgeDeclaration',
+  'Envelope',
+  'ExposeBridgeOptions',
+];
+
 /**
- * Whether `./main` promises what it says it does.
+ * Whether a declaration promises what its subpath says it does.
  *
- * Names read out of the declaration rather than an import: `run-main.js`
- * imports `electron`, which plain `node` cannot load. The declaration is what a
- * consumer's `tsc` reads, so checking it checks what breaks them.
+ * Names read out of the declaration rather than an import: `run-main.js` and
+ * `bridge.js` both import `electron`, which plain `node` cannot load. The
+ * declaration is what a consumer's `tsc` reads, so checking it checks what
+ * breaks them.
  *
  * @param {string} packageRoot
  * @param {unknown} declaration
+ * @param {string} subpath
+ * @param {readonly string[]} names
  * @returns {Promise<{ checks: Check[] }>}
  */
-export async function mainSurfaceChecks(packageRoot, declaration) {
+export async function declarationSurfaceChecks(packageRoot, declaration, subpath, names) {
   /** @type {Check[]} */
   const checks = [];
   const declared = typeof declaration === 'string';
-  checks.push({ name: 'the manifest declares a ./main export', ok: declared });
+  checks.push({ name: `the manifest declares a ${subpath} export`, ok: declared });
   if (!declared) return { checks };
 
   let source;
@@ -207,13 +224,31 @@ export async function mainSurfaceChecks(packageRoot, declaration) {
   }
   checks.push({ name: `${declaration} can be read`, ok: true });
 
-  for (const name of MAIN_SURFACE) {
+  for (const name of names) {
     checks.push({
-      name: `the ./main declaration names ${name}`,
+      name: `the ${subpath} declaration names ${name}`,
       ok: new RegExp(`\\b${name}\\b`).test(source),
     });
   }
   return { checks };
+}
+
+/**
+ * @param {string} packageRoot
+ * @param {unknown} declaration
+ * @returns {Promise<{ checks: Check[] }>}
+ */
+export async function mainSurfaceChecks(packageRoot, declaration) {
+  return declarationSurfaceChecks(packageRoot, declaration, './main', MAIN_SURFACE);
+}
+
+/**
+ * @param {string} packageRoot
+ * @param {unknown} declaration
+ * @returns {Promise<{ checks: Check[] }>}
+ */
+export async function preloadSurfaceChecks(packageRoot, declaration) {
+  return declarationSurfaceChecks(packageRoot, declaration, './preload', PRELOAD_SURFACE);
 }
 
 /**

@@ -15,6 +15,10 @@
       "types": "./dist/host/host-window.d.ts",
       "default": "./dist/host/host-window.js"
     },
+    "./preload": {
+      "types": "./dist/preload/bridge.d.ts",
+      "default": "./dist/preload/bridge.js"
+    },
     "./renderer": {
       "types": "./dist/renderer/index.d.ts",
       "default": "./dist/renderer/index.js"
@@ -138,6 +142,7 @@
     "@vitejs/plugin-react": "^5.2.0",
     "electron": "43.2.0",
     "eslint": "^9.39.0",
+    "fast-check": "4.9.0",
     "ghostty-web": "0.4.0",
     "lucide-react": "1.27.0",
     "node-llama-cpp": "3.19.1",

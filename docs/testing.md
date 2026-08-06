@@ -107,6 +107,36 @@ it better than anything written here before.
 
 Never lower the threshold to make a change fit.
 
+## Property testing, over one module
+
+`fast-check` runs over the numeric core of `src/renderer/lib/contrast.ts`, and
+nowhere else. It answers the question mutation testing cannot: Stryker mutates
+the code that exists, so it proves every syntactic variant is caught by some
+test, and it can never find an input nobody wrote a test for. `parseHex`,
+`luminance`, `contrastRatio` and `meets` all run over a domain far larger than
+the points `tests/contrast.test.ts` pins by hand.
+
+Three rules come with it.
+
+- **The seed is fixed, and `FAST_CHECK_SEED` moves it.** Stryker maps tests to
+  mutants from a dry run and reruns the covering tests once per mutant. A suite
+  that draws different inputs on the second run can report a mutant as
+  surviving for a reason that has nothing to do with the mutant, and
+  `npm run mutate` breaks below 100. Exploration is something a person does by
+  moving the seed, not something a gate does by accident.
+- **A property over an empty set asserts nothing.** The same rule as a check
+  with no scope. A property whose body returns early for most inputs counts the
+  runs that reached the assertions and fails when that count is zero;
+  `checkPalette`'s accounting property counts the pairs it saw checked and the
+  pairs it saw skipped, because a generator that only ever produced unreadable
+  colours would leave half of it unexercised.
+- **A property that has never shrunk to a failure is a declaration.** Break the
+  implementation, record the counterexample fast-check prints, and put it in
+  the pull request. #132 carries two.
+
+Do not extend it to a domain the tests already enumerate. The rejection below
+holds, and it is the reason this section names one module.
+
 ## The packaged application answers for itself
 
 `npm run test:e2e` drives the unpackaged build, because
@@ -116,9 +146,10 @@ installs, and two defects shipped inside it: #86 and #88. `verify-package.mjs`
 reads the archive listing, which finds a file that is absent and not one that
 is present where the loader cannot reach it.
 
-`npm run package && npm run smoke:packaged` closes the macOS half.
+`npm run package && npm run smoke:packaged` closes it, on macOS and on Windows.
 `scripts/smoke-packaged.mjs` launches
-`Stuffbucket.app/Contents/MacOS/Stuffbucket` with `--self-check=terminal` and a
+`Stuffbucket.app/Contents/MacOS/Stuffbucket`, or
+`out/Stuffbucket-win32-x64/Stuffbucket.exe`, with `--self-check=terminal` and a
 token. The application opens a shell through `TerminalHost`, the same class the
 terminal uses, makes it print the token, writes one line, and exits with a
 code. `src/main/native/self-check.ts` holds the argument protocol, and
@@ -127,24 +158,40 @@ code. `src/main/native/self-check.ts` holds the argument protocol, and
 Three properties are what stop it passing for nothing:
 
 - **The token is random per run.** It reaches the driver only through a shell
-  that ran `printf`, so a launch that opens no shell cannot produce one.
+  that ran a command, so a launch that opens no shell cannot produce one.
 - **The command carries the token in two halves.** A pty echoes what is written
   to it, so a command containing the whole token would satisfy the assertion
-  from that echo, with nothing having run.
-- **Every run reproduces #88.** The driver moves `spawn-helper` out of
-  `app.asar.unpacked` and launches again. That run has to fail, and it has to
-  fail by reporting the shell rather than by dying before the check. Then the
-  file goes back.
+  from that echo, with nothing having run. `printf '%s%s\n' 01234567 89abcdef`
+  joins them under a POSIX shell. `cmd.exe` has no `printf` and its `echo` puts
+  a space between two arguments, so the caret does the joining instead:
+  `echo 01234567^89abcdef`. `cmd.exe` strips the caret while parsing the line,
+  which leaves the halves apart in the command text and joined in the output.
+- **Every run reproduces #88.** The driver moves the one native file the
+  terminal cannot resolve without out of `app.asar.unpacked` and launches
+  again. That run has to fail, and it has to fail by reporting the shell rather
+  than by dying before the check. Then the file goes back.
+
+The file is `spawn-helper` on macOS and `conpty.node` on Windows.
+`conpty.dll` and `OpenConsole.exe` sit beside `conpty.node` in the same
+prebuild directory and are **not** on this path: `node-pty` leaves
+`useConptyDll` off, so `conpty.cc` takes `CreatePseudoConsole` out of
+`kernel32` and never opens the DLL. Moving either of them aside on a Windows
+runner leaves the check green, which is what established that rather than the
+issue text, which named `OpenConsole.exe`.
 
 The check runs before `whenReady` and opens no window, so it needs no window
-server and no signed binary. `package (macos-latest)` runs it.
+server and no signed binary. `package (macos-latest)` and
+`package (windows-latest)` both run it.
 
-What it leaves uncovered: no window, no renderer, and no IPC. It says nothing
-about the Windows or linux packages, and nothing about a signed or notarised
-bundle. Run it on the package Forge produces, which carries an ad-hoc signature
-that `codesign --verify` already rejects because packager rewrites `Info.plist`
-afterwards. Signing happens later, in stuffbucket/macos-runner, and moving a
-file inside a bundle that has been signed properly would break its seal.
+What it leaves uncovered: no window, no renderer, and no IPC. It proves a shell
+spawns inside the package, not that anything renders. It says nothing about the
+linux package, nothing about a signed or notarised bundle, and on Windows
+nothing about an installed tree, because this repository ships no installer.
+Run it on the package Forge produces, which on macOS carries an ad-hoc
+signature that `codesign --verify` already rejects because packager rewrites
+`Info.plist` afterwards. Signing happens later, in stuffbucket/macos-runner,
+and moving a file inside a bundle that has been signed properly would break its
+seal.
 
 ## User interface changes
 
@@ -159,6 +206,22 @@ Use `capture` from `e2e/harness.ts` rather than `page.screenshot`. macOS stops
 giving an occluded window frames. The plain call then hangs until its timeout.
 That reproduced against the overlay under seed 587000642. `capture` reads the
 renderer through the debugger, which does not care what is in front.
+
+### A declared focus trap is not a walked one
+
+`role="dialog"`, `aria-modal`, and an inert background declare a modal to
+assistive technology. None of them enforces one, and axe reports no violation
+against a dialog focus escapes from on the third Tab press, because it reads
+the declaration. A `.click()` proves less again: `inert` blocks a real pointer
+and a real key without blocking a programmatic call.
+
+So the overlay has two scenarios rather than one. The first reads the
+attributes. The second presses Tab past the end of the card, then Shift+Tab,
+and reads `document.activeElement` after every press — not a `focusin`
+listener, because focus leaving an untrapped dialog lands on `document.body`
+and that fires no `focusin` at all. It counts what Tab can reach before it
+walks, and fails on zero: a trap over an empty card is an empty scope. See
+#131.
 
 ### A still is not an oracle
 
@@ -300,7 +363,8 @@ here. That is worse than not having it, because a green run reads as verified.
   `escapeAction` takes two booleans and its whole input domain is four values.
   Generating inputs for that is exhaustive testing done slower, with a
   dependency to show for it. The numeric core of `src/renderer/lib/contrast.ts`
-  is the one place a continuous domain makes it pay.
+  is the one place a continuous domain makes it pay, and it is the only place
+  the dependency is used. See "Property testing, over one module" above.
 
 ### Infrastructure rejected for the same question
 

@@ -10,7 +10,7 @@ its own header.
 
 | Workflow | Trigger | What it is for |
 | --- | --- | --- |
-| `ci.yml` | pull request, push to `main` and `release/**` | Lint, types, unit and mutation tests, a git-ref install, packaging and the end-to-end suite on macOS and Windows, and the packaged smoke test on macOS |
+| `ci.yml` | pull request, push to `main` and `release/**` | Lint, types, unit and mutation tests, a git-ref install, packaging, the packaged smoke test and the end-to-end suite on macOS and Windows |
 | `merge-preview.yml` | push to `main` and `release/**` | Replays every open pull request against the new tip |
 | `release.yml` | tag `v*.*.*`, or a dispatch for a dry run | The draft release, the tarball, the registry publish, publish |
 | `watch-rulesets.yml` | daily, or a dispatch | Reads the live repository rulesets and files one issue when a protection drops below its floor |
@@ -41,16 +41,17 @@ a step that finds nothing fails rather than reporting success.
 ## The packaged smoke test
 
 `npm run smoke:packaged` is the newest job step and is written to that rule. It
-runs in `package (macos-latest)`, after `verify:package`, and it launches the
-application it just built. Its own floor is a second launch with `spawn-helper`
-moved aside, which has to fail: the step cannot report success without having
-started a shell inside the package. `docs/testing.md` describes it.
+runs in `package (macos-latest)` and `package (windows-latest)`, after
+`verify:package`, and it launches the application it just built. Its own floor
+is a second launch with a native file moved aside, which has to fail: the step
+cannot report success without having started a shell inside the package.
+`docs/testing.md` describes it.
 
-Windows has no equivalent. The same argument would drive
-`out/Stuffbucket-win32-x64/Stuffbucket.exe` in the packaged directory, where
-`conpty.node` and `OpenConsole.exe` are the same class of resolution, and the
-command would have to be one `cmd.exe` echoes rather than `printf`. The step
-here is scoped to macOS rather than run as a job that skips.
+The file is `spawn-helper` on macOS and `conpty.node` on Windows. The vehicle
+on Windows is the packaged directory, `out/Stuffbucket-win32-x64`, rather than
+an installed tree, because the MSI is gone. The command differs too: `cmd.exe`
+has no `printf`, so the two halves of the token are joined by the caret
+`cmd.exe` strips while parsing the line.
 
 ## The four install paths
 

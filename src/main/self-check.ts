@@ -20,7 +20,8 @@ import {
  * server. It goes through `TerminalHost`, which is the class the terminal
  * itself uses, so what it exercises is the product's own path into `node-pty`:
  * the addon and `spawn-helper` resolved out of `app.asar.unpacked`, and
- * `posix_spawn` from inside the bundle. That is the defect #88 shipped.
+ * `posix_spawn` from inside the bundle. That is the defect #88 shipped. On
+ * Windows the same path resolves `conpty.node` out of `app.asar.unpacked`.
  */
 
 const SESSION = 'self-check';
@@ -80,7 +81,7 @@ export function runSelfCheck(argv: readonly string[]): void {
   try {
     // Wide enough that the answer cannot wrap.
     host.spawn({ id: SESSION, cols: 200, rows: 24 });
-    host.write(SESSION, selfCheckCommand(token));
+    host.write(SESSION, selfCheckCommand(token, process.platform));
   } catch (error) {
     report({ ok: false, reason: `the shell did not start: ${String(error)}` });
   }

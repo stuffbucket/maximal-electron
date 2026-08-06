@@ -105,6 +105,7 @@ you use:
 | --- | --- |
 | `@stuffbucket/maximal-electron/main` | `electron` |
 | `@stuffbucket/maximal-electron/host` | `electron` |
+| `@stuffbucket/maximal-electron/preload` | `electron` |
 | `@stuffbucket/maximal-electron/host/terminal` | `node-pty` |
 | `@stuffbucket/maximal-electron/renderer` | `react`, `react-dom`, `ghostty-web`, `lucide-react`, `react-resizable-panels`, `@radix-ui/react-collapsible`, `@radix-ui/react-tabs`, `@radix-ui/react-tooltip`, `@radix-ui/react-visually-hidden` |
 | `@stuffbucket/maximal-electron/verify` | none |

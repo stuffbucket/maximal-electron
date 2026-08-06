@@ -41,6 +41,7 @@ import {
   exportTargets,
   mainSurfaceChecks,
   moduleGraphChecks,
+  preloadSurfaceChecks,
   reExportedNames,
 } from './export-checks.mjs';
 
@@ -265,6 +266,18 @@ async function run() {
     installedManifest.exports?.['./main']?.types,
   );
   for (const { name: message, ok } of mainChecks.checks) check(ok, message);
+
+  /*
+   * The preload seam, read out of the package a consumer would install. Issue
+   * #17. `maximal/client` wrote its own preload because this export did not
+   * exist, so "it resolves from an install" is the claim that matters.
+   */
+  console.log('\nInstalled preload bridge seam');
+  const preloadChecks = await preloadSurfaceChecks(
+    packageRoot,
+    installedManifest.exports?.['./preload']?.types,
+  );
+  for (const { name: message, ok } of preloadChecks.checks) check(ok, message);
 
   /*
    * Resolving an export is more than the file existing. A `dist/` from a stale
