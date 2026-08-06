@@ -24,7 +24,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
  * 1246 was a number nothing asserted, so a configuration change that halved
  * the mutated set would still have printed 100.00. Raise this when the count
  * rises; a fall is the defect it exists to catch.
- */export const MUTANT_FLOOR = 1496;
+ */export const MUTANT_FLOOR = 1662;
 
 /**
  * `// Stryker disable` suppressions, counted in mutants rather than comments

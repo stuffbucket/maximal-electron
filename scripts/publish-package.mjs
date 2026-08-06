@@ -43,7 +43,9 @@ const flag = (name, fallback) => {
 
 const manifest = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 
-const directory = path.resolve(ROOT, flag('--dir', 'dist-release'));
+const directoryFlag = flag('--dir', 'dist-release');
+const directory = path.resolve(ROOT, directoryFlag);
+
 const tag = flag('--tag', `v${manifest.version}`);
 const version = tag.replace(/^v/, '');
 const mode = flag('--mode', 'rehearse');
@@ -67,7 +69,7 @@ function probe() {
 function preconditions(check, tarballs) {
   const floor = check(
     tarballs.length === 1,
-    `exactly one tarball is in ${path.relative(ROOT, directory)}`,
+    `exactly one tarball is in ${directoryFlag}`,
     { count: tarballs.length, of: 'tarballs' },
   );
   if (floor) {
@@ -90,7 +92,10 @@ function upload(action, tarball) {
     registry: registryUrl,
     dryRun: action === 'rehearse',
   });
-  console.log(`\n$ npm ${argv.join(' ')}`);
+  // On stderr, where npm writes its own narration, so the two interleave in
+  // the order they happened.
+  console.error(`\n$ npm ${argv.join(' ')}`);
+
 
   const result = npm(argv);
   process.stdout.write(result.stdout ?? '');
