@@ -300,10 +300,11 @@ export function engineCheckTimeoutMs(platform: string): number {
  * Whether the engine is known to work on a platform, and why not.
  *
  * **This is a workaround, not a fix.** A packaged Windows run reaches `phase
- * acknowledged` — the child read the request — and then waits out the whole
- * limit. It is not `getLlama()`: that returns and names a device on Windows in
- * every environment below the packaged binary, including this application's own
- * engine bundle read out of `app.asar`. Issue #149 carries the ladder.
+ * acknowledged` and then waits out the whole limit. It is not `getLlama()`:
+ * that returns and names a device on Windows in every environment below the
+ * packaged binary. What Windows does and macOS does not is fork
+ * `process.execPath` to test a GPU prebuild, and the packaged binary answers
+ * nothing when forked. `docs/architecture.md` has the ladder, #149 has the runs.
  *
  * The gate exists because a spinner forever is worse than a legible error. It
  * is retired by one thing: a packaged Windows run where the engine names a
