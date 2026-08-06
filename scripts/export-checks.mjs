@@ -326,9 +326,13 @@ export function importedPackages(source) {
  * `optionalDependencies` install by default, and npm 7 and later auto-installs
  * a peer that is not marked optional.
  *
+ * Returns the walk as well as the checks. `scripts/peer-table.mjs` judges the
+ * table in `README.md` against the same map, so the prose and the checks above
+ * cannot be measuring two different import graphs. Issue #121.
+ *
  * @param {string} root
  * @param {Record<string, any>} manifest
- * @returns {Promise<Check[]>}
+ * @returns {Promise<{ checks: Check[], reached: Map<string, string[]> }>}
  */
 export async function dependencyContractChecks(root, manifest) {
   /** @type {Check[]} */
@@ -415,7 +419,7 @@ export async function dependencyContractChecks(root, manifest) {
     });
   }
 
-  return checks;
+  return { checks, reached };
 }
 
 /**

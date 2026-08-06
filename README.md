@@ -112,9 +112,13 @@ you use:
 
 npm says nothing about a missing optional peer at install time. The failure
 lands later: a bundler stops on the unresolved import and names the package,
-and a main-process entry throws when it loads. `npm run verify:exports` reads
-the peers back out of the built import graph, so the table above cannot drift
-from what the code imports without failing a check.
+and a main-process entry throws when it loads. `npm run verify:exports` parses
+the rows above and compares each one against the packages that entry point's
+built import graph reaches, so a peer the table leaves out and a peer the table
+invents both fail the check. `react-dom` is the one name no import reaches: a
+React component does not import a renderer, the consumer mounting these
+components needs one, and `scripts/peer-table.mjs` names it as the single
+exception rather than allowing any.
 
 Import the structural styles separately:
 
