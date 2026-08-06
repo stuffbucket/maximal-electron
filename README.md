@@ -95,7 +95,7 @@ you use:
 | `stuffbucket-electron/main` | `electron` |
 | `stuffbucket-electron/host` | `electron` |
 | `stuffbucket-electron/host/terminal` | `node-pty` |
-| `stuffbucket-electron/renderer` | `react`, `react-dom`, `ghostty-web`, `lucide-react`, `react-resizable-panels`, `@radix-ui/react-collapsible`, `@radix-ui/react-tabs`, `@radix-ui/react-tooltip` |
+| `stuffbucket-electron/renderer` | `react`, `react-dom`, `ghostty-web`, `lucide-react`, `react-resizable-panels`, `@radix-ui/react-collapsible`, `@radix-ui/react-tabs`, `@radix-ui/react-tooltip`, `@radix-ui/react-visually-hidden` |
 | `stuffbucket-electron/verify` | none |
 | `stuffbucket-electron/verify/shell-variables` | none |
 

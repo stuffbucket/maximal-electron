@@ -18,6 +18,18 @@ export {
   type TabStripProps,
 } from './components/TabBar.js';
 export {
+  adornmentLabel,
+  EMPHASIS_LABELS,
+  STATUS_LABELS,
+  TAB_EMPHASIS,
+  TAB_ICON_NAMES,
+  tabSlot,
+  type TabAdornment,
+  type TabEmphasis,
+  type TabIconName,
+  type TabSlot,
+} from './lib/tab-adornment.js';
+export {
   TerminalTabs,
   type TerminalTabsProps,
 } from './components/TerminalTabs.js';

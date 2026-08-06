@@ -18,6 +18,7 @@
     "src/renderer/lib/overlay-keys.ts",
     "src/renderer/lib/resolve-bridge.ts",
     "src/renderer/lib/contrast.ts",
+    "src/renderer/lib/tab-adornment.ts",
     "src/renderer/lib/account.ts",
     "src/renderer/lib/settings.ts",
     "src/main/native/pty-session.ts",

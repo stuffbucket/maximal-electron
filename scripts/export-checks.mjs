@@ -114,18 +114,24 @@ export function missingTargets(root, exports) {
 /** The component surface `./renderer` promises a consumer. */
 export const RENDERER_SURFACE = [
   'Canvas',
+  'EMPHASIS_LABELS',
   'IconButton',
   'NavRail',
   'SHELL_TERMINAL_PROPERTIES',
+  'STATUS_LABELS',
   'ShellLayout',
+  'TAB_EMPHASIS',
+  'TAB_ICON_NAMES',
   'TabBar',
   'TerminalTabs',
   'TerminalView',
   'TitleBar',
+  'adornmentLabel',
   'detachedSessions',
   'getTabPanelId',
   'getTabTriggerId',
   'readTerminalTheme',
+  'tabSlot',
 ];
 
 /** The names `./verify` exposes. `terminal-package.mjs` defines them. */
@@ -214,6 +220,7 @@ export function reExportedNames(source) {
  */
 const CONTRACTS = [
   /(?:^|\/)lib\/terminal-transport(?:\.js)?$/,
+  /(?:^|\/)lib\/tab-adornment(?:\.js)?$/,
   /(?:^|\/)lib\/terminal-sessions(?:\.js)?$/,
 ];
 const APPLICATION_ONLY = [

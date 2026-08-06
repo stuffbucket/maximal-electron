@@ -81,6 +81,7 @@ looks exactly like an ordinary hovered one.
 | `--shell-status` | `--shell-text-subtle` | the status dot |
 | `--shell-terminal-background` | `--shell-canvas` | the terminal's own surface |
 | `--shell-titlebar-height` | `40px` | the title bar row of the application grid |
+| `--shell-warning` | `--shell-accent` | the attention marker on a tab |
 
 ## Runtime
 
