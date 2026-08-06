@@ -53,8 +53,14 @@ describe('check', () => {
 
   it('refuses an assertion that states no scope', () => {
     const { check } = scopedChecks(sink());
+    // The whole message, not a substring. Destructuring `undefined` throws a
+    // TypeError naming `scope` too, so a looser pattern passes with the guard
+    // deleted.
     // @ts-expect-error the point of the type is that this is refused
-    expect(() => check(true, 'something')).toThrow(/scope/);
+    expect(() => check(true, 'something')).toThrow('a check needs a scope: { count, of }');
+    // `typeof null` is `'object'`, so null needs its own arm of the guard.
+    // @ts-expect-error same
+    expect(() => check(true, 'something', null)).toThrow('a check needs a scope: { count, of }');
   });
 
   it('refuses a count that is not a whole number, and a nameless one', () => {
@@ -62,6 +68,13 @@ describe('check', () => {
     expect(() => check(true, 'x', { count: -1, of: 'files' })).toThrow(/whole number/);
     expect(() => check(true, 'x', { count: 1.5, of: 'files' })).toThrow(/whole number/);
     expect(() => check(true, 'x', { count: 3, of: '  ' })).toThrow(/what was counted/);
+    // A noun that is not a string at all. `.trim()` on it throws as well, so
+    // the message is what tells the guard apart from the crash.
+    expect(() =>
+      // @ts-expect-error the type refuses this; the guard is what a caller in
+      // plain ESM hits
+      check(true, 'x', { count: 3, of: 42 }),
+    ).toThrow('scope.of must name what was counted');
   });
 
   it('takes only a literal true as a pass', () => {

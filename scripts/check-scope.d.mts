@@ -11,16 +11,8 @@ export interface Scope {
   of: string;
 }
 
-export interface CheckResult {
-  passed: boolean;
-  message: string;
-  count: number;
-  of: string;
-}
-
 export interface ScopedChecks {
   check(ok: boolean, message: string, scope: Scope): boolean;
-  results(): CheckResult[];
   summary(subject: string): number;
 }
 

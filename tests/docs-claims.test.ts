@@ -28,9 +28,9 @@ describe('withoutFences', () => {
     const text = ['before', '```bash', 'npm run imaginary', '```', 'after'].join(
       '\n',
     );
-    expect(withoutFences(text)).toContain('before');
-    expect(withoutFences(text)).toContain('after');
-    expect(withoutFences(text)).not.toContain('imaginary');
+    // The whole result, not two substrings. A rule that replaced a block with
+    // anything at all satisfied `not.toContain`.
+    expect(withoutFences(text)).toBe('before\n\nafter');
   });
 
   it('drops several blocks, not just the first', () => {
@@ -39,6 +39,20 @@ describe('withoutFences', () => {
     expect(stripped).not.toContain('one');
     expect(stripped).not.toContain('two');
     expect(stripped).toContain('mid');
+  });
+
+  it('opens a block only at the start of a line', () => {
+    // Triple backticks inside a sentence are an inline span. A rule that let
+    // one open a block swallowed the prose up to the next real fence.
+    const text = ['a ```inline``` b', '```', 'inside', '```'].join('\n');
+    expect(withoutFences(text)).toBe('a ```inline``` b\n');
+  });
+
+  it('closes a block only at the start of a line', () => {
+    // The mirror. A closing fence found mid-line ends the block early and
+    // leaves the rest of the example on the page as a claim.
+    const text = ['```', 'text with ``` inline', 'real', '```'].join('\n');
+    expect(withoutFences(text)).toBe('');
   });
 });
 
@@ -96,6 +110,13 @@ describe('npmScriptsOutOfScope', () => {
   it('is zero when every mention is a claim', () => {
     expect(npmScriptsOutOfScope('`npm run lint`')).toBe(0);
   });
+
+  it('counts a mention by the same rule that reads one', () => {
+    // The two rules share one pattern. While they were separate literals the
+    // second was a length rather than a list of names, so nothing it matched
+    // was ever read and every mutant of it survived.
+    expect(npmScriptsOutOfScope('npm run test:e2e and npm run lint:fix')).toBe(2);
+  });
 });
 
 describe('codeSpans', () => {
@@ -121,6 +142,18 @@ describe('repoPaths', () => {
   it('trims a line reference to the file it points at', () => {
     expect(repoPaths('`scripts/storybook-check.mjs:152` gives up.', roots)).toEqual([
       'scripts/storybook-check.mjs',
+    ]);
+  });
+
+  it('trims a line and column reference too', () => {
+    // A colon cannot appear in a path this repository carries, so everything
+    // from the first one is a location.
+    expect(repoPaths('`src/main/index.ts:42:7`', roots)).toEqual(['src/main/index.ts']);
+  });
+
+  it('trims the padding a span was written with', () => {
+    expect(repoPaths('` scripts/verify-docs.mjs `', roots)).toEqual([
+      'scripts/verify-docs.mjs',
     ]);
   });
 
@@ -188,6 +221,10 @@ describe('links', () => {
     expect(links('[docs](https://example.com/a) and [mail](mailto:a@b.c)')).toEqual(
       [],
     );
+  });
+
+  it('ignores a plain http link as well as an https one', () => {
+    expect(links('[docs](http://example.com/a)')).toEqual([]);
   });
 
   it('ignores a bare anchor', () => {

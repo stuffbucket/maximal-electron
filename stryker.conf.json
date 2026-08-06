@@ -26,7 +26,10 @@
     "src/renderer/lib/terminal-sessions.ts",
     "src/renderer/lib/terminal-transport.ts",
     "scripts/terminal-package.mjs",
-    "scripts/shell-variables.mjs"
+    "scripts/shell-variables.mjs",
+    "scripts/check-scope.mjs",
+    "scripts/docs-claims.mjs",
+    "scripts/peer-table.mjs"
   ],
   "reporters": [
     "progress",

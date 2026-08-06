@@ -30,8 +30,17 @@ export function withoutFences(text) {
  * how the prose linter this replaced earned its removal.
  */
 export function codeSpans(text) {
-  return [...withoutFences(text).matchAll(/`([^`\n]+)`/g)].map((match) => match[1] ?? '');
+  return [...withoutFences(text).matchAll(/`([^`\n]+)`/g)].map((match) => match[1]);
 }
+
+/**
+ * A `npm run <name>` mention, wherever it appears.
+ *
+ * One pattern for both rules below. Two copies drifted apart in nothing but
+ * mutation score: every mutant of the second copy survived, because the count
+ * it feeds is a length rather than a list of names.
+ */
+const NPM_RUN = /\bnpm run ([a-z][a-z0-9:-]*)/g;
 
 /**
  * Every `npm run <name>` named in prose.
@@ -43,7 +52,7 @@ export function codeSpans(text) {
  */
 export function npmScripts(text) {
   return codeSpans(text).flatMap((span) =>
-    [...span.matchAll(/\bnpm run ([a-z][a-z0-9:-]*)/g)].map((match) => match[1]),
+    [...span.matchAll(NPM_RUN)].map((match) => match[1]),
   );
 }
 
@@ -54,10 +63,14 @@ export function npmScripts(text) {
  * `:142` line reference is trimmed to the file it points at. Globs are
  * returned as written: the caller decides whether a pattern matching nothing
  * is a defect, and here it is.
+ *
+ * A colon cannot appear in a path this repository carries — Windows forbids one
+ * in a file name — so everything from the first colon is a location, whether it
+ * is `:142` or `:142:7`.
  */
 export function repoPaths(text, roots) {
   return codeSpans(text)
-    .map((span) => span.trim().replace(/:\d+$/, ''))
+    .map((span) => span.trim().split(':')[0])
     .filter((span) => !/\s/.test(span))
     .filter((span) => roots.some((root) => span.startsWith(root + '/')));
 }
@@ -71,7 +84,7 @@ export function repoPaths(text, roots) {
  * how the choice stays visible in the output instead of looking like coverage.
  */
 export function npmScriptsOutOfScope(text) {
-  const all = [...text.matchAll(/\bnpm run ([a-z][a-z0-9:-]*)/g)].length;
+  const all = [...text.matchAll(NPM_RUN)].length;
   return all - npmScripts(text).length;
 }
 
@@ -90,7 +103,7 @@ export function constants(text) {
 
 /** Relative markdown link targets, with any anchor removed. */
 export function links(text) {
-  return [...text.matchAll(/]\((?!https?:|mailto:|#)([^)\s]+)\)/g)].map((match) =>
-    (match[1] ?? '').split('#')[0],
+  return [...text.matchAll(/]\((?!https?:|mailto:|#)([^)\s]+)\)/g)].map(
+    (match) => match[1].split('#')[0],
   );
 }
