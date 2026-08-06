@@ -1,0 +1,42 @@
+# Temporary. Issue #149: which rung of the ladder does getLlama() hang on?
+#
+# Bare node, an Electron main process, and an Electron utilityProcess, on both
+# packaging hosts. Deleted once the answer is in the issue.
+
+name: llama-probe
+
+on:
+  push:
+    branches: ['fix/windows-getllama']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: probe (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: rung 1, bare node
+        timeout-minutes: 8
+        run: node probe/bare.mjs
+
+      - name: rungs 2 and 3, electron main and utilityProcess
+        timeout-minutes: 15
+        env:
+          PROBE_ROOT: ${{ github.workspace }}
+          ELECTRON_ENABLE_LOGGING: '1'
+        run: npx electron probe/electron-main.js
