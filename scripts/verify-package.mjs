@@ -123,44 +123,76 @@ check(
 console.log('\ncontent security policy');
 
 /**
- * The policy a shipped document declares, or `undefined`.
+ * What a shipped document says about its content policy.
  *
- * Scoped to the `meta` tag on purpose. `index.html` names `'wasm-unsafe-eval'`
- * in a comment explaining why it is there, so a search of the whole file would
- * pass on the explanation after the grant itself had gone.
+ * Three outcomes, not two: read and declaring a policy, read and declaring
+ * none, or not read at all. Collapsing the third into the second reported
+ * `the shell declares a content policy` on Windows for a document that
+ * declares one, and sent the reader looking for a missing `meta` tag.
+ * Issue #98.
+ *
+ * The search is scoped to the `meta` tag on purpose. `index.html` names
+ * `'wasm-unsafe-eval'` in a comment explaining why it is there, so a search of
+ * the whole file would pass on the explanation after the grant itself had gone.
+ *
+ * @returns {{readable: boolean, reason?: string, policy?: string}}
  */
 function declaredPolicy(document) {
   let html;
   try {
-    // `listPackage` reports a leading slash and `extractFile` rejects one.
-    html = extractFile(asar, document.replace(/^\//, '')).toString('utf8');
-  } catch {
-    return undefined;
+    /*
+     * `listPackage` reports forward slashes on every platform and a leading
+     * one; `extractFile` resolves the inner path by splitting on `path.sep`
+     * (`filesystem.js`, `searchNodeFromDirectory`). The two disagree on
+     * Windows, where a forward-slashed path collapses to one bogus segment and
+     * resolves nowhere. Rebuild it from segments so the separator is the
+     * host's.
+     */
+    const inner = path.join(...document.replace(/^\//, '').split('/'));
+    html = extractFile(asar, inner).toString('utf8');
+  } catch (error) {
+    return { readable: false, reason: error.message };
   }
   for (const tag of html.match(/<meta\b[^>]*>/gi) ?? []) {
     if (!/http-equiv\s*=\s*["']content-security-policy["']/i.test(tag)) continue;
     // Matched to its own delimiter. A policy is full of single quotes, so a
     // pattern that stops at either kind captures `default-src ` and nothing
     // more.
-    return /content\s*=\s*(["'])(.*?)\1/is.exec(tag)?.[2];
+    return { readable: true, policy: /content\s*=\s*(["'])(.*?)\1/is.exec(tag)?.[2] };
   }
-  return undefined;
+  return { readable: true };
 }
 
 // Read out of the archive rather than restated here. `ghostty-web` needs two
 // grants, and the checks that assert them had never been given a policy to
 // measure: removing `'wasm-unsafe-eval'` from the shipped HTML broke the
 // terminal and passed every check. Issue #92.
-const shellPolicy = declaredPolicy(`${RENDERER}/index.html`);
-const overlayPolicy = declaredPolicy(`${RENDERER}/overlay.html`);
+const documents = {
+  shell: declaredPolicy(`${RENDERER}/index.html`),
+  overlay: declaredPolicy(`${RENDERER}/overlay.html`),
+};
 
-check(shellPolicy !== undefined, 'the shell declares a content policy');
+// An unreadable document fails saying so, rather than as a document that
+// declares nothing. Both are failures; only one of them is true.
+for (const [label, document] of Object.entries(documents)) {
+  check(
+    document.readable && document.policy !== undefined,
+    document.readable
+      ? `the ${label} declares a content policy`
+      : `the ${label} could not be read from the asar: ${document.reason}`,
+  );
+}
+
 // The overlay hosts the same terminal. Its own comment says "Same policy as the
-// shell", which is a claim until something reads both.
+// shell", which is a claim until something reads both. A document that was not
+// read fails above, with the reason.
 check(
-  overlayPolicy !== undefined && overlayPolicy === shellPolicy,
-  'the overlay declares the same policy as the shell',
+  documents.overlay.policy !== undefined &&
+    documents.overlay.policy === documents.shell.policy,
+  'the shell and the overlay declare one policy',
 );
+
+const shellPolicy = documents.shell.policy;
 
 /* ------------------------------------------------- native module (pty) */
 
