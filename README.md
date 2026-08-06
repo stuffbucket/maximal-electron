@@ -59,11 +59,51 @@ A dock badge tracks real application state.
 
 ## Consume the shell frame
 
-GitHub and npm installs expose the secured host window at
+Install it from a git ref, or from the tarball a release attaches:
+
+```json
+"stuffbucket-electron": "github:stuffbucket/maximal-electron#<ref>"
+"stuffbucket-electron": "https://github.com/stuffbucket/maximal-electron/releases/download/v0.0.3/stuffbucket-electron-0.0.3.tgz"
+```
+
+`dist/` is built by a lifecycle script rather than committed, and npm runs a
+different one for each form. A `codeload.github.com` archive URL runs neither,
+so that form is unsupported and refuses to install. This package is not on the
+public npm registry. Read [docs/consuming.md](./docs/consuming.md).
+
+Either supported form exposes the main-process lifecycle at
+`stuffbucket-electron/main`, the secured host window at
+`stuffbucket-electron/host` and the generic renderer frame at
 `stuffbucket-electron/host` and the generic renderer frame at
 `stuffbucket-electron/renderer`. The renderer entry exports `ShellLayout`,
 `TitleBar`, `TabBar`, `NavRail`, `Canvas`, and `IconButton`. It does not export
 the reference application, terminal, agent, sample data, or fixtures.
+
+`runMain(runtime, options)` runs a main process on this shell's lifecycle: the
+profile directory, the single instance lock, the window, the quit policy, and a
+deferred shutdown. Every application-specific value is a callback in `options`,
+whose shape is versioned. This application's own `src/main/index.ts` runs on it.
+See [docs/embedding.md](./docs/embedding.md).
+
+The package declares no runtime dependencies. Every package an export imports is
+an optional peer, so installing it for `stuffbucket-electron/host` adds nothing
+to `node_modules` beyond the package itself. Install the peers for the entries
+you use:
+
+| Entry | Peers |
+| --- | --- |
+| `stuffbucket-electron/main` | `electron` |
+| `stuffbucket-electron/host` | `electron` |
+| `stuffbucket-electron/host/terminal` | `node-pty` |
+| `stuffbucket-electron/renderer` | `react`, `react-dom`, `ghostty-web`, `lucide-react`, `react-resizable-panels`, `@radix-ui/react-collapsible`, `@radix-ui/react-tabs`, `@radix-ui/react-tooltip`, `@radix-ui/react-visually-hidden` |
+| `stuffbucket-electron/verify` | none |
+| `stuffbucket-electron/verify/shell-variables` | none |
+
+npm says nothing about a missing optional peer at install time. The failure
+lands later: a bundler stops on the unresolved import and names the package,
+and a main-process entry throws when it loads. `npm run verify:exports` reads
+the peers back out of the built import graph, so the table above cannot drift
+from what the code imports without failing a check.
 
 Import the structural styles separately:
 
@@ -97,15 +137,18 @@ an ancestor:
 | `--shell-accent` | Selection, focus, and resize feedback. |
 | `--shell-accent-muted` | Selected-control background. |
 
-`--shell-border-strong`, `--shell-focus`, `--shell-font`, `--shell-danger`,
-`--shell-danger-contrast`, spacing, radius, and height variables have
-structural fallbacks in the CSS. Applications should set
-them when their design system differs from those defaults. `TitleBar` accepts
-caller-owned `leading` and `actions` nodes. Direct `TitleBar` and `TabBar`
-consumers provide `tabIdBase` and use `getTabTriggerId` and `getTabPanelId` on
-their document tabpanels. `ShellLayout` creates that association from
-`layoutId`. It also accepts the same title bar regions and an optional
-panel-toggle subscription adapter, so host IPC stays in the consuming
+Sixteen more variables have structural fallbacks in the CSS, and two are read
+by JavaScript rather than by any rule. `docs/shell-variables.md` holds the whole
+contract, derived from the stylesheet and checked against it in both directions.
+Set the ones your design system disagrees with.
+`stuffbucket-electron/verify/shell-variables` exports the derivation so an
+application can assert its own adapter against the stylesheet it installed.
+
+`TitleBar` accepts caller-owned `leading` and `actions` nodes. Direct `TitleBar`
+and `TabBar` consumers provide `tabIdBase` and use `getTabTriggerId` and
+`getTabPanelId` on their document tabpanels. `ShellLayout` creates that
+association from `layoutId`. It also accepts the same title bar regions and an
+optional panel-toggle subscription adapter, so host IPC stays in the consuming
 application.
 
 Run `npm run build:package` after changing an exported source file. Run
