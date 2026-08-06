@@ -148,5 +148,12 @@ separate defect, and nothing here addresses it.
 ## Where this is written down
 
 `AGENTS.md` carries the one-line rule. `docs/ci.md` carries the workflow half.
-`docs/proposals/engineering-review-01.md` holds the account of instances 1
-to 3.
+[`docs/proposals/engineering-review-01.md`](../../../docs/proposals/engineering-review-01.md)
+holds the account of instances 1 to 3, and
+[`docs/proposals/README.md`](../../../docs/proposals/README.md) indexes it
+alongside the second review.
+
+Both are written as markdown links rather than backticked paths on purpose.
+`scripts/verify-docs.mjs` checks a link target and cannot see a path in
+backticks, which this document says four lines above. So a link is the only
+form of this reference that fails when the file moves.
