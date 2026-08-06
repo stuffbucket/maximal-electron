@@ -1,6 +1,6 @@
 import { statSync } from 'node:fs';
 
-import { spawn, type IPty } from '@lydell/node-pty';
+import { spawn, type IPty } from 'node-pty';
 
 import {
   append,

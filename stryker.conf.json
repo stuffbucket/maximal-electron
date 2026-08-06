@@ -19,7 +19,8 @@
     "src/renderer/lib/contrast.ts",
     "src/renderer/lib/account.ts",
     "src/renderer/lib/settings.ts",
-    "src/main/native/pty-session.ts"
+    "src/main/native/pty-session.ts",
+    "scripts/terminal-package.mjs"
   ],
   "reporters": [
     "progress",

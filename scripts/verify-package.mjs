@@ -20,6 +20,8 @@ import { fileURLToPath } from 'node:url';
 import { listPackage } from '@electron/asar';
 import { FuseV1Options, getCurrentFuseWire } from '@electron/fuses';
 
+import { terminalPackageChecks } from './terminal-package.mjs';
+
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const failures = [];
@@ -107,25 +109,31 @@ check(
 
 console.log('\nnative modules');
 
-// This check exists because its absence shipped a broken package once.
-// `@lydell/node-pty` stays external to the Vite bundle, so it must arrive as
-// real files. Forge's Vite plugin excludes all of node_modules by default, so
-// the package built cleanly, passed every end-to-end test, and would still
-// have failed to open a terminal for a user. The tests missed it because they
-// drive the unpackaged build, where node_modules is simply present.
-check(
-  listing.some((entry) => entry.includes('node_modules/@lydell/node-pty/')),
-  'node-pty is packed',
-);
+// A .node file cannot be loaded from inside an asar, so the prebuilt binaries
+// are unpacked beside it.
+const unpacked = path.join(path.dirname(asar), 'app.asar.unpacked');
+const unpackedFiles = existsSync(unpacked)
+  ? readdirSync(unpacked, { recursive: true, encoding: 'utf8' }).map((entry) =>
+      entry.split(path.sep).join('/'),
+    )
+  : [];
+
+// The terminal assertions are the `./verify` export, so a consumer packaging
+// `./host/terminal` runs the same checks this build runs rather than a copy
+// that drifts. Issue #76.
+for (const { name, ok } of terminalPackageChecks({
+  packedFiles: listing,
+  unpackedFiles,
+  platform: process.platform,
+  arch: process.arch,
+})) {
+  check(ok, name);
+}
 
 check(
   listing.some((entry) => entry.includes('node_modules/node-llama-cpp/')),
   'node-llama-cpp is packed',
 );
-
-// The prebuilt binary is unpacked beside the asar, because a .node file cannot
-// be loaded from inside one.
-const unpacked = path.join(path.dirname(asar), 'app.asar.unpacked');
 
 /**
  * Unpacked files whose name matches a simple `*` glob.
@@ -137,18 +145,18 @@ const unpacked = path.join(path.dirname(asar), 'app.asar.unpacked');
  * behaves the same everywhere.
  */
 const findUnpacked = (pattern) => {
-  if (!existsSync(unpacked)) return [];
   const expression = pattern
     .split('*')
     .map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))
     .join('.*');
   const matches = new RegExp(`^${expression}$`);
-  return readdirSync(unpacked, { recursive: true, encoding: 'utf8' }).filter(
-    (entry) => matches.test(path.basename(entry)),
-  );
+  return unpackedFiles.filter((entry) => matches.test(path.basename(entry)));
 };
 
-check(findUnpacked('*.node').length > 0, 'a native .node binary is unpacked');
+check(
+  findUnpacked('*.node').some((entry) => entry.includes('node-llama-cpp')),
+  'the llama.cpp addon is unpacked',
+);
 
 // llama.cpp ships its backends as shared libraries beside the addon, and
 // `dlopen` cannot reach into an asar. An `unpack` glob of only `*.node` leaves
