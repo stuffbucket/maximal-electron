@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
+import { terminalNativeFiles } from '../scripts/terminal-package.mjs';
 import {
   SELF_CHECK_FAILED,
   SELF_CHECK_FLAG,
@@ -82,21 +83,36 @@ describe('selfCheckToken', () => {
 
 describe('selfCheckCommand', () => {
   it('joins two halves, so the echo of the input cannot satisfy the check', () => {
-    expect(selfCheckCommand(TOKEN)).toBe("printf '%s%s\\n' 01234567 89abcdef\r");
+    expect(selfCheckCommand(TOKEN, 'darwin')).toBe("printf '%s%s\\n' 01234567 89abcdef\r");
+    // `cmd.exe` has no `printf`, and its `echo` puts a space between two
+    // arguments. The caret is stripped while the line is parsed, so `echo` is
+    // handed the halves already joined.
+    expect(selfCheckCommand(TOKEN, 'win32')).toBe('echo 01234567^89abcdef\r');
+  });
+
+  it('never carries the whole token, on any platform', () => {
     // The property the whole check rests on. A pty echoes what is written to
     // it, so the command must not contain the string being looked for.
-    expect(selfCheckCommand(TOKEN)).not.toContain(TOKEN);
+    for (const platform of ['darwin', 'win32', 'linux']) {
+      expect(selfCheckCommand(TOKEN, platform)).not.toContain(TOKEN);
+    }
+  });
+
+  it('takes the printf form for anything that is not win32', () => {
+    expect(selfCheckCommand(TOKEN, 'linux')).toBe("printf '%s%s\\n' 01234567 89abcdef\r");
   });
 
   it('ends with a carriage return, or the shell never runs the line', () => {
-    expect(selfCheckCommand(TOKEN).endsWith('\r')).toBe(true);
+    expect(selfCheckCommand(TOKEN, 'darwin').endsWith('\r')).toBe(true);
+    expect(selfCheckCommand(TOKEN, 'win32').endsWith('\r')).toBe(true);
   });
 });
 
 describe('selfCheckPassed', () => {
   it('wants the joined token somewhere in the output', () => {
     expect(selfCheckPassed(`some prompt\r\n${TOKEN}\r\n`, TOKEN)).toBe(true);
-    expect(selfCheckPassed(selfCheckCommand(TOKEN), TOKEN)).toBe(false);
+    expect(selfCheckPassed(selfCheckCommand(TOKEN, 'darwin'), TOKEN)).toBe(false);
+    expect(selfCheckPassed(selfCheckCommand(TOKEN, 'win32'), TOKEN)).toBe(false);
     expect(selfCheckPassed('', TOKEN)).toBe(false);
   });
 });
@@ -130,6 +146,18 @@ describe('the driver and the application agree', () => {
   for (const value of [SELF_CHECK_FLAG, SELF_CHECK_TOKEN_FLAG, SELF_CHECK_FAILED]) {
     it(`scripts/smoke-packaged.mjs names ${value}`, () => {
       expect(driver).toContain(value);
+    });
+  }
+
+  /**
+   * The file each platform's negative control moves aside. It is the whole
+   * floor of the check, and it is spelled out in the driver rather than
+   * imported, so a rename upstream would leave the driver moving nothing.
+   */
+  for (const file of ['spawn-helper', 'conpty.node']) {
+    it(`scripts/smoke-packaged.mjs names ${file}`, () => {
+      expect(driver).toContain(file);
+      expect(terminalNativeFiles(file === 'spawn-helper' ? 'darwin' : 'win32')).toContain(file);
     });
   }
 });

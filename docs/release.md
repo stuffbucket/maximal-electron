@@ -221,8 +221,10 @@ Windows ships no installer. `npm run package -- --platform=win32 --arch=x64`
 produces `out/Stuffbucket-win32-x64/`, which contains `Stuffbucket.exe` and its
 resources, and that directory is what a fork would wrap.
 
-`ci.yml` builds and verifies it on `windows-latest` on every pull request.
-There is no packaged smoke test on Windows; `docs/ci.md` states why.
+`ci.yml` builds and verifies it on `windows-latest` on every pull request, and
+`npm run smoke:packaged` launches `Stuffbucket.exe` out of that directory and
+makes it open a shell. It drives the packaged directory rather than an
+installed tree, so it says nothing about an installer a fork adds.
 
 ## Auto-update: why there is none
 
