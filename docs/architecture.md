@@ -347,17 +347,62 @@ check and puts the number in the log to be pinned.
 
 ## The embedded engine is gated off on Windows
 
-`getLlama()` does not return there. A packaged run reaches `phase acknowledged`
-— the child read the request off its port — and then waits out the whole limit,
-twice, including with the `@node-llama-cpp` scope moved aside where it should
-fail in milliseconds. The 30 s bound `llama-worker.ts` puts on the ESM import
-does not fire, so the module loads and it is `getLlama()` itself that stops.
-Issue #149 carries the log lines.
-
+The packaged self check waits out its whole limit there, twice, including with
+the `@node-llama-cpp` scope moved aside where it should fail in milliseconds.
 So `embeddedEngineStatus` reports the provider unavailable on `win32` with a
 reason, `discoverProvider` falls through, and a Windows user reads a sentence
 instead of watching a spinner. **This is a workaround, not a fix**, and it is
-retired by one observation: a Windows run where the engine names a device.
+retired by one observation: a packaged Windows run where the engine names a
+device.
+
+**It is not `getLlama()`.** #144 read the absent 30 s import bound as proof that
+the module graph had loaded and the engine call was what stopped. That reading
+was wrong. Building the environment one rung at a time on `windows-latest`,
+`getLlama()` returns and names a device every time:
+
+| Where | What came back |
+| --- | --- |
+| Bare node, no Electron | `gpu=false` in 583 ms |
+| An Electron main process | `gpu=false` in 438 ms |
+| An Electron `utilityProcess` | `gpu=false` in 440 ms |
+| The same two, against the packaged `node-llama-cpp` tree | `gpu=false` in 458 ms |
+| `.vite/build/llama-worker.js` forked as a `utilityProcess` | `device=cpu loadMs=877` |
+| The same bundle read out of `app.asar` | `device=cpu loadMs=943` |
+| The same, from a package copied outside this repository | `device=cpu loadMs=647` |
+
+The last three are the application's own engine, driven the way
+`src/main/native/llama-host.ts` drives it.
+
+**What Windows does that macOS does not is fork a process.**
+`getShouldTestBinaryBeforeLoading` in `node-llama-cpp` is `false` on macOS for
+every binary and `true` on Windows for any prebuilt binary whose backend is not
+`false`. `windows-latest` has `vulkan-1.dll`, so the engine tries a vulkan
+prebuild first and tests it before loading. `testBindingBinary` runs that test
+by forking `process.execPath` — and the packaged binary, told to run a script,
+loads `app.asar` instead and answers nothing:
+
+```
+[fuse-fork] Stuffbucket.exe running .../node-llama-cpp/dist/bindings/utils/testBindingBinary.js
+  with ELECTRON_RUN_AS_NODE=1 after 20015 ms -> HUNG: nothing in 20 s
+```
+
+The same file under `node` answers `{"type":"ready"}` in 376 ms.
+`testBindingBinary` waits five minutes for that answer, and
+`engineCheckTimeoutMs` gives up at three, which is the timeout #149 opens with.
+
+**And a build ships no vulkan prebuild.** `pruneLlamaBackends` keeps only
+`@node-llama-cpp/win-x64`. The engine finds one anyway because `out/` sits
+inside this repository, so the resolution walks one directory above the package
+into `node_modules`. The last row of the table is the same package copied to a
+temporary directory, where nothing is above it: no test, no fork, and llama.cpp
+loaded. Moving the `@node-llama-cpp` scope aside inside the package does not
+move that copy, which is why the `#113` negative control hangs for exactly as
+long as the real run.
+
+So the one rung nothing has run is `--self-check=llama` inside
+`Stuffbucket.exe`, which the gate short-circuits. Issue #149 carries the runs
+and the two things that retire the gate: launch the packaged application from
+outside this repository, and lift the gate behind it.
 
 `--self-check=llama` asserts the gate on that platform rather than skipping —
 that the application exits rather than hanging, that it says the engine is

@@ -299,15 +299,16 @@ export function engineCheckTimeoutMs(platform: string): number {
 /**
  * Whether the engine is known to work on a platform, and why not.
  *
- * **This is a workaround, not a fix.** On Windows `getLlama()` does not return:
- * a packaged run reaches `phase acknowledged` — the child read the request —
- * and then waits out the full limit. The 30 s bound on the ESM import does not
- * fire, so the module loads and it is `getLlama()` itself that hangs, and it
- * hangs identically with the `@node-llama-cpp` scope moved aside, where it
- * should fail in milliseconds. Issue #149.
+ * **This is a workaround, not a fix.** A packaged Windows run reaches `phase
+ * acknowledged` and then waits out the whole limit. It is not `getLlama()`:
+ * that returns and names a device on Windows in every environment below the
+ * packaged binary. What Windows does and macOS does not is fork
+ * `process.execPath` to test a GPU prebuild, and the packaged binary answers
+ * nothing when forked. `docs/architecture.md` has the ladder, #149 has the runs.
  *
  * The gate exists because a spinner forever is worse than a legible error. It
- * is retired by one thing: a Windows run where the engine names a device.
+ * is retired by one thing: a packaged Windows run where the engine names a
+ * device.
  */
 export function embeddedEngineStatus(
   platform: string,
