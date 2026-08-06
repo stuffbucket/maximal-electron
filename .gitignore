@@ -23,4 +23,3 @@ demo/takes/
 
 # Storybook build output. A developer tool, never shipped.
 storybook-static/
-.claude/scheduled_tasks.lock
