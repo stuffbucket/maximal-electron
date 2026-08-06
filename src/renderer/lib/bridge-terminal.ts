@@ -1,6 +1,9 @@
 import { bridge } from './bridge.js';
 import { currentTerminalTheme } from './theme.js';
-import type { TerminalEvent, TerminalTransport } from './terminal-transport.js';
+import type {
+  DetachableTerminalTransport,
+  TerminalEvent,
+} from './terminal-transport.js';
 
 /**
  * This application's terminal transport, over its own IPC contract.
@@ -12,7 +15,7 @@ import type { TerminalEvent, TerminalTransport } from './terminal-transport.js';
  * `pty:data` and `pty:exit` are per window, not per session, so every view
  * receives every event and each filters by id.
  */
-export const bridgeTerminalTransport: TerminalTransport = {
+export const bridgeTerminalTransport: DetachableTerminalTransport = {
   async spawn({ id, shell, cols, rows }) {
     await bridge.invoke('pty:spawn', { id, cols, rows, shell });
   },
@@ -27,6 +30,10 @@ export const bridgeTerminalTransport: TerminalTransport = {
 
   async terminate(id) {
     await bridge.invoke('pty:kill', { id });
+  },
+
+  async list() {
+    return bridge.invoke('pty:list');
   },
 
   subscribe(id, listener) {

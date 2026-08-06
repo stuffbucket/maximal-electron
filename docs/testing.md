@@ -49,6 +49,45 @@ moves, in order of preference:
 
 Never lower the threshold to make a change fit.
 
+## The packaged application answers for itself
+
+`npm run test:e2e` drives the unpackaged build, because
+`EnableNodeCliInspectArguments: false` stops Playwright attaching to a packaged
+one. That fuse stays as it is. Until now nothing launched the artifact a user
+installs, and two defects shipped inside it: #86 and #88. `verify-package.mjs`
+reads the archive listing, which finds a file that is absent and not one that
+is present where the loader cannot reach it.
+
+`npm run package && npm run smoke:packaged` closes the macOS half.
+`scripts/smoke-packaged.mjs` launches
+`Stuffbucket.app/Contents/MacOS/Stuffbucket` with `--self-check=terminal` and a
+token. The application opens a shell through `TerminalHost`, the same class the
+terminal uses, makes it print the token, writes one line, and exits with a
+code. `src/main/native/self-check.ts` holds the argument protocol, and
+`tests/self-check.test.ts` pairs it with the driver's copy of the strings.
+
+Three properties are what stop it passing for nothing:
+
+- **The token is random per run.** It reaches the driver only through a shell
+  that ran `printf`, so a launch that opens no shell cannot produce one.
+- **The command carries the token in two halves.** A pty echoes what is written
+  to it, so a command containing the whole token would satisfy the assertion
+  from that echo, with nothing having run.
+- **Every run reproduces #88.** The driver moves `spawn-helper` out of
+  `app.asar.unpacked` and launches again. That run has to fail, and it has to
+  fail by reporting the shell rather than by dying before the check. Then the
+  file goes back.
+
+The check runs before `whenReady` and opens no window, so it needs no window
+server and no signed binary. `package (macos-latest)` runs it.
+
+What it leaves uncovered: no window, no renderer, and no IPC. It says nothing
+about the Windows or linux packages, and nothing about a signed or notarised
+bundle. Run it on the package Forge produces, which carries an ad-hoc signature
+that `codesign --verify` already rejects because packager rewrites `Info.plist`
+afterwards. Signing happens later, in stuffbucket/macos-runner, and moving a
+file inside a bundle that has been signed properly would break its seal.
+
 ## User interface changes
 
 Green unit tests are necessary but not sufficient for a layout change.

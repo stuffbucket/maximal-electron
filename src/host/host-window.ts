@@ -20,6 +20,12 @@ export interface HostWindowOptions {
   titleBarStyle?: BrowserWindowConstructorOptions['titleBarStyle'];
   titleBarOverlay?: BrowserWindowConstructorOptions['titleBarOverlay'];
   trafficLightPosition?: BrowserWindowConstructorOptions['trafficLightPosition'];
+  /**
+   * Show the window on `ready-to-show`. Default true. A consumer that reveals
+   * the window itself — after moving it, or after a splash closes — sets this
+   * false, and the ordering is then its own.
+   */
+  showWhenReady?: boolean;
   /** Load the renderer (dev-server URL or built index.html) into the window. */
   loadRenderer: (window: BrowserWindow) => void;
 }
@@ -31,8 +37,7 @@ export interface HostWindowOptions {
  * `nodeIntegration`; every external link and cross-origin navigation is handed
  * to the real browser where it cannot reach Electron APIs. The consumer injects
  * its own preload and renderer through `options`, so the shell stays agnostic
- * about what it hosts. (Reusable seam consumed by e.g. maximal/client;
- * see maximal-electron#22.)
+ * about what it hosts. See issue #22 for the seam a consumer composes.
  */
 export function createHostWindow(options: HostWindowOptions): BrowserWindow {
   const window = new BrowserWindow({
@@ -69,7 +74,9 @@ export function createHostWindow(options: HostWindowOptions): BrowserWindow {
     }
   });
 
-  window.once('ready-to-show', () => window.show());
+  if (options.showWhenReady ?? true) {
+    window.once('ready-to-show', () => window.show());
+  }
   options.loadRenderer(window);
   return window;
 }

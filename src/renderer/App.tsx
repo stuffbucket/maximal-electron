@@ -38,6 +38,7 @@ import { bridge, useBridgeEvent, usePreferences } from './lib/bridge.js';
 import { SAMPLE_ACCOUNT, VIEW_LABELS, itemsFor, type Item } from './lib/data.js';
 import type { SettingsSurface } from './lib/settings.js';
 import { useShellTabs } from './lib/useShellTabs.js';
+import { useDetachedTerminals } from './lib/useDetachedTerminals.js';
 import { useThemePreference } from './lib/useThemePreference.js';
 
 /**
@@ -73,11 +74,12 @@ function icon(item: Item, size = 28) {
 /** The `+` button opens a terminal, numbered from the terminals already open. */
 function newTerminal(existing: ShellTab[]): ShellTab {
   const count = existing.filter((tab) => tab.kind === 'terminal').length + 1;
-  return {
-    id: `term-${String(count)}`,
-    title: `Terminal ${String(count)}`,
-    kind: 'terminal',
-  };
+  return terminalTab(`term-${String(count)}`);
+}
+
+/** `newTerminal` chose the id, so reattaching reads the number back out of it. */
+function terminalTab(id: string): ShellTab {
+  return { id, title: `Terminal ${id.replace('term-', '')}`, kind: 'terminal' };
 }
 
 const subscribeToPanelToggles: PanelToggleSubscription = (listener) =>
@@ -105,6 +107,23 @@ export function App() {
   const items = useMemo(() => itemsFor(view), [view]);
   const selected = items.find((item) => item.id === selectedId);
   const current = tabs.find((tab) => tab.id === activeTab);
+
+  const terminalIds = useMemo(
+    () => tabs.filter((tab) => tab.kind === 'terminal').map((tab) => tab.id),
+    [tabs],
+  );
+  const { detached, refresh } = useDetachedTerminals(
+    bridgeTerminalTransport,
+    terminalIds,
+  );
+
+  const reattachTerminal = useCallback(
+    (id: string) => {
+      setTabs((prev) => (prev.some((tab) => tab.id === id) ? prev : [...prev, terminalTab(id)]));
+      setActiveTab(id);
+    },
+    [setActiveTab, setTabs],
+  );
 
   /* ------------------------------------------------------------- effects */
 
@@ -173,6 +192,8 @@ export function App() {
 
   useBridgeEvent('menu:navigate', ({ view: next }) => goToView(next));
   useBridgeEvent('update:status', setUpdateStatus);
+  // A detached shell can end on its own, and nothing else would notice.
+  useBridgeEvent('pty:exit', refresh);
 
   const checkUpdates = useCallback(() => {
     setUpdateStatus({ state: 'checking' });
@@ -193,9 +214,10 @@ export function App() {
     if (current?.kind === 'terminal') {
       return (
         <TerminalTabs
-          ids={tabs.filter((tab) => tab.kind === 'terminal').map((tab) => tab.id)}
+          ids={terminalIds}
           activeId={activeTab}
           transport={bridgeTerminalTransport}
+          disposition={prefs?.terminalDetach ? 'detach' : 'terminate'}
           theme={currentTerminalTheme()}
         />
       );
@@ -279,6 +301,8 @@ export function App() {
           onPrefChange={setPrefs}
           updateStatus={updateStatus}
           onCheckUpdates={checkUpdates}
+          detachedTerminals={detached}
+          onReattachTerminal={reattachTerminal}
         />
       }
     />

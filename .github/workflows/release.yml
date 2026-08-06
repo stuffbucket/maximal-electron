@@ -163,18 +163,9 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $appDir = "out\Stuffbucket-win32-x64"
-          if (-not (Test-Path "$appDir\Stuffbucket.exe")) {
-            Write-Error "Packaged app not found at $appDir"
-          }
-          New-Item -ItemType Directory -Path dist-release -Force | Out-Null
-          $out = "dist-release\stuffbucket-$env:TAG-windows-x64.msi"
-          wix build build\windows\app.wxs `
-            -d "Version=${{ steps.ver.outputs.version }}" `
-            -arch x64 `
-            -bindpath "AppDir=$appDir" `
-            -ext WixToolset.Util.wixext `
-            -out $out
+          .\scripts\build-msi.ps1 `
+            -Version "${{ steps.ver.outputs.version }}" `
+            -Out "dist-release\stuffbucket-$env:TAG-windows-x64.msi"
 
       - name: SHA-256
         shell: bash
@@ -204,15 +195,16 @@ jobs:
             "dist-release/stuffbucket-${TAG}-windows-x64.msi" \
             "dist-release/stuffbucket-${TAG}-windows-x64.msi.sha256"
 
-  # Silent install, assert, run, uninstall, assert clean removal. Copied in
-  # shape from maximal's windows-msi-verify. `publish` does not gate on this:
-  # a broken installer costs an installer, not the release.
+  # Silent install, assert the whole tree, launch, uninstall, assert clean
+  # removal. Copied in shape from maximal's windows-msi-verify. `publish` does
+  # not gate on this: a broken installer costs an installer, not the release.
   windows-msi-verify:
     needs: windows-msi
     runs-on: windows-2022
     permissions:
       contents: read
     steps:
+      - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
         with:
           name: windows-msi
@@ -230,43 +222,18 @@ jobs:
           "MSI_PATH=$($found[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           Write-Host "Verifying $($found[0].Name)"
 
-      - name: Install silently
+      - name: Install, assert, launch, uninstall, assert
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $log = "install.log"
-          $p = Start-Process msiexec -ArgumentList "/i","`"$env:MSI_PATH`"","/qn","/l*v",$log -Wait -PassThru
-          if ($p.ExitCode -ne 0) { Get-Content $log -Tail 60; Write-Error "Install failed: $($p.ExitCode)" }
+          .\scripts\verify-msi.ps1 -Msi "$env:MSI_PATH"
 
-      - name: Assert installed state
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $dir = Join-Path $env:LOCALAPPDATA 'Programs\Stuffbucket'
-          if (-not (Test-Path "$dir\Stuffbucket.exe")) { Write-Error "Stuffbucket.exe missing from $dir" }
-
-          $marker = Get-ItemProperty -Path 'HKCU:\Software\stuffbucket\Stuffbucket' -Name installed
-          if ($marker.installed -ne 1) { Write-Error "HKCU installed marker not set" }
-
-          $arp = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' |
-            ForEach-Object { Get-ItemProperty $_.PSPath } |
-            Where-Object { $_.DisplayName -eq 'Stuffbucket' }
-          if (-not $arp) { Write-Error "No Add/Remove Programs entry" }
-          Write-Host "Installed OK: $dir"
-
-      - name: Uninstall silently
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $p = Start-Process msiexec -ArgumentList "/x","`"$env:MSI_PATH`"","/qn" -Wait -PassThru
-          if ($p.ExitCode -ne 0) { Write-Error "Uninstall failed: $($p.ExitCode)" }
-
-      - name: Assert clean removal
-        shell: pwsh
-        run: |
-          $dir = Join-Path $env:LOCALAPPDATA 'Programs\Stuffbucket'
-          if (Test-Path "$dir\Stuffbucket.exe") { Write-Error "Files left behind in $dir" }
-          Write-Host "Removed cleanly"
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-msi-install-log
+          path: install.log
+          if-no-files-found: ignore
 
   # No dry version. It needs a credential for the private builder, and its only
   # product is an asset on the draft. Tag-only, so the ref names the tag.
@@ -368,6 +335,16 @@ jobs:
           name: package-tarball
           path: dist-release/*.tgz
           if-no-files-found: error
+
+      # The other install path. `npm pack` runs `prepack`; a consumer pinning a
+      # git ref gets `prepare`, and a tag has shipped with only the first wired.
+      # Issue #83. The commit rather than the tag name, because a dry run has no
+      # tag to resolve and the two name the same objects on a tag push.
+      - name: Install this commit by git ref, the way a consumer pins it
+        env:
+          REPOSITORY: github:${{ github.repository }}
+          REF: ${{ github.sha }}
+        run: npm run verify:git-install -- --repository "$REPOSITORY" --ref "$REF"
 
       - name: Attach the tarball to the draft
         if: github.event_name != 'workflow_dispatch'

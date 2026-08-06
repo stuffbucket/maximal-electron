@@ -88,8 +88,8 @@ export const SAMPLE_APPS: AppIntegration[] = [
     installCommand: 'brew install --cask claude',
   },
   {
-    id: 'copilot-cli',
-    name: 'Copilot CLI',
+    id: 'codex-cli',
+    name: 'Codex CLI',
     status: 'coming-soon',
     enabled: false,
   },
@@ -101,7 +101,7 @@ export const SAMPLE_DIAGNOSTICS: DiagnosticGroup[] = [
     id: 'connection',
     label: 'Connection',
     entries: [
-      { label: 'Provider', value: 'maximal on localhost:4141', status: 'done' },
+      { label: 'Provider', value: 'Local proxy on localhost:4141', status: 'done' },
       { label: 'Models cached', value: '4' },
       { label: 'Rate limit', value: 'Unlimited' },
       { label: 'Web search', value: 'Built-in, no key' },
@@ -128,8 +128,8 @@ export function sampleUsage(nowMs: number): UsageReport {
     },
     byProvider: [
       {
-        id: 'maximal',
-        label: 'maximal',
+        id: 'local-proxy',
+        label: 'Local proxy',
         totals: {
           input: 150_000,
           output: 34_000,
@@ -200,7 +200,7 @@ export function sampleUsage(nowMs: number): UsageReport {
       {
         id: 'event-1',
         atMs: nowMs - 12_000,
-        provider: 'maximal',
+        provider: 'Local proxy',
         model: 'claude-sonnet-4-5',
         endpoint: 'Messages',
         input: 4_812,
@@ -210,7 +210,7 @@ export function sampleUsage(nowMs: number): UsageReport {
       {
         id: 'event-2',
         atMs: nowMs - 240_000,
-        provider: 'maximal',
+        provider: 'Local proxy',
         model: 'claude-haiku-4-5',
         endpoint: 'Chat',
         input: 1_204,
