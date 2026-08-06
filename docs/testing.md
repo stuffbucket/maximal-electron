@@ -22,30 +22,88 @@ still works.
 ## Mutation testing
 
 `npm run mutate` reports what the tests actually catch, which coverage does not.
-It is scoped to pure-logic modules, and **it breaks below 100**.
+**It breaks below 100.** It is three commands, and the two either side of
+Stryker exist because a percentage on its own is a weak claim: it says nothing
+about how many mutants there were, which files produced them, or what did the
+killing.
 
-Stryker cannot mutate anything importing `electron`: that code needs a real
-Electron runtime, not Node. Extend `mutate` in `stryker.conf.json` only with
-modules that run under plain Node.
+| Step | What it decides |
+| --- | --- |
+| `scripts/mutation-scope.mjs` | Which modules Stryker should sweep, from a criterion |
+| `stryker run` | The score, against `break: 100` |
+| `scripts/mutation-report.mjs` | Whether the run measured what it claims to have measured |
 
 A surviving mutant is a real gap. It found one here: `src/renderer/lib/data.ts`
 scored 0 with 77 untouched mutants, because it had no unit tests at all.
 
-### Reaching 100 again after you add code
+### Which modules to sweep: a criterion, not a hand-list
 
-The threshold is 100, so a new module has to get there before it lands. Three
-moves, in order of preference:
+`mutate` in `stryker.conf.json` is a list, but it is no longer maintained by
+hand. `scripts/mutation-scope.mjs` derives the set it should hold: **every file
+under `src/` and `scripts/` whose import closure reaches neither `electron` nor
+React for a value.** Anything that does needs a real Electron runtime or a
+browser, not Node, and Stryker cannot run it at all.
 
-1. **Write the test.** Most survivors are real. If a mutant lives, ask what
-   behaviour it changed and whether anything asserts that behaviour.
-2. **Delete the unreachable branch.** `noUncheckedIndexedAccess` forces a
-   fallback on every index read, and a fallback that can never run is dead code
-   that reads as untested. `cycle` in `data.ts` and `firstLine` in `ffmpeg.ts`
-   both exist to remove one. Prefer this to a suppression.
-3. **Suppress, with the reason.** Only for a mutant that provably cannot change
-   behaviour. Use `// Stryker disable next-line <Mutator>: why`, and state the
-   evidence, not the conclusion. There are two in the repository. Read them
-   before you write a third.
+The criterion counts value imports only. `import type { BrowserWindow }` does
+not put a module out of reach, because TypeScript erases it and the emitted
+module never loads Electron. `src/host/main-options.ts` is the worked example,
+and it is mutated.
+
+A file the criterion selects that is on neither `mutate` nor the `DEFERRED` map
+fails the check. That is the whole point: #102 records two modules landing with
+fixture tests and no mutation coverage while the headline stayed 100.00, because
+nobody remembered to name them.
+
+`DEFERRED` is the backlog, one entry per file with the issue that closes it, and
+#125 holds the measurement: applying the criterion to everything scores **38.44
+over 4391 mutants**, of which 2449 have no coverage at all. Moving a file off
+that map means getting it to 100 first.
+
+### What the score does not say
+
+Three things move Stryker's denominator without moving its percentage, and
+`scripts/mutation-report.mjs` reads the JSON report back to catch each one.
+
+- A mutant that **crashes the runner** is scored `RuntimeError` and leaves the
+  denominator entirely. It is not a false kill — Stryker keeps it out of the
+  score rather than counting it — but nothing failed the build over it either.
+  See #116.
+- A mutant nothing imports is scored `NoCoverage`.
+- A file that quietly drops off `mutate` produces no mutants, and its absence
+  looks exactly like success.
+
+So the check asserts the shape of the run: every kill names a test that
+reported, every file on the list produced at least one mutant, the total is at
+or above `MUTANT_FLOOR`, and nothing ended in `RuntimeError`, `NoCoverage` or a
+timeout. `IGNORED_CEILING` holds the suppression count, so a fourth
+`// Stryker disable` has to be added on purpose.
+
+Raise `MUTANT_FLOOR` when the count rises. A fall is the defect it exists to
+catch.
+
+### Reaching 100 after you add code
+
+The threshold is 100, so a new module has to get there before it lands. A
+survivor is one of exactly three things, and **"documented-equivalent" as a
+catch-all is not acceptable**:
+
+1. **Killable.** Write the test, and show the mutant going Survived to Killed.
+   Most survivors are this. If a mutant lives, ask what behaviour it changed
+   and whether anything asserts that behaviour.
+2. **Dead.** Delete the code, or encode the impossibility in the type system.
+   `noUncheckedIndexedAccess` forces a fallback on every index read, and a
+   fallback that can never run is dead code that reads as untested. `cycle` in
+   `data.ts` and `firstLine` in `ffmpeg.ts` both exist to remove one. Prefer
+   this to a suppression.
+3. **A deliberately-retained equivalent, with a written proof** over the
+   reachable input domain. Use `// Stryker disable next-line <Mutator>: why`,
+   and state the evidence, not the conclusion. There are three in the
+   repository. Read them before you write a fourth, and raise
+   `IGNORED_CEILING`.
+
+The rule comes from `stuffbucket/maximal-core`'s testing strategy, which states
+it better than anything written here before.
+
 
 Never lower the threshold to make a change fit.
 
