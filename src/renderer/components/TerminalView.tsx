@@ -3,6 +3,7 @@ import type { ITheme } from 'ghostty-web';
 import { useEffect, useRef } from 'react';
 
 import type {
+  DetachableTerminalTransport,
   TerminalDescriptor,
   TerminalTransport,
 } from '../lib/terminal-transport.js';
@@ -16,6 +17,9 @@ import type {
  * supported route, `reset()`, wipes the screen and the scrollback. Losing a
  * build log to a theme toggle is the worse trade, so a terminal keeps the
  * scheme it opened in and a new tab picks up the current one.
+ *
+ * **Unmounting terminates the session, unless the caller says otherwise.** See
+ * `disposition`.
  */
 
 /** `init()` is shared, so several tabs opening at once await one load. */
@@ -28,12 +32,25 @@ function ensureWasm(): Promise<void> {
 /** The host element carries the terminal instance, for end-to-end tests. */
 export type TerminalHost = HTMLDivElement & { __terminal?: GhosttyTerminal };
 
-export interface TerminalViewProps extends TerminalDescriptor {
-  transport: TerminalTransport;
+interface TerminalViewCommonProps extends TerminalDescriptor {
   /** Literal colours. Resolve with `readTerminalTheme`. */
   theme?: ITheme;
   testId?: string;
 }
+
+/**
+ * The view's own lifetime, and the session's, as two decisions.
+ *
+ * `detach` needs a transport that can list its sessions, because a shell that
+ * outlives every view and that nothing can enumerate is a process the user
+ * cannot see and cannot stop. Requiring `list` here is what stops half the
+ * feature shipping.
+ */
+export type TerminalViewProps = TerminalViewCommonProps &
+  (
+    | { disposition?: 'terminate'; transport: TerminalTransport }
+    | { disposition: 'detach'; transport: DetachableTerminalTransport }
+  );
 
 export function TerminalView({
   id,
@@ -41,10 +58,16 @@ export function TerminalView({
   shell,
   ariaLabel = 'Terminal',
   transport,
+  disposition = 'terminate',
   theme,
   testId = 'terminal',
 }: TerminalViewProps) {
   const host = useRef<HTMLDivElement>(null);
+
+  // The disposition is read at cleanup rather than at mount, so a caller that
+  // changes it while a session runs gets the current answer.
+  const onUnmount = useRef(disposition);
+  onUnmount.current = disposition;
 
   // `id` identifies the session for this view's lifetime. Re-running this
   // effect would orphan a shell, so the descriptor fields read at spawn time
@@ -108,7 +131,7 @@ export function TerminalView({
       disposed = true;
       cleanupObserver?.();
       unsubscribe?.();
-      void transport.terminate(id);
+      if (onUnmount.current === 'terminate') void transport.terminate(id);
       term?.dispose();
     };
   }, [id]);

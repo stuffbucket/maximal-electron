@@ -65,33 +65,15 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          New-Item -ItemType Directory -Path dist-release -Force | Out-Null
-          wix build build\windows\app.wxs `
-            -d "Version=$env:VERSION" `
-            -arch x64 `
-            -bindpath "AppDir=out\Stuffbucket-win32-x64" `
-            -ext WixToolset.Util.wixext `
-            -out "dist-release\stuffbucket-dev-windows-x64.msi"
+          .\scripts\build-msi.ps1 `
+            -Version "$env:VERSION" `
+            -Out "dist-release\stuffbucket-dev-windows-x64.msi"
 
-      - name: Install, assert, uninstall, assert
+      - name: Install, assert, launch, uninstall, assert
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $msi = "dist-release\stuffbucket-dev-windows-x64.msi"
-
-          $p = Start-Process msiexec -ArgumentList "/i","`"$msi`"","/qn","/l*v","install.log" -Wait -PassThru
-          if ($p.ExitCode -ne 0) { Get-Content install.log -Tail 60; Write-Error "Install failed: $($p.ExitCode)" }
-
-          $dir = Join-Path $env:LOCALAPPDATA 'Programs\Stuffbucket'
-          if (-not (Test-Path "$dir\Stuffbucket.exe")) { Write-Error "Stuffbucket.exe missing" }
-          $marker = Get-ItemProperty -Path 'HKCU:\Software\stuffbucket\Stuffbucket' -Name installed
-          if ($marker.installed -ne 1) { Write-Error "HKCU marker not set" }
-
-          $p = Start-Process msiexec -ArgumentList "/x","`"$msi`"","/qn" -Wait -PassThru
-          if ($p.ExitCode -ne 0) { Write-Error "Uninstall failed: $($p.ExitCode)" }
-          if (Test-Path "$dir\Stuffbucket.exe") { Write-Error "Files left behind" }
-
-          Write-Host "MSI install and removal verified."
+          .\scripts\verify-msi.ps1 -Msi "dist-release\stuffbucket-dev-windows-x64.msi"
 
       - if: always()
         uses: actions/upload-artifact@v4
@@ -99,5 +81,6 @@ jobs:
           name: windows-msi-dev
           path: |
             dist-release/*.msi
+            dist-release/*.files.txt
             install.log
           if-no-files-found: warn

@@ -32,6 +32,7 @@ import {
   VERIFY_SURFACE,
   dependencyContractChecks,
   exportTargets,
+  mainSurfaceChecks,
   moduleGraphChecks,
   reExportedNames,
 } from './export-checks.mjs';
@@ -239,6 +240,17 @@ async function run() {
     JSON.stringify(report.verify.names) === JSON.stringify(VERIFY_SURFACE),
     'the ./verify export exposes the documented names',
   );
+
+  /*
+   * The seam `maximal/client` composes from, read out of the package it would
+   * actually install. Issue #15.
+   */
+  console.log('\nInstalled main-process seam');
+  const mainChecks = await mainSurfaceChecks(
+    packageRoot,
+    installedManifest.exports?.['./main']?.types,
+  );
+  for (const { name: message, ok } of mainChecks.checks) check(ok, message);
 
   /*
    * Resolving an export is more than the file existing. A `dist/` from a stale

@@ -34,13 +34,50 @@ export type TerminalEvent =
   | { type: 'data'; data: string }
   | { type: 'exit'; exitCode: number };
 
+/**
+ * What unmounting a view does to its session.
+ *
+ * `terminate` is the default, and is what every caller got before there was a
+ * choice. `detach` leaves the shell running, which is what a long build needs
+ * and what `tmux detach` means.
+ */
+export type TerminalDisposition = 'terminate' | 'detach';
+
+/** A live session, whether or not a view is showing it. */
+export interface TerminalSession {
+  id: string;
+  cwd: string;
+  shell: string;
+  /** Milliseconds since the epoch. */
+  startedAt: number;
+}
+
 export interface TerminalTransport {
+  /**
+   * Open a session, or attach to the one `id` already names.
+   *
+   * A host that supports detach replays what the session has printed, so
+   * attaching is how a view returns to a shell it left running.
+   */
   spawn(descriptor: TerminalDescriptor & { cols: number; rows: number }): Promise<void>;
   write(id: string, data: string): Promise<void>;
   resize(id: string, cols: number, rows: number): Promise<void>;
   terminate(id: string): Promise<void>;
   /** Only this session's events. Returns its own unsubscribe. */
   subscribe(id: string, listener: (event: TerminalEvent) => void): () => void;
+}
+
+/**
+ * A transport whose sessions can be found again.
+ *
+ * `TerminalView` demands this to accept `disposition="detach"`. A session that
+ * outlives its view and that nothing can enumerate is a process the user cannot
+ * see and cannot stop, which is a leak rather than a feature, so the type
+ * refuses the half of the pair that leaks.
+ */
+export interface DetachableTerminalTransport extends TerminalTransport {
+  /** Every live session, including ones no view is showing. */
+  list(): Promise<TerminalSession[]>;
 }
 
 /**

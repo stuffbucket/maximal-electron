@@ -59,11 +59,18 @@ A dock badge tracks real application state.
 
 ## Consume the shell frame
 
-GitHub and npm installs expose the secured host window at
+GitHub and npm installs expose the main-process lifecycle at
+`stuffbucket-electron/main`, the secured host window at
 `stuffbucket-electron/host` and the generic renderer frame at
 `stuffbucket-electron/renderer`. The renderer entry exports `ShellLayout`,
 `TitleBar`, `TabBar`, `NavRail`, `Canvas`, and `IconButton`. It does not export
 the reference application, terminal, agent, sample data, or fixtures.
+
+`runMain(runtime, options)` runs a main process on this shell's lifecycle: the
+profile directory, the single instance lock, the window, the quit policy, and a
+deferred shutdown. Every application-specific value is a callback in `options`,
+whose shape is versioned. This application's own `src/main/index.ts` runs on it.
+See [docs/embedding.md](./docs/embedding.md).
 
 The package declares no runtime dependencies. Every package an export imports is
 an optional peer, so installing it for `stuffbucket-electron/host` adds nothing
@@ -72,6 +79,7 @@ you use:
 
 | Entry | Peers |
 | --- | --- |
+| `stuffbucket-electron/main` | `electron` |
 | `stuffbucket-electron/host` | `electron` |
 | `stuffbucket-electron/host/terminal` | `node-pty` |
 | `stuffbucket-electron/renderer` | `react`, `react-dom`, `ghostty-web`, `lucide-react`, `react-resizable-panels`, `@radix-ui/react-collapsible`, `@radix-ui/react-tabs`, `@radix-ui/react-tooltip` |

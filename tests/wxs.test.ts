@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
@@ -64,4 +65,102 @@ describe('the Windows installer source', () => {
       expect(xml).toContain('<Wix');
     });
   }
+});
+
+/**
+ * Does the harvest reach the packaged application?
+ *
+ * `<Files Include="!(bindpath.AppDir)\**" />` names no file, so nothing inside
+ * the .wxs says whether it found any. WiX resolves a relative bind path in a
+ * harvest against the .wxs file's own directory rather than the working
+ * directory, warns, and produces an MSI with no application in it. That is
+ * what `v0.0.2` shipped (#86).
+ *
+ * The two things that decide the answer both live outside the .wxs: the bind
+ * path `scripts/build-msi.ps1` passes, and whether an empty harvest is an
+ * error rather than a warning.
+ */
+
+const ROOT = fileURLToPath(new URL('../', import.meta.url));
+const BUILD_MSI = 'scripts/build-msi.ps1';
+const VERIFY_MSI = 'scripts/verify-msi.ps1';
+
+function read(relative: string): string {
+  return readFileSync(path.join(ROOT, relative), 'utf8');
+}
+
+/** The bind path names a `Files` harvest depends on. */
+function harvestBindPaths(xml: string): string[] {
+  return [...xml.matchAll(/<Files\b[^>]*\bInclude="([^"]*)"/g)]
+    .map((match) => match[1] ?? '')
+    .flatMap((include) =>
+      [...include.matchAll(/!\(bindpath\.([^)]+)\)/g)].map((match) => match[1] ?? ''),
+    );
+}
+
+/** Executable names the installer hard-codes: the icon, the shortcuts, taskkill. */
+function executablesNamed(xml: string): string[] {
+  const patterns = [
+    /<Icon\b[^>]*\bSourceFile="([^"]*)"/g,
+    /\bTarget="([^"]*)"/g,
+    /\bExeCommand="[^"]*\/IM\s+(\S+)/g,
+  ];
+
+  return patterns
+    .flatMap((pattern) => [...xml.matchAll(pattern)].map((match) => match[1] ?? ''))
+    .map((value) => value.split(/[\\\]]/).pop() ?? '')
+    .filter((value) => value.endsWith('.exe'));
+}
+
+describe('the MSI harvest', () => {
+  const { productName } = JSON.parse(read('package.json')) as { productName: string };
+  const buildScript = read(BUILD_MSI);
+  const wxs = read('build/windows/app.wxs');
+
+  it('names the executable the packaged application produces', () => {
+    const named = executablesNamed(wxs);
+    expect(named.length).toBeGreaterThan(0);
+    expect([...new Set(named)]).toEqual([`${productName}.exe`]);
+  });
+
+  it('builds and verifies that same executable', () => {
+    for (const file of [BUILD_MSI, VERIFY_MSI]) {
+      expect(read(file), `${file} does not name ${productName}.exe`).toContain(
+        `${productName}.exe`,
+      );
+    }
+  });
+
+  it('passes every bind path the harvest reads, resolved to an absolute path', () => {
+    const names = harvestBindPaths(wxs);
+    expect(names.length).toBeGreaterThan(0);
+
+    for (const name of names) {
+      const passed = new RegExp(`-bindpath "${name}=\\$(\\w+)"`).exec(buildScript);
+      expect(passed, `${BUILD_MSI} passes no -bindpath for ${name}`).not.toBeNull();
+
+      expect(
+        buildScript,
+        `${BUILD_MSI} passes ${name} without resolving it to an absolute path`,
+      ).toMatch(new RegExp(`\\$${passed?.[1] ?? ''}\\s*=\\s*\\(Resolve-Path`));
+    }
+  });
+
+  it('treats a harvest that found nothing as an error', () => {
+    // WIX8600 is zero files harvested, WIX8601 a missing harvest directory.
+    expect(buildScript).toContain('-wx8600');
+    expect(buildScript).toContain('-wx8601');
+  });
+
+  it('leaves no workflow calling wix build around those flags', () => {
+    const directory = path.join(ROOT, '.github/workflows');
+    const workflows = readdirSync(directory).filter((name) => name.endsWith('.yml'));
+
+    expect(workflows.length).toBeGreaterThan(0);
+    expect(
+      workflows.filter((name) =>
+        readFileSync(path.join(directory, name), 'utf8').includes('wix build'),
+      ),
+    ).toEqual([]);
+  });
 });

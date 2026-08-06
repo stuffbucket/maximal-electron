@@ -68,6 +68,14 @@ export interface Preferences {
   agentToolsets: string[];
   /** Theme preference. `system` follows the OS. */
   theme: 'system' | 'light' | 'dark';
+  /**
+   * Closing a terminal tab leaves its shell running.
+   *
+   * Off by default: a shell that outlives its tab is a process the user can no
+   * longer see, so keeping one is a choice rather than a surprise. The status
+   * bar lists what is still running, and reopening a tab attaches to it.
+   */
+  terminalDetach: boolean;
 }
 
 export interface NotifyRequest {
@@ -109,6 +117,15 @@ export interface PtyResizeRequest {
   id: string;
   cols: number;
   rows: number;
+}
+
+/** A live shell, whether or not a terminal view is showing it. */
+export interface PtySession {
+  id: string;
+  cwd: string;
+  shell: string;
+  /** Milliseconds since the epoch. */
+  startedAt: number;
 }
 
 /* ------------------------------------------------------- overlay agent */
@@ -195,6 +212,8 @@ export interface IpcContract {
   'pty:write': { request: PtyWriteRequest; response: void };
   'pty:resize': { request: PtyResizeRequest; response: void };
   'pty:kill': { request: { id: string }; response: void };
+  /** Every live session for this window, so a detached one can be found again. */
+  'pty:list': { request: void; response: PtySession[] };
   'pty:default-shell': { request: void; response: string };
 
   // The floating overlay. `overlay:hide` is how the card dismisses itself,
@@ -236,6 +255,7 @@ export const IPC_CHANNELS = [
   'pty:write',
   'pty:resize',
   'pty:kill',
+  'pty:list',
   'pty:default-shell',
   'overlay:toggle',
   'overlay:hide',
@@ -343,4 +363,5 @@ export const DEFAULT_PREFERENCES: Preferences = {
   agentCwd: '',
   agentToolsets: ['app'],
   theme: 'system',
+  terminalDetach: false,
 };

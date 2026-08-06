@@ -7,6 +7,7 @@ import {
   providerState,
   resetShell,
   setTheme,
+  terminalScreen,
   type Harness,
 } from './harness.js';
 import { createRegistry } from './shuffle.js';
@@ -335,30 +336,7 @@ scenario('the terminal runs a command and shows its output', async () => {
   // about what the terminal actually parsed.
   await expect
     .poll(
-      async () =>
-        terminal.evaluate((node) => {
-          const term = (node as HTMLElement & { __terminal?: unknown })
-            .__terminal as
-            | {
-                buffer: {
-                  active: {
-                    length: number;
-                    getLine: (
-                      y: number,
-                    ) => { translateToString: (trim?: boolean) => string } | undefined;
-                  };
-                };
-              }
-            | undefined;
-          if (!term) return '';
-
-          const active = term.buffer.active;
-          const lines: string[] = [];
-          for (let y = 0; y < active.length; y += 1) {
-            lines.push(active.getLine(y)?.translateToString(true) ?? '');
-          }
-          return lines.join('\n');
-        }),
+      () => terminalScreen(terminal),
       { timeout: 20_000, message: 'terminal never echoed the command output' },
     )
     .toContain('GHOSTTY_OK_7391');

@@ -7,6 +7,10 @@
   "author": "stuffbucket",
   "main": ".vite/build/main.js",
   "exports": {
+    "./main": {
+      "types": "./dist/host/run-main.d.ts",
+      "default": "./dist/host/run-main.js"
+    },
     "./host": {
       "types": "./dist/host/host-window.d.ts",
       "default": "./dist/host/host-window.js"
