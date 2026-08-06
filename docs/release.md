@@ -24,6 +24,8 @@ knows. A third train would be that decision made too early.
 | `v0.0.1` | The shell's own behaviour: accessibility, interface state, its defects. |
 | `v0.0.2` | The seam a consumer depends on: the host entrypoint, the export, the    |
 |          | preload bridge, client integration, theming from an external source.    |
+| `v0.0.3` | What a consumer installs: the artifact is correct and provably so.      |
+| `v0.0.4` | What a consumer carries: install weight, the entrypoint seam, guards.   |
 
 The test for which train a change belongs on is whether
 `stuffbucket/maximal` has to change to benefit from it. If it does, the change
