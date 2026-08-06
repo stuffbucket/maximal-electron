@@ -51,6 +51,24 @@ Working, with tools, streaming, and an approval gate. See `AGENTS.md`.
 3. The double-tap Ctrl monitor, which needs a permission prompt.
 4. Windows and Linux verification for the terminal and the overlay.
 
+## Measured, and not done
+
+**The main process does not persist V8 bytecode between launches.** Node's
+compile cache is available — Electron 43 bundles Node 24.18.0, and
+`module.enableCompileCache` reports the cache as enabled in the packaged main
+process, so this is a decision rather than a limitation. Issue #130 asked for
+it and was closed on the numbers.
+
+Thirty packaged launches per arm on macOS arm64, cache hits confirmed against
+the 812 KB eager chunk: the module graph evaluated 4.7 ms sooner at the median
+and the mean moved 2.0 ms, both inside a spread that overlaps almost entirely.
+By `app.whenReady()` the median gained 1.2 ms and the mean lost 0.7 ms. A first
+launch against an empty cache was consistently the slowest arm. The cost of
+taking it anyway is 640 KB under `app.getPath('userData')` that nothing evicts.
+
+Revisit only if the eager chunk grows several times over. The measurement lives
+in the pull request for #130.
+
 ## Research
 
 Work that has been argued for but not scoped lives in
