@@ -115,6 +115,7 @@ jobs:
         run: node probe/fuse-fork.mjs probe-electron/electron.exe
 
       - name: rung 4h, the package moved out of the repository tree
+        if: runner.os == 'Windows'
         timeout-minutes: 10
         env:
           ELECTRON_ENABLE_LOGGING: '1'
