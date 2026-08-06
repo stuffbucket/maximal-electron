@@ -82,6 +82,11 @@ Nothing is committed. It runs `verify:exports` first, so a tarball missing an
 export target fails before it is attached rather than after somebody installs
 it.
 
+It then installs the same commit **by git ref**, which is the other path and a
+different lifecycle script: npm runs `prepare` for a git dependency and
+`prepack` for a tarball. `stuffbucket/maximal` pins the git form, and `v0.0.2`
+shipped installing to nothing on it. See `docs/ci.md`.
+
 The asset is `stuffbucket-electron-<version>.tgz`. A consumer installs it from
 the release:
 

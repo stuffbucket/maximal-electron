@@ -97,15 +97,18 @@ an ancestor:
 | `--shell-accent` | Selection, focus, and resize feedback. |
 | `--shell-accent-muted` | Selected-control background. |
 
-`--shell-border-strong`, `--shell-focus`, `--shell-font`, `--shell-danger`,
-`--shell-danger-contrast`, spacing, radius, and height variables have
-structural fallbacks in the CSS. Applications should set
-them when their design system differs from those defaults. `TitleBar` accepts
-caller-owned `leading` and `actions` nodes. Direct `TitleBar` and `TabBar`
-consumers provide `tabIdBase` and use `getTabTriggerId` and `getTabPanelId` on
-their document tabpanels. `ShellLayout` creates that association from
-`layoutId`. It also accepts the same title bar regions and an optional
-panel-toggle subscription adapter, so host IPC stays in the consuming
+Sixteen more variables have structural fallbacks in the CSS, and two are read
+by JavaScript rather than by any rule. `docs/shell-variables.md` holds the whole
+contract, derived from the stylesheet and checked against it in both directions.
+Set the ones your design system disagrees with.
+`stuffbucket-electron/verify/shell-variables` exports the derivation so an
+application can assert its own adapter against the stylesheet it installed.
+
+`TitleBar` accepts caller-owned `leading` and `actions` nodes. Direct `TitleBar`
+and `TabBar` consumers provide `tabIdBase` and use `getTabTriggerId` and
+`getTabPanelId` on their document tabpanels. `ShellLayout` creates that
+association from `layoutId`. It also accepts the same title bar regions and an
+optional panel-toggle subscription adapter, so host IPC stays in the consuming
 application.
 
 Run `npm run build:package` after changing an exported source file. Run
