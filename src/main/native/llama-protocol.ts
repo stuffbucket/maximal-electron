@@ -115,6 +115,9 @@ const SIGBUS: Readonly<Record<string, number>> = { darwin: 10, linux: 7 };
  * so Crashpad records nothing; the engine's self check uses `process.crash()`
  * instead. Issue #156. The entry stays because a fatal error inside Node still
  * ends the child this way.
+ *
+ * A Windows code here also depends on Crashpad running: the same fault reports
+ * `0xC0000005` with the handler installed and `0xffff7003` without it.
  */
 const WINDOWS_FAULTS: Readonly<Record<number, string>> = {
   134: 'SIGABRT',

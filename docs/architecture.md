@@ -374,6 +374,13 @@ everywhere is that the supervisor named it as a fault: a code
 check and puts the number in the log to be pinned. That is how #154 pinned 134,
 and how #156 found out what 134 was.
 
+**On Windows the code depends on the crash reporter being up.** The same
+`process.crash()` reports `0xC0000005` with Crashpad's handler installed and
+`native fault 0xffff7003` without it, measured by suppressing
+`startCrashReports()` on a `windows-latest` run. So a `0xffff7003` in a report
+means the reporter was not running, and is not a fault worth naming in the
+table.
+
 ## The embedded engine was gated off on Windows, and is not any more
 
 From #144 until #149 `embeddedEngineStatus` reported the provider unavailable
