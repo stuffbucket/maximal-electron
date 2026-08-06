@@ -55,12 +55,20 @@ const SOURCE_ROOTS = ['src', 'e2e', 'tests', 'scripts', '.github', 'build'];
 /**
  * This checker does not count as evidence for itself.
  *
- * Both files name `READ_ONLY_TOOLS` and `MIN_SCREENSHOT_BYTES` as examples of
- * what they catch. Left in the haystack, those mentions make the two dead
- * symbols look alive, and the check silently stops working on exactly the
- * case it was written for.
+ * All three files name `READ_ONLY_TOOLS` and `MIN_SCREENSHOT_BYTES` as
+ * examples of what they catch. Left in the haystack, those mentions make the
+ * two dead symbols look alive, and the check silently stops working on exactly
+ * the case it was written for.
+ *
+ * The unit tests belong here for the same reason, found by breaking the build
+ * output rule on purpose: the fixture naming the break made the haystack
+ * vouch for it, and the run went green.
  */
-const SELF = ['scripts/verify-docs.mjs', 'scripts/docs-claims.mjs'];
+const SELF = [
+  'scripts/verify-docs.mjs',
+  'scripts/docs-claims.mjs',
+  'tests/docs-claims.test.ts',
+];
 const SOURCE_FILES = [
   'package.json',
   'forge.config.ts',
