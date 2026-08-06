@@ -70,8 +70,9 @@ const NO_DUMP_GRACE_MS = 10_000;
  * The floor on a dump's size.
  *
  * Observed at 570 KB to 815 KB across engine, renderer and main process
- * crashes on `darwin-arm64`. This rejects a zero-length placeholder; it does
- * not pin a size, because nothing here controls what Crashpad writes.
+ * crashes on `darwin-arm64`, and at 34 MB for the engine on `win32-x64`. This
+ * rejects a zero-length placeholder; it does not pin a size, because nothing
+ * here controls what Crashpad writes.
  */
 const MIN_DUMP_BYTES = 4096;
 

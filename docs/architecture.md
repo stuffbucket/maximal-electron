@@ -488,9 +488,10 @@ those are the runs that crash on purpose. Nothing is uploaded: there is no
 **Where the dumps land.** `app.getPath('crashDumps')`, which is
 `<userData>/Crashpad`. On macOS the database holds `settings.dat` and the
 directories `pending/`, `completed/`, `new/` and `attachments/`, and a dump
-arrives as `pending/<uuid>.dmp` at 570 KB to 815 KB. `host/crash-artifacts.ts`
-scans it recursively rather than by name, because those names are Crashpad's
-and differ by platform.
+arrives as `pending/<uuid>.dmp` at 570 KB to 815 KB. On Windows it is
+`%APPDATA%\<product>\Crashpad`, read off a packaged `windows-latest` run, and
+the engine's dump is 34 MB. `host/crash-artifacts.ts` scans it recursively
+rather than by name, because those names are Crashpad's and differ by platform.
 
 **The call is what produces the artifact, not Electron on its own.** With the
 start suppressed and everything else unchanged, the same crash left no file and
