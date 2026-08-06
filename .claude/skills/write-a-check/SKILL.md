@@ -153,7 +153,11 @@ holds the account of instances 1 to 3, and
 [`docs/proposals/README.md`](../../../docs/proposals/README.md) indexes it
 alongside the second review.
 
-Both are written as markdown links rather than backticked paths on purpose.
-`scripts/verify-docs.mjs` checks a link target and cannot see a path in
-backticks, which this document says four lines above. So a link is the only
-form of this reference that fails when the file moves.
+Both are markdown links rather than bare backticked paths, so a reader can
+follow them. `docs/proposals/` is exempt from name checking, which makes a link
+from a document somebody opens the only thing that keeps a proposal reachable.
+`docs/roadmap.md` carries the other one.
+
+Renaming either file fails `npm run verify:docs` twice, on the link and on the
+backticked path inside it. Both rules were run against a rename to confirm that,
+rather than assumed.
