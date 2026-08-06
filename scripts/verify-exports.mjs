@@ -6,6 +6,8 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, URL } from 'node:url';
 
+import { selectors, unscopedSelectors } from './css-selectors.mjs';
+
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const manifest = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
 const failures = [];
@@ -49,8 +51,37 @@ for (const target of exportTargets) {
   );
 }
 
-const rendererEntry = path.join(root, manifest.exports['./renderer'].default);
-const rendererSource = await readFile(rendererEntry, 'utf8');
+/*
+ * The stylesheet a consumer installs.
+ *
+ * `structural.css` ships unbundled and unscoped by anything but itself, so a
+ * selector that escapes `.sb-shell` restyles the consumer's whole application.
+ * `tests/package-exports.test.ts` judges the source; this judges the artifact,
+ * and asserts the two agree, which nothing did while
+ * `scripts/copy-renderer-css.mjs` was the only thing keeping them in step.
+ * Issue #51.
+ */
+console.log('\nShipped stylesheet');
+const SHELL_ROOT = '.sb-shell';
+const stylesheetSource = await readFile(
+  path.join(root, 'src/renderer/styles/structural.css'),
+  'utf8',
+);
+const stylesheetTarget = manifest.exports['./renderer/styles.css'];
+const shipped = existsSync(path.join(root, stylesheetTarget ?? ''))
+  ? await readFile(path.join(root, stylesheetTarget), 'utf8')
+  : '';
+const shippedSelectors = selectors(shipped);
+
+check(shipped === stylesheetSource, `${String(stylesheetTarget)} is the source stylesheet`);
+// The floor. A parse that found nothing would report every selector scoped by
+// judging none of them.
+check(shippedSelectors.length > 30, `${String(shippedSelectors.length)} selectors were read`);
+const escaping = unscopedSelectors(shipped, SHELL_ROOT);
+check(escaping.length === 0, `every selector is scoped under ${SHELL_ROOT}`);
+for (const selector of escaping) console.log(`         ${selector}`);
+
+const rendererEntry = path.join(root, manifest.exports['./renderer'].default);const rendererSource = await readFile(rendererEntry, 'utf8');
 const expectedExports = [
   'Canvas',
   'IconButton',

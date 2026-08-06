@@ -46,6 +46,7 @@
     "icons": "node scripts/gen-icons.mjs",
     "verify:package": "node scripts/verify-package.mjs",
     "verify:exports": "npm run build:package && node scripts/verify-exports.mjs",
+    "verify:neutral": "node scripts/verify-neutral.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",

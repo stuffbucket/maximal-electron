@@ -60,6 +60,12 @@ jobs:
       # The shipped palette stays legible. See src/renderer/lib/contrast.ts.
       - run: npm run check:contrast
 
+      # The shipped shell knows nothing about the application it hosts. An
+      # AST parse over src, because require.resolve and createRequire launder
+      # an import past a grep, plus a word-boundary scan for the terms in
+      # FORBIDDEN_TERMS. See scripts/verify-neutral.mjs for the scope.
+      - run: npm run verify:neutral
+
       # The library exports. This rebuilds dist/, walks the renderer import
       # graph, and asserts the committed artifact matches that build. Nothing
       # in CI ran it before, so the published ./renderer export was free to
