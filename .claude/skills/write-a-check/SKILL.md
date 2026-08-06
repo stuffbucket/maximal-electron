@@ -73,11 +73,14 @@ run of `release.yml` found #86.
 
 The recipe is the same each time.
 
-1. Make the condition the check exists for true. Delete the file, strip the
+1. Commit your own work. Otherwise `git add` sweeps it into the commit that
+   carries the break, and undoing the break takes it too.
+2. Make the condition the check exists for true. Delete the file, strip the
    token, rename the artifact.
-2. Run the check. Record the message it printed.
-3. Undo the mutation, run it again, record the pass.
-4. Put both in the pull request body.
+3. Run the check. Record the message it printed.
+4. Undo the break by one of the two methods below, run it again, record the
+   pass.
+5. Put both messages in the pull request body.
 
 For a packaging check, mutate the built package rather than the source, because
 that is the artifact the check reads:
@@ -89,6 +92,30 @@ npm run verify:package
 ```
 
 A check you have not seen fail is a claim, not a check.
+
+#### Undo the break without discarding your own work
+
+Undoing by path discards by path. Checking out a path, restoring a path,
+cleaning with force, and a reset in hard mode all replace the whole file, so the
+injected line and every other uncommitted edit in that file go together. Two
+agents reached for one of those in a single day, and the second lost its own
+edits to `.github/workflows/release.yml`. Use one of these instead.
+
+- **Commit the break, then revert the commit.** Commit the injection on its own,
+  then `git revert --no-edit HEAD`, or move the ref back with
+  `git reset --keep HEAD~1`, which refuses rather than discards. The break is
+  never uncommitted, so undoing it cannot reach anything else.
+- **Or delete the injected text with a targeted edit.** Keep the exact string
+  you inserted, and remove exactly that string.
+
+Either way, finish with `git status --porcelain` and read the output. Empty
+means the tree matches the commit. One agent ran the second recipe through a
+whole round of deliberate failures this way, one porcelain run after each
+revert. Another agent's targeted edit silently did not run, because the string
+it matched also appeared in an upload step: the edit failed, the tree stayed
+broken, and the porcelain line was the only thing that noticed. Without it that
+agent would have pushed the injected break. The verification step is not
+ceremony.
 
 ## The related failure: a check that never runs
 

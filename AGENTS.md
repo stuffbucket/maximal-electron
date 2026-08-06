@@ -86,7 +86,8 @@ is not something to remember.
 `package.json` and requires it to use the runner. A script not on it yet is
 named there with the issue that will move it, and the list may only shrink.
 
-Break it on purpose, and put the failure message in the pull request. See
+Commit your own work first, then break it on purpose and put the failure
+message in the pull request. See
 `.claude/skills/write-a-check/SKILL.md`.
 
 ## Writing code
