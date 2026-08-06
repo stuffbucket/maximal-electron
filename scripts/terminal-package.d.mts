@@ -17,7 +17,11 @@ export interface TerminalPackageInput {
   readonly unpackedFiles: readonly string[];
   readonly platform: string;
   readonly arch: string;
-  /** The renderer policy. Omit to skip the two content-policy checks. */
+  /**
+   * The policy the renderer document declares. Read it out of the shipped HTML
+   * rather than restating it: a copy passes while the shipped policy drops a
+   * grant. Omitting it fails a check rather than skipping two.
+   */
   readonly contentSecurityPolicy?: string;
 }
 

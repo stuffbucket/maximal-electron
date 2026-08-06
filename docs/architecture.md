@@ -231,10 +231,14 @@ It is plain ESM under `scripts/`, not TypeScript in `src/`, because `dist/` is
 ESM syntax in a package with no `"type": "module"`: a bundler reads it and
 `node` refuses it. A packaging check runs under plain `node`.
 
-The first two checks it returns are floors. Point either list at the wrong
-directory and it is empty, at which point every assertion over it would
-otherwise report a pass. `contentSecurityPolicy` is optional and covers the
-`ghostty-web` directives above; omit it and those two checks are not returned.
+The first three checks it returns are floors. Point either list at the wrong
+directory and it is empty, and omit `contentSecurityPolicy` and there is no
+policy to measure; in each case every assertion over the missing input would
+otherwise report a pass. That is not hypothetical: the policy was optional and
+this repository's own caller supplied none, so the two `ghostty-web` grants
+above were never measured against a shipped document. Read the policy out of the
+HTML the build produced, as `scripts/verify-package.mjs` does, rather than
+restating it beside the call.
 
 `TerminalView` takes its transport as a value. It knows nothing about an IPC
 contract, so a consumer wires `TerminalHost` to whatever channels they already
@@ -364,7 +368,7 @@ application a user installs. `forge.config.ts` excludes its output, and
 | --- | --- | --- |
 | Unit | Vitest | Main-process logic and contract types. |
 | End to end | Playwright | Behaviour and computed layout, against the built bundles. |
-| Packaging | `scripts/verify-package.mjs` | asar contents and fuse values. |
+| Packaging | `scripts/verify-package.mjs` | asar contents, the shipped content policy, and fuse values. |
 
 The third layer exists because the second cannot reach it. Playwright attaches
 through the Node inspector, and `EnableNodeCliInspectArguments: false` disables

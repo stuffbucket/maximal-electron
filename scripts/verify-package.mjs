@@ -4,11 +4,12 @@
  *
  * The end-to-end tests deliberately drive the unpackaged build, because the
  * `EnableNodeCliInspectArguments: false` fuse stops Playwright attaching to a
- * packaged binary. That leaves two packaging properties unchecked by any test,
- * and they are exactly the ones that break silently:
+ * packaged binary. That leaves three packaging properties unchecked by any
+ * test, and they are exactly the ones that break silently:
  *
  *   1. The asar contains the main, preload, and renderer bundles.
- *   2. The fuses are set to the hardened values in forge.config.ts.
+ *   2. The renderer documents declare the policy the terminal needs.
+ *   3. The fuses are set to the hardened values in package-contract.mjs.
  *
  * This script closes that gap. Run it after `npm run package`.
  */
@@ -17,9 +18,10 @@ import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { listPackage } from '@electron/asar';
+import { listPackage, extractFile } from '@electron/asar';
 import { FuseV1Options, getCurrentFuseWire } from '@electron/fuses';
 
+import { PACKAGE_FUSES, RUNTIME_ICONS } from './package-contract.mjs';
 import { terminalPackageChecks } from './terminal-package.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -76,14 +78,25 @@ const listing = listPackage(asar).map((entry) =>
   path.sep === '\\' ? entry.replaceAll('\\', '/') : entry,
 );
 
-const has = (suffix) => listing.some((entry) => entry.endsWith(suffix));
+/**
+ * Where the renderer build lands inside the archive.
+ *
+ * Every path below is anchored to it. `endsWith('.css')` over the whole listing
+ * was satisfied by any dependency that shipped a stylesheet, and `/index.html`
+ * by any that shipped a page: correct for the right reason, one dependency away
+ * from not being. Issue #92.
+ */
+const RENDERER = '/.vite/renderer/main_window';
 
-check(has('/.vite/build/main.js'), 'main bundle is packed');
-check(has('/.vite/build/preload.js'), 'preload bundle is packed');
-check(has('/index.html'), 'renderer shell is packed');
-check(has('/splash.html'), 'splash window is packed');
+check(listing.includes('/.vite/build/main.js'), 'main bundle is packed');
+check(listing.includes('/.vite/build/preload.js'), 'preload bundle is packed');
+check(listing.includes(`${RENDERER}/index.html`), 'renderer shell is packed');
+check(listing.includes(`${RENDERER}/splash.html`), 'splash window is packed');
+check(listing.includes(`${RENDERER}/overlay.html`), 'overlay window is packed');
 check(
-  listing.some((entry) => entry.endsWith('.css')),
+  listing.some(
+    (entry) => entry.startsWith(`${RENDERER}/assets/index-`) && entry.endsWith('.css'),
+  ),
   'renderer stylesheet is packed',
 );
 
@@ -103,6 +116,50 @@ check(
 check(
   !listing.some((entry) => entry.includes('.stories.')),
   'stories are not packed',
+);
+
+/* --------------------------------------------------- content security policy */
+
+console.log('\ncontent security policy');
+
+/**
+ * The policy a shipped document declares, or `undefined`.
+ *
+ * Scoped to the `meta` tag on purpose. `index.html` names `'wasm-unsafe-eval'`
+ * in a comment explaining why it is there, so a search of the whole file would
+ * pass on the explanation after the grant itself had gone.
+ */
+function declaredPolicy(document) {
+  let html;
+  try {
+    // `listPackage` reports a leading slash and `extractFile` rejects one.
+    html = extractFile(asar, document.replace(/^\//, '')).toString('utf8');
+  } catch {
+    return undefined;
+  }
+  for (const tag of html.match(/<meta\b[^>]*>/gi) ?? []) {
+    if (!/http-equiv\s*=\s*["']content-security-policy["']/i.test(tag)) continue;
+    // Matched to its own delimiter. A policy is full of single quotes, so a
+    // pattern that stops at either kind captures `default-src ` and nothing
+    // more.
+    return /content\s*=\s*(["'])(.*?)\1/is.exec(tag)?.[2];
+  }
+  return undefined;
+}
+
+// Read out of the archive rather than restated here. `ghostty-web` needs two
+// grants, and the checks that assert them had never been given a policy to
+// measure: removing `'wasm-unsafe-eval'` from the shipped HTML broke the
+// terminal and passed every check. Issue #92.
+const shellPolicy = declaredPolicy(`${RENDERER}/index.html`);
+const overlayPolicy = declaredPolicy(`${RENDERER}/overlay.html`);
+
+check(shellPolicy !== undefined, 'the shell declares a content policy');
+// The overlay hosts the same terminal. Its own comment says "Same policy as the
+// shell", which is a claim until something reads both.
+check(
+  overlayPolicy !== undefined && overlayPolicy === shellPolicy,
+  'the overlay declares the same policy as the shell',
 );
 
 /* ------------------------------------------------- native module (pty) */
@@ -126,6 +183,7 @@ for (const { name, ok } of terminalPackageChecks({
   unpackedFiles,
   platform: process.platform,
   arch: process.arch,
+  contentSecurityPolicy: shellPolicy,
 })) {
   check(ok, name);
 }
@@ -164,16 +222,27 @@ check(
 // fails to load with an error that reads like a bad model file rather than a
 // packaging fault.
 //
-// The names are platform specific. Unix builds prefix `lib` and end in
-// `.dylib` or `.so`; Windows builds do neither. Checking only the Unix names
-// reported a missing library on Windows that was present under its own name.
-const LLAMA_LIBRARIES =
-  process.platform === 'win32'
-    ? ['llama*.dll', 'ggml*.dll']
-    : ['libllama*', 'libggml*'];
+// The expectation is read from the dependency rather than restated, because
+// the set is platform specific in both name and size: mac-arm64-metal installs
+// nine, and Windows builds neither prefix `lib` nor end in `.dylib`. A count
+// written here would be wrong on the next target.
+const LIBRARY_EXTENSIONS = ['.dylib', '.so', '.dll'];
+const llamaScope = path.join(ROOT, 'node_modules/@node-llama-cpp');
+const shippedLibraries = existsSync(llamaScope)
+  ? readdirSync(llamaScope, { recursive: true, encoding: 'utf8' })
+      .filter((entry) => LIBRARY_EXTENSIONS.includes(path.extname(entry)))
+      .map((entry) => path.basename(entry))
+  : [];
 
-const llamaLibs = LLAMA_LIBRARIES.flatMap((pattern) => findUnpacked(pattern));
-check(llamaLibs.length > 0, 'llama.cpp shared libraries are unpacked');
+// The floor. An empty expectation asserts nothing, which is the shape this
+// replaced: two globs flat-mapped into one non-empty assertion, where losing
+// all seven `libggml*` still passed on the two `libllama*`. Issue #92.
+check(shippedLibraries.length > 0, 'the dependency ships llama.cpp shared libraries');
+
+const unpackedNames = new Set(unpackedFiles.map((entry) => path.basename(entry)));
+for (const library of shippedLibraries) {
+  check(unpackedNames.has(library), `${library} is unpacked`);
+}
 
 /* ---------------------------------------------------------------- icons */
 
@@ -183,15 +252,11 @@ console.log('\nicons');
 // in the bundle, so nothing in the build fails when they are missing: the
 // window shows a stock Electron icon and the tray silently does not appear.
 // `forge.config.ts` copies them out of the directory `STUFFBUCKET_ICON_DIR`
-// names, which is the seam a consumer swaps. Keep the two lists together.
-const RUNTIME_ICONS = [
-  'icon.png',
-  'tray.png',
-  'trayTemplate.png',
-  'trayTemplate@2x.png',
-];
-
+// names, from the same list this reads.
 const resources = path.dirname(asar);
+
+// The floor. An empty list checks nothing and reports it as a pass.
+check(RUNTIME_ICONS.length > 0, 'the contract names run-time icons');
 for (const file of RUNTIME_ICONS) {
   check(existsSync(path.join(resources, file)), `${file} is beside the asar`);
 }
@@ -200,17 +265,9 @@ for (const file of RUNTIME_ICONS) {
 
 console.log('\nfuse configuration');
 
-// These must mirror the FusesPlugin block in forge.config.ts. A fuse flipped
-// there and not here would pass silently, so the two lists are reviewed
-// together; AGENTS.md says so.
-const EXPECTED = {
-  RunAsNode: false,
-  EnableCookieEncryption: true,
-  EnableNodeOptionsEnvironmentVariable: false,
-  EnableNodeCliInspectArguments: false,
-  EnableEmbeddedAsarIntegrityValidation: true,
-  OnlyLoadAppFromAsar: true,
-};
+// `forge.config.ts` fuses the binary from the same list, in
+// `scripts/package-contract.mjs`, so a seventh fuse is burned in and checked
+// from one edit rather than from a rule asking for two. Issue #92.
 
 let wire;
 try {
@@ -230,7 +287,11 @@ try {
 const DISABLED = '0'.charCodeAt(0);
 const ENABLED = '1'.charCodeAt(0);
 
-for (const [name, expected] of Object.entries(EXPECTED)) {
+// The floor. An empty list would report the binary as hardened without
+// reading a single fuse.
+check(Object.keys(PACKAGE_FUSES).length > 0, 'the contract names fuses');
+
+for (const [name, expected] of Object.entries(PACKAGE_FUSES)) {
   const state = wire[FuseV1Options[name]];
 
   if (state !== ENABLED && state !== DISABLED) {
