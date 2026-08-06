@@ -24,6 +24,11 @@ runs behind a tag is a check nobody has run.
 So the rule for anything added here is that it must be possible to run it
 before a tag, and it must fail when it has nothing to do.
 
+The first complete dry run found another, one level down: `wix build` harvested
+zero files, said so as a warning, and produced an MSI that installed an empty
+directory. Issue #86. A step that finds nothing now fails rather than reporting
+success.
+
 ## The two install paths
 
 A consumer installs this package one of two ways, and npm runs a different
@@ -72,8 +77,9 @@ A dry run does everything a tag does, except attach and publish:
 - `tag-check` takes the tag from `package.json` rather than the ref, and still
   checks the format.
 - `windows-msi` builds and checksums the MSI, and `windows-msi-verify` installs
-  it, asserts the files and the registry entries, uninstalls, and asserts clean
-  removal.
+  it, compares the installed tree against a manifest of the packaged
+  application, asserts the registry entries, launches the executable,
+  uninstalls, and asserts clean removal.
 - `package-tarball` runs `npm run verify:exports`, packs, and installs the
   commit by git ref.
 - `macos-dmg` and `publish` do not run at all. The first needs

@@ -27,12 +27,18 @@
     "./verify": {
       "types": "./scripts/terminal-package.d.mts",
       "default": "./scripts/terminal-package.mjs"
+    },
+    "./verify/shell-variables": {
+      "types": "./scripts/shell-variables.d.mts",
+      "default": "./scripts/shell-variables.mjs"
     }
   },
   "files": [
     "dist",
     "scripts/terminal-package.mjs",
-    "scripts/terminal-package.d.mts"
+    "scripts/terminal-package.d.mts",
+    "scripts/shell-variables.mjs",
+    "scripts/shell-variables.d.mts"
   ],
   "repository": {
     "type": "git",

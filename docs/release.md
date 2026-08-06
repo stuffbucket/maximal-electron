@@ -133,8 +133,7 @@ An MSI, built with WiX 5 on a GitHub-hosted `windows-2022` runner.
 ```
 dotnet tool install --global wix --version 5.0.2
 wix extension add -g WixToolset.Util.wixext/5.0.2
-wix build build/windows/app.wxs -d Version=x.y.z -d SourceDir=<staging> \
-    -arch x64 -ext WixToolset.Util.wixext -out out.msi
+pwsh scripts/build-msi.ps1 -Version x.y.z -Out dist-release/out.msi
 ```
 
 These live here rather than in a comment inside `app.wxs`, because an XML
@@ -149,11 +148,42 @@ The source is `build/windows/app.wxs`, adapted from `maximal`'s
 in this organisation. It installs per user, so there is no prompt for
 administrator rights.
 
-`windows-msi-verify` installs it silently. It asserts the files, the registry
-marker, and the Add or Remove Programs entry. It then uninstalls and asserts
-clean removal. It takes the MSI from `windows-msi` as a workflow artifact:
-`gh release download` cannot resolve a draft by tag name, and the release was a
-detour between two jobs that already have the file.
+### Why the `wix build` command line is a script
+
+`app.wxs` harvests the packaged directory, and the bind path handed to a
+harvest **must be absolute**. WiX resolves a relative one against the `.wxs`
+file's own directory, not the working directory, then reports `WIX8601` as a
+warning and harvests nothing. `v0.0.2` shipped an MSI that installed, set its
+registry marker, registered itself with Add or Remove Programs, and contained
+no application. See issue #86.
+
+`scripts/build-msi.ps1` is the single copy of that command line. It resolves
+the bind path, promotes `WIX8600` and `WIX8601` to errors, and writes a
+manifest of every packaged file beside the MSI. `release.yml` and
+`windows-msi-dev.yml` both call it, so the dev harness cannot verify something
+the release build does not do. `tests/wxs.test.ts` asserts that no workflow
+calls `wix build` around it.
+
+### What the verify job proves
+
+`scripts/verify-msi.ps1` installs the MSI silently, compares the installed
+tree against that manifest file by file and byte for byte, asserts the registry
+marker and the Windows Installer product registration, launches the installed
+executable and requires it to still be running twenty seconds later, then
+uninstalls and asserts clean removal. It takes the MSI from `windows-msi` as a
+workflow artifact: `gh release download` cannot resolve a draft by tag name,
+and the release was a detour between two jobs that already have the file.
+
+A per-user MSI does not write to
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall`. It registers under
+`HKCU\Software\Microsoft\Installer\Products`, and on a fresh profile the
+`Uninstall` key does not exist at all. The old assertion named only
+`Uninstall`, and had never run: the file check above it failed first, every
+time.
+
+The tree comparison replaced a check for `Stuffbucket.exe` alone. An installer
+can carry the executable and none of the asar, the locales, or the resources
+beside it, and that check would pass.
 
 `publish` does not gate on it. A broken installer costs an installer.
 
