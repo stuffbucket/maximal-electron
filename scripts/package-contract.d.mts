@@ -13,3 +13,28 @@
 export declare const PACKAGE_FUSES: Readonly<Record<string, boolean>>;
 
 export declare const RUNTIME_ICONS: readonly string[];
+
+export declare const OPTIONAL_LLAMA_BACKENDS: readonly string[];
+
+export declare const LLAMA_BACKENDS_VARIABLE: string;
+
+export declare function parseLlamaBackends(value: string | undefined): string[];
+
+export declare function parseLlamaPackage(name: string): {
+  os: string;
+  arch: string;
+  backend: string;
+};
+
+export interface LlamaPackageDecision {
+  name: string;
+  keep: boolean;
+  reason: string;
+}
+
+export declare function llamaPackagePlan(
+  present: readonly string[],
+  platform: string,
+  arch: string,
+  backends: readonly string[],
+): LlamaPackageDecision[];

@@ -13,15 +13,16 @@
  * shipped was one of them, including three introduced in a single afternoon by
  * renaming code and not grepping the docs.
  *
- * So: no style rules, and no model. Three checks that a compiler would make if
- * prose went through one.
+ * So: no style rules, and no model. Four checks that a compiler would make if
+ * prose went through one, each reporting how many claims it read.
  */
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { constants, links, npmScripts } from './docs-claims.mjs';
+import { scopedChecks } from './check-scope.mjs';
+import { constants, links, npmScripts, npmScriptsOutOfScope, repoPaths } from './docs-claims.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -70,20 +71,42 @@ const SOURCE_FILES = [
   'tsconfig.json',
 ];
 
-const failures = [];
-const check = (ok, message) => {
-  if (!ok) failures.push(message);
-};
+/** Where a backticked path is read as a claim about this checkout. */
+const PATH_ROOTS = [...SOURCE_ROOTS, 'docs', '.claude'];
 
+/**
+ * Paths the documentation names that are deliberately not here.
+ *
+ * A document may name another repository's file, or record what a deletion
+ * took with it. Nothing in the syntax tells those from a stale reference, so
+ * they are declared, with the reason, and the check fails when one of them
+ * starts existing. A list that only ever grows is the exemption becoming the
+ * rule.
+ */
+const PATHS_NOT_HERE = new Map([
+  ['scripts/build-msi.ps1', 'deleted with the MSI in #119; docs/release.md records what went'],
+  ['scripts/verify-msi.ps1', 'deleted with the MSI in #119'],
+  ['build/windows/app.wxs', 'deleted with the MSI in #119'],
+  ['tests/wxs.test.ts', 'deleted with the MSI in #119'],
+  ['scripts/prebuild.js', "node-pty's, run by its own install"],
+  ['src/main/shell.ts', "maximal/client's, named in docs/embedding.md as the consumer's side"],
+  ['src/renderer/.vite/', 'the output path a misconfigured `root` produces, and must not exist'],
+]);
+
+const { check, summary } = scopedChecks();
+
+console.log('Verifying the corpus before verifying anything in it\n');
+
+/**
+ * Every file under `dir`.
+ *
+ * A `readdirSync` failure used to return an empty list, so a renamed `docs/`
+ * left the run green over a smaller corpus. It throws now, and the roots are
+ * floored below.
+ */
 function walk(dir, match) {
   const found = [];
-  let entries;
-  try {
-    entries = readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return found;
-  }
-  for (const entry of entries) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) found.push(...walk(full, match));
     else if (entry.isFile() && match(entry.name)) found.push(full);
@@ -91,11 +114,55 @@ function walk(dir, match) {
   return found;
 }
 
+/** A glob's literal directory prefix, and a matcher for the whole pattern. */
+function globMatches(pattern) {
+  const firstStar = pattern.indexOf('*');
+  const base = path.posix.dirname(pattern.slice(0, firstStar) + 'x');
+  if (!existsSync(path.join(ROOT, base))) return [];
+
+  const expression = pattern
+    .split(/(\*\*|\*)/)
+    .map((part) =>
+      part === '**' ? '.*' : part === '*' ? '[^/]*' : part.replace(/[.+?^${}()|[\]\\]/g, '\\$&'),
+    )
+    .join('');
+  const matcher = new RegExp(`^${expression}$`);
+
+  return walk(path.join(ROOT, base), () => true)
+    .map((file) => path.relative(ROOT, file).split(path.sep).join('/'))
+    .filter((file) => matcher.test(file));
+}
+
+/** Whether a documented path names something in this checkout. */
+function pathExists(target) {
+  if (target.includes('*')) return globMatches(target).length > 0;
+  return existsSync(path.join(ROOT, target));
+}
+
 /* ------------------------------------------------------------- the corpus */
+
+const missingRoots = [...DOC_ROOTS, ...SOURCE_ROOTS].filter(
+  (dir) => !existsSync(path.join(ROOT, dir)),
+);
+check(
+  missingRoots.length === 0,
+  missingRoots.length === 0
+    ? 'every declared root exists'
+    : `these declared roots do not exist: ${missingRoots.join(', ')}`,
+  { count: DOC_ROOTS.length + SOURCE_ROOTS.length, of: 'declared roots' },
+);
+if (missingRoots.length > 0) process.exit(summary('verify:docs'));
+
+const docsByRoot = new Map(
+  DOC_ROOTS.map((dir) => [dir, walk(path.join(ROOT, dir), (name) => name.endsWith('.md'))]),
+);
+for (const [dir, found] of docsByRoot) {
+  check(true, `${dir} holds documents`, { count: found.length, of: 'documents' });
+}
 
 const docs = [
   ...DOC_FILES.map((file) => path.join(ROOT, file)),
-  ...DOC_ROOTS.flatMap((dir) => walk(path.join(ROOT, dir), (name) => name.endsWith('.md'))),
+  ...[...docsByRoot.values()].flat(),
 ]
   .filter((file) => existsSync(file))
   .filter((file) => {
@@ -103,55 +170,93 @@ const docs = [
     return !DOC_EXEMPT.some((dir) => relative.startsWith(dir + path.sep));
   });
 
+const sourceByRoot = new Map(
+  SOURCE_ROOTS.map((dir) => [dir, walk(path.join(ROOT, dir), () => true)]),
+);
+for (const [dir, found] of sourceByRoot) {
+  check(true, `${dir} holds source`, { count: found.length, of: 'files' });
+}
+
 const sourceFiles = [
   ...SOURCE_FILES.map((file) => path.join(ROOT, file)),
-  ...SOURCE_ROOTS.flatMap((dir) => walk(path.join(ROOT, dir), () => true)),
+  ...[...sourceByRoot.values()].flat(),
 ]
   .filter((file) => existsSync(file))
   .filter((file) => !SELF.includes(path.relative(ROOT, file)));
 
 // One string. These trees are small, and a substring test over it is both
 // simpler and less wrong than guessing at each name's declaration syntax.
-const haystack = sourceFiles
-  .map((file) => {
-    try {
-      return readFileSync(file, 'utf8');
-    } catch {
-      return '';
-    }
-  })
-  .join('\n');
+const haystack = sourceFiles.map((file) => readFileSync(file, 'utf8')).join('\n');
 
 const scripts = Object.keys(JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8')).scripts);
 
-console.log(`Verifying ${String(docs.length)} documents against ${String(sourceFiles.length)} files\n`);
-
 /* -------------------------------------------------------------- the checks */
 
-for (const file of docs) {
-  const rel = path.relative(ROOT, file);
-  const text = readFileSync(file, 'utf8');
+/** One assertion per claim kind, over every claim of that kind in the corpus. */
+const kinds = [
+  {
+    of: '`npm run` mentions',
+    message: 'every documented script is in package.json',
+    claims: (text) => npmScripts(text),
+    holds: (name) => scripts.includes(name),
+    say: (rel, name) => `${rel}: \`npm run ${name}\` is not a script in package.json`,
+  },
+  {
+    of: 'constants',
+    message: 'every documented constant appears in the source',
+    claims: (text) => constants(text),
+    holds: (name) => haystack.includes(name),
+    say: (rel, name) => `${rel}: \`${name}\` appears nowhere outside the documentation`,
+  },
+  {
+    of: 'links',
+    message: 'every relative link resolves',
+    claims: (text) => links(text),
+    holds: (target, file) => existsSync(path.resolve(path.dirname(file), target)),
+    say: (rel, target) => `${rel}: link to ${target} does not exist`,
+  },
+  {
+    of: 'backticked paths',
+    message: 'every backticked path names a file in this checkout',
+    claims: (text) => repoPaths(text, PATH_ROOTS).filter((p) => !PATHS_NOT_HERE.has(p)),
+    holds: (target) => pathExists(target),
+    say: (rel, target) => `${rel}: \`${target}\` does not exist`,
+  },
+];
 
-  for (const name of new Set(npmScripts(text))) {
-    check(scripts.includes(name), `${rel}: \`npm run ${name}\` is not a script in package.json`);
-  }
+const failures = [];
+let outOfScope = 0;
 
-  for (const name of new Set(constants(text))) {
-    check(haystack.includes(name), `${rel}: \`${name}\` appears nowhere outside the documentation`);
+for (const kind of kinds) {
+  let count = 0;
+  const broken = [];
+  for (const file of docs) {
+    const rel = path.relative(ROOT, file);
+    const text = readFileSync(file, 'utf8');
+    for (const claim of new Set(kind.claims(text))) {
+      count += 1;
+      if (!kind.holds(claim, file)) broken.push(kind.say(rel, claim));
+    }
   }
-
-  for (const target of new Set(links(text))) {
-    const resolved = path.resolve(path.dirname(file), target);
-    check(existsSync(resolved), `${rel}: link to ${target} does not exist`);
-  }
+  check(broken.length === 0, kind.message, { count, of: kind.of });
+  failures.push(...broken);
 }
+
+for (const file of docs) outOfScope += npmScriptsOutOfScope(readFileSync(file, 'utf8'));
+
+check(
+  [...PATHS_NOT_HERE.keys()].every((target) => !pathExists(target)),
+  'every path declared absent is still absent',
+  { count: PATHS_NOT_HERE.size, of: 'declared absences' },
+);
 
 /* --------------------------------------------------------------- result */
 
-if (failures.length > 0) {
-  for (const failure of failures) console.error(` FAIL  ${failure}`);
-  console.error(`\n${String(failures.length)} claim(s) failed.`);
-  process.exit(1);
-}
+for (const failure of failures) console.error(`       ${failure}`);
 
-console.log(`All documented names exist. ${String(docs.length)} documents checked.`);
+console.log(
+  `\nOut of scope by construction: ${String(outOfScope)} \`npm run\` mentions` +
+    ' inside a fenced block or outside a code span.',
+);
+
+process.exit(summary('verify:docs'));

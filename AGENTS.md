@@ -59,6 +59,9 @@ Each of these is load-bearing. Do not relax one to make a change fit.
   worked example: it is configuration the host owns, through
   `STUFFBUCKET_ICON_DIR`, not a request the renderer makes.
 - **Never lower the mutation threshold.** `npm run mutate` breaks below 100.
+  It also breaks when a module the criterion selects is on neither the mutate
+  list nor its deferred list, and when the mutant count falls. See
+  `docs/testing.md`.
 - **Never turn a fuse back on to make a test pass.**
   `EnableNodeCliInspectArguments: false` is why the end-to-end tests drive the
   unpackaged build, and why `npm run smoke:packaged` drives the packaged one
@@ -79,8 +82,17 @@ neutral.
 
 Six checks here have passed while examining an empty set, and one of them
 shipped a broken terminal. A check you add or change reports how many things it
-examined and fails on zero. Commit your own work first, then break it on
-purpose and put the failure message in the pull request. See
+examined and fails on zero. `scripts/check-scope.mjs` is the runner that does
+it: `check(ok, message, { count, of })` prints the count beside the message and
+fails on zero whatever `ok` says. It throws without a scope, so the convention
+is not something to remember.
+
+`tests/check-scope.test.ts` discovers every `verify:*` and `check:*` script from
+`package.json` and requires it to use the runner. A script not on it yet is
+named there with the issue that will move it, and the list may only shrink.
+
+Commit your own work first, then break it on purpose and put the failure
+message in the pull request. See
 `.claude/skills/write-a-check/SKILL.md`.
 
 ## Writing code
@@ -187,10 +199,18 @@ macOS build must be redone.
 **External native modules.** Adding one means editing three places: the Vite
 external list, the `packagerConfig.ignore` filter in `forge.config.ts`, and
 `scripts/verify-package.mjs`. Miss one and the package builds, the tests pass,
-and the feature is absent for a user. `node-pty` needs a fourth: `prunePrebuilds`
-in `forge.config.ts` drops the platforms a build cannot use, and it throws
-rather than skipping. It goes in `devDependencies`: this package declares no
-runtime dependencies, so that one entry would land in every consumer's install.
+and the feature is absent for a user. `node-pty` needs a fourth:
+`prunePtyPrebuilds` in `forge.config.ts` drops the platforms a build cannot
+use, and it throws rather than skipping. It goes in `devDependencies`: this
+package declares no runtime dependencies, so that one entry would land in every
+consumer's install.
+
+`node-llama-cpp` needs the same fourth edit and one more decision.
+`pruneLlamaBackends` drops the `@node-llama-cpp` packages the target cannot
+load, and **drops the CUDA and Vulkan backends unless `STUFFBUCKET_LLAMA_BACKENDS`
+asks for them**. That is 630 MB on `win32-x64` and it means a CUDA machine runs
+the embedded model on its CPU. Do not change the default without changing what
+`docs/architecture.md` says about it.
 
 **Icons.** `STUFFBUCKET_ICON_DIR` names the directory, defaults to
 `build/icons`, and is the seam a consumer swaps. The run-time file names live in

@@ -6,7 +6,7 @@ import { VitePlugin } from '@electron-forge/plugin-vite';
 import type { ForgeConfig } from '@electron-forge/shared-types';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 
-import { PACKAGE_FUSES, RUNTIME_ICONS } from './scripts/package-contract.mjs';
+import { PACKAGE_FUSES, RUNTIME_ICONS, LLAMA_BACKENDS_VARIABLE, llamaPackagePlan, parseLlamaBackends } from './scripts/package-contract.mjs';
 
 /**
  * Where the application icons come from.
@@ -46,7 +46,7 @@ for (const file of [BUNDLE_ICON, ...RUNTIME_ICONS]) {
  * It throws rather than skipping. A layout change upstream would otherwise ship
  * every platform, or none, and both build cleanly.
  */
-function prunePrebuilds(buildPath: string, platform: string, arch: string): void {
+function prunePtyPrebuilds(buildPath: string, platform: string, arch: string): void {
   const module = path.join(buildPath, 'node_modules', 'node-pty');
   const prebuilds = path.join(module, 'prebuilds');
   if (!existsSync(prebuilds)) {
@@ -75,6 +75,53 @@ function prunePrebuilds(buildPath: string, platform: string, arch: string): void
   // the prebuilds were compiled against.
   for (const entry of ['src', 'third_party', 'scripts', 'typings', 'node_modules', 'binding.gyp']) {
     rmSync(path.join(module, entry), { recursive: true, force: true });
+  }
+}
+
+/**
+ * Drop the llama.cpp backends this build cannot use, and the GPU ones it was
+ * not asked for.
+ *
+ * `@node-llama-cpp` is a scope of one package per target and backend, and npm
+ * installs by `os` and `cpu`, which are wider than a single build: a
+ * `win32-x64` install carries `win-arm64` and 505 MB of CUDA. The plan is in
+ * `scripts/package-contract.mjs`, which `scripts/verify-package.mjs` reads
+ * too, so what is dropped here is what the check stops expecting. Issue #113.
+ */
+function pruneLlamaBackends(buildPath: string, platform: string, arch: string): void {
+  const scope = path.join(buildPath, 'node_modules', '@node-llama-cpp');
+  if (!existsSync(scope)) {
+    throw new Error(`@node-llama-cpp has no prebuild packages at ${scope}.`);
+  }
+
+  const plan = llamaPackagePlan(
+    readdirSync(scope),
+    platform,
+    arch,
+    parseLlamaBackends(process.env[LLAMA_BACKENDS_VARIABLE]),
+  );
+
+  const kept = plan.filter((entry) => entry.keep);
+  if (kept.length === 0) {
+    throw new Error(
+      `@node-llama-cpp ships nothing usable by ${platform}-${arch}. ` +
+        `Found: ${plan.map((entry) => entry.name).join(', ')}.`,
+    );
+  }
+
+  for (const entry of plan) {
+    if (!entry.keep) rmSync(path.join(scope, entry.name), { recursive: true, force: true });
+  }
+
+  // A dropped GPU backend is a behaviour change for whoever installs this
+  // package, not an implementation detail, so the build says it out loud.
+  const dropped = plan.filter((entry) => !entry.keep);
+  if (dropped.length > 0) {
+    console.warn(
+      `@node-llama-cpp: kept ${kept.map((entry) => entry.name).join(', ')}; dropped ` +
+        `${dropped.map((entry) => `${entry.name} (${entry.reason})`).join(', ')}. ` +
+        `Set ${LLAMA_BACKENDS_VARIABLE} to keep a GPU backend.`,
+    );
   }
 }
 
@@ -125,9 +172,9 @@ const config: ForgeConfig = {
      * the whole `node_modules` tree.
      *
      * `node-llama-cpp` keeps its prebuilt binaries in a separate scope, which
-     * is why a whole scope is kept rather than a single directory. `node-pty`
-     * carries every platform in one package; `prunePrebuilds` drops the ones
-     * this build cannot use.
+     * is why a whole scope is kept rather than a single directory. Both it and
+     * `node-pty` carry every platform at once, and the two prune hooks below
+     * drop what this build cannot use.
      */
     ignore: (file: string) => {
       if (!file) return false;
@@ -167,7 +214,8 @@ const config: ForgeConfig = {
   rebuildConfig: {},
   hooks: {
     packageAfterCopy: (_forgeConfig, buildPath, _electronVersion, platform, arch) => {
-      prunePrebuilds(buildPath, platform, arch);
+      prunePtyPrebuilds(buildPath, platform, arch);
+      pruneLlamaBackends(buildPath, platform, arch);
       return Promise.resolve();
     },
   },
