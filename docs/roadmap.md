@@ -50,3 +50,15 @@ Working, with tools, streaming, and an approval gate. See `AGENTS.md`.
 2. A diff view in the approval prompt for `edit` and `write`.
 3. The double-tap Ctrl monitor, which needs a permission prompt.
 4. Windows and Linux verification for the terminal and the overlay.
+
+## Research
+
+Work that has been argued for but not scoped lives in
+[`docs/proposals/`](proposals/README.md), which carries an index and the
+disposition of every document in it. That link is the only thing standing
+between a proposal and nobody ever reading it: `scripts/verify-docs.mjs`
+exempts the directory from name checking, so a proposal is reachable by a
+reader rather than by a check.
+
+A proposal is not a plan. Anything in there that this file does not repeat is
+an argument somebody made, not work anybody committed to.

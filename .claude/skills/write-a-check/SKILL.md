@@ -148,5 +148,16 @@ separate defect, and nothing here addresses it.
 ## Where this is written down
 
 `AGENTS.md` carries the one-line rule. `docs/ci.md` carries the workflow half.
-`docs/proposals/engineering-review-01.md` holds the account of instances 1
-to 3.
+[`docs/proposals/engineering-review-01.md`](../../../docs/proposals/engineering-review-01.md)
+holds the account of instances 1 to 3, and
+[`docs/proposals/README.md`](../../../docs/proposals/README.md) indexes it
+alongside the second review.
+
+Both are markdown links rather than bare backticked paths, so a reader can
+follow them. `docs/proposals/` is exempt from name checking, which makes a link
+from a document somebody opens the only thing that keeps a proposal reachable.
+`docs/roadmap.md` carries the other one.
+
+Renaming either file fails `npm run verify:docs` twice, on the link and on the
+backticked path inside it. Both rules were run against a rename to confirm that,
+rather than assumed.
