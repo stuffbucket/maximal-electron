@@ -60,14 +60,19 @@ Each of these is load-bearing. Do not relax one to make a change fit.
 
 ## Report what you verified
 
-State the command you ran and what it printed. A check that greps for an error
-string and matches nothing is not a pass; that has produced two false reports
-here. If you did not run something, say so. If a step was skipped or a test
-failed, say that first.
+State the command you ran and what it printed. If you did not run something, say
+so. If a step was skipped or a test failed, say that first.
 
 Green unit tests are not sufficient for a layout change, and a screenshot is
 not an oracle. See `docs/testing.md` before you claim a visual change is
 neutral.
+
+### A check must fail when it has nothing to check
+
+Six checks here have passed while examining an empty set, and one of them
+shipped a broken terminal. A check you add or change reports how many things it
+examined and fails on zero. Break it on purpose, and put the failure message in
+the pull request. See `.claude/skills/write-a-check/SKILL.md`.
 
 ## Writing code
 
@@ -118,10 +123,15 @@ checks names, not prose.
   that is not the current release.
 - Every issue and every pull request carries a milestone. If it does not have
   one, it has not been triaged.
-- **Never delete a branch that another pull request targets.** GitHub closes the
-  children rather than retargeting them, and a closed pull request whose base is
-  gone cannot be reopened. Retarget every child first. This has cost a rebuild
-  twice.
+- **Run `gh pr list --base <branch> --state open` before you delete a branch.**
+  GitHub closes the children rather than retargeting them, and a closed pull
+  request whose base is gone cannot be reopened. Retarget every child first.
+  This has cost a rebuild twice, both times with a prohibition already written
+  here, so the line is a command now.
+- **A pushed tag is immutable.** If the build on a tag fails, cut the next patch
+  rather than moving the tag. A consumer installs this package from a git ref,
+  so a moved tag changes what they install without changing anything they can
+  see. `v0.0.2` was deleted and re-pushed eight minutes later.
 - Bump the patch version on the release branch when the train reaches a stable
   state, so `main` never claims a version that has not shipped.
 
@@ -144,8 +154,8 @@ only background.
 | Code signing | `docs/signing.md` |
 | What is planned and what is deliberately not | `docs/roadmap.md` |
 
-Skills carry the walk-throughs: `.claude/skills/add-ipc-channel/SKILL.md`,
-`.claude/skills/verify-ui/SKILL.md`, and `.claude/skills/cut-release/SKILL.md`.
+Skills carry the walk-throughs. Read `.claude/skills/`. A list written out here
+goes stale; the one this replaces named three of the five that existed.
 
 ## Two rules that live outside those documents
 
