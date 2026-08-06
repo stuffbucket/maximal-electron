@@ -196,6 +196,12 @@ describe('the dry run', () => {
   it('says a re-cut is a re-cut', () => {
     expect(renderTagReport(evaluateTag(MOVED_TAG_FIXTURE))).toContain('is a re-cut');
   });
+
+  /** The conclusion must not contradict the scope floor above it. */
+  it('claims nothing when no run was read on a real push', () => {
+    const report = evaluateTag({ tag: 'v9.9.9', sha: SECOND, tags: ['v0.0.4'], runs: [] });
+    expect(renderTagReport(report)).toContain('nothing about `v9.9.9` was decided');
+  });
 });
 
 /** `verify-tag.mjs` runs this before it reads git or the API. */

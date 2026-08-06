@@ -155,6 +155,8 @@ export function renderTagReport(report) {
     lines.push(`\`${report.tag}\` is a re-cut, not a new one.`);
   } else if (report.dryRun) {
     lines.push(`\`${report.tag}\` orders correctly. Its run history was not evaluated.`);
+  } else if (report.examinedRuns === 0) {
+    lines.push(`No run was read on this ref, so nothing about \`${report.tag}\` was decided.`);
   } else {
     lines.push(`\`${report.tag}\` is a new cut. Nothing has been built on this ref before.`);
   }
