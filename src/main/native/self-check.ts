@@ -47,12 +47,21 @@ export function selfCheckToken(argv: readonly string[]): string | undefined {
  *
  * A pty echoes what is written to it. A command carrying the whole token would
  * satisfy the assertion from that echo alone, with no shell having run
- * anything, which is the false pass this check exists to avoid. `printf` joins
- * the halves, so the joined string can only come from a process that ran.
+ * anything, which is the false pass this check exists to avoid. Each command
+ * joins the halves, so the joined string can only come from a process that ran.
+ *
+ * `cmd.exe` has no `printf`, and its `echo` puts a space between arguments.
+ * The caret is what joins them: `cmd.exe` strips it while parsing the line, so
+ * `echo` is handed one argument and the command text still carries the halves
+ * apart.
  */
-export function selfCheckCommand(token: string): string {
+export function selfCheckCommand(token: string, platform: string): string {
   const half = token.length / 2;
-  return `printf '%s%s\\n' ${token.slice(0, half)} ${token.slice(half)}\r`;
+  const first = token.slice(0, half);
+  const second = token.slice(half);
+  return platform === 'win32'
+    ? `echo ${first}^${second}\r`
+    : `printf '%s%s\\n' ${first} ${second}\r`;
 }
 
 export function selfCheckPassed(output: string, token: string): boolean {

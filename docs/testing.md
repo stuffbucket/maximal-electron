@@ -116,9 +116,10 @@ installs, and two defects shipped inside it: #86 and #88. `verify-package.mjs`
 reads the archive listing, which finds a file that is absent and not one that
 is present where the loader cannot reach it.
 
-`npm run package && npm run smoke:packaged` closes the macOS half.
+`npm run package && npm run smoke:packaged` closes it, on macOS and on Windows.
 `scripts/smoke-packaged.mjs` launches
-`Stuffbucket.app/Contents/MacOS/Stuffbucket` with `--self-check=terminal` and a
+`Stuffbucket.app/Contents/MacOS/Stuffbucket`, or
+`out/Stuffbucket-win32-x64/Stuffbucket.exe`, with `--self-check=terminal` and a
 token. The application opens a shell through `TerminalHost`, the same class the
 terminal uses, makes it print the token, writes one line, and exits with a
 code. `src/main/native/self-check.ts` holds the argument protocol, and
@@ -127,24 +128,40 @@ code. `src/main/native/self-check.ts` holds the argument protocol, and
 Three properties are what stop it passing for nothing:
 
 - **The token is random per run.** It reaches the driver only through a shell
-  that ran `printf`, so a launch that opens no shell cannot produce one.
+  that ran a command, so a launch that opens no shell cannot produce one.
 - **The command carries the token in two halves.** A pty echoes what is written
   to it, so a command containing the whole token would satisfy the assertion
-  from that echo, with nothing having run.
-- **Every run reproduces #88.** The driver moves `spawn-helper` out of
-  `app.asar.unpacked` and launches again. That run has to fail, and it has to
-  fail by reporting the shell rather than by dying before the check. Then the
-  file goes back.
+  from that echo, with nothing having run. `printf '%s%s\n' 01234567 89abcdef`
+  joins them under a POSIX shell. `cmd.exe` has no `printf` and its `echo` puts
+  a space between two arguments, so the caret does the joining instead:
+  `echo 01234567^89abcdef`. `cmd.exe` strips the caret while parsing the line,
+  which leaves the halves apart in the command text and joined in the output.
+- **Every run reproduces #88.** The driver moves the one native file the
+  terminal cannot resolve without out of `app.asar.unpacked` and launches
+  again. That run has to fail, and it has to fail by reporting the shell rather
+  than by dying before the check. Then the file goes back.
+
+The file is `spawn-helper` on macOS and `conpty.node` on Windows.
+`conpty.dll` and `OpenConsole.exe` sit beside `conpty.node` in the same
+prebuild directory and are **not** on this path: `node-pty` leaves
+`useConptyDll` off, so `conpty.cc` takes `CreatePseudoConsole` out of
+`kernel32` and never opens the DLL. Moving either of them aside on a Windows
+runner leaves the check green, which is what established that rather than the
+issue text, which named `OpenConsole.exe`.
 
 The check runs before `whenReady` and opens no window, so it needs no window
-server and no signed binary. `package (macos-latest)` runs it.
+server and no signed binary. `package (macos-latest)` and
+`package (windows-latest)` both run it.
 
-What it leaves uncovered: no window, no renderer, and no IPC. It says nothing
-about the Windows or linux packages, and nothing about a signed or notarised
-bundle. Run it on the package Forge produces, which carries an ad-hoc signature
-that `codesign --verify` already rejects because packager rewrites `Info.plist`
-afterwards. Signing happens later, in stuffbucket/macos-runner, and moving a
-file inside a bundle that has been signed properly would break its seal.
+What it leaves uncovered: no window, no renderer, and no IPC. It proves a shell
+spawns inside the package, not that anything renders. It says nothing about the
+linux package, nothing about a signed or notarised bundle, and on Windows
+nothing about an installed tree, because this repository ships no installer.
+Run it on the package Forge produces, which on macOS carries an ad-hoc
+signature that `codesign --verify` already rejects because packager rewrites
+`Info.plist` afterwards. Signing happens later, in stuffbucket/macos-runner,
+and moving a file inside a bundle that has been signed properly would break its
+seal.
 
 ## User interface changes
 
