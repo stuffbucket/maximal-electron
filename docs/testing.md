@@ -183,6 +183,38 @@ The check runs before `whenReady` and opens no window, so it needs no window
 server and no signed binary. `package (macos-latest)` and
 `package (windows-latest)` both run it.
 
+### The second self check: llama.cpp out of process
+
+`--self-check=llama` launches the same binary again. It forks the engine as a
+`utilityProcess`, makes it load `node-llama-cpp` out of `app.asar.unpacked`,
+and then makes it abort in native code. A pass needs both halves: the library
+resolved from the child, and the main process outlived the abort well enough to
+print a line. `src/main/native/llama-protocol.ts` holds the strings and
+`tests/llama-protocol.test.ts` pairs them with the driver's copy, as the
+terminal half does. Issue #133.
+
+**Unlike the terminal check, this one waits for `whenReady`**, because
+`utilityProcess.fork` throws before the app is ready. It still takes no single
+instance lock, so the wait costs only the ready event.
+
+Its negative control moves the `@node-llama-cpp` scope aside and requires the
+same launch to fail. Failing is not enough on its own: the control asserts the
+failure names `did not load llama.cpp`, which is the branch reached only after
+the engine started. Without that, an engine that never forked at all produced
+the same two green lines — the "failed for the wrong reason" case at the end of
+`.claude/skills/write-a-check/SKILL.md`, caught by re-running the break rather
+than by reading the code.
+
+The fault name is pinned per platform and only where it has been seen.
+`SIGABRT` is asserted by name on macOS. Windows reports a status code instead
+of a signal and no run has yet shown which one, so that record carries no name
+and the driver prints a `skip`. What is asserted on both is that the supervisor
+recognised a fault at all: a code `llama-protocol.ts` cannot name reads as
+"exited with code N" and fails the check with the number in the log.
+
+This is the first thing in the repository ever to load the packaged llama.cpp.
+It failed on its first run, and `docs/architecture.md` records what it found.
+
 What it leaves uncovered: no window, no renderer, and no IPC. It proves a shell
 spawns inside the package, not that anything renders. It says nothing about the
 linux package, nothing about a signed or notarised bundle, and on Windows
