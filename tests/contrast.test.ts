@@ -1,3 +1,4 @@
+import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -10,6 +11,7 @@ import {
   meets,
   missingTokens,
   parseHex,
+  type Rgb,
 } from '../src/renderer/lib/contrast.js';
 import { isPackageToken, readTokens, stylesheets } from './stylesheets.js';
 
@@ -20,6 +22,11 @@ import { isPackageToken, readTokens, stylesheets } from './stylesheets.js';
  * shell's. Whether `tokens.css` satisfies it is a different question, checked
  * by `npm run check:contrast`, because the values in that file are a reference
  * default and a consumer supplies their own.
+ *
+ * The examples come first and the properties come last. An example pins a
+ * point somebody chose; a property states what holds at every point, including
+ * the ones nobody chose. See #132 for why both are here, and `docs/testing.md`
+ * for why the properties stop at this module.
  */
 
 describe('parseHex', () => {
@@ -303,5 +310,281 @@ describe('checkPalette', () => {
     );
     expect(pair?.where).toContain('nav heading');
     expect(pair?.passes).toBe(false);
+  });
+});
+
+/* ----------------------------------------------------------- properties */
+
+/**
+ * The seed is fixed, and `FAST_CHECK_SEED` moves it.
+ *
+ * Stryker maps tests to mutants from a dry run and then reruns the covering
+ * tests once per mutant. A suite that draws different inputs on the second run
+ * can report a mutant as surviving for a reason that has nothing to do with
+ * the mutant, and `npm run mutate` breaks below 100. So exploration is a thing
+ * somebody does on purpose by moving the seed, not something a gate does by
+ * accident. A failure prints the seed and the shrunk counterexample, and both
+ * reproduce the run exactly.
+ */
+const config = {
+  seed: Number(process.env['FAST_CHECK_SEED'] ?? 132),
+  numRuns: 200,
+} as const;
+
+const channel = fc.integer({ min: 0, max: 255 });
+const colour: fc.Arbitrary<Rgb> = fc.record({ r: channel, g: channel, b: channel });
+
+/** Two channel values, the second strictly above the first. */
+const rising = fc
+  .integer({ min: 0, max: 254 })
+  .chain((low) => fc.tuple(fc.constant(low), fc.integer({ min: low + 1, max: 255 })));
+
+const twoDigits = (value: number): string => value.toString(16).padStart(2, '0');
+const longHex = ({ r, g, b }: Rgb): string =>
+  `#${twoDigits(r)}${twoDigits(g)}${twoDigits(b)}`;
+
+/** One hexadecimal digit. `fc.hexa` was removed in fast-check 4. */
+const hexDigit = fc.constantFrom(...'0123456789abcdef');
+
+/** The forms a real palette is written in, readable and not. */
+const tokenValue = fc.oneof(
+  colour.map(longHex),
+  colour.map((rgb) => longHex(rgb).toUpperCase()),
+  fc.tuple(hexDigit, hexDigit, hexDigit).map(([r, g, b]) => `#${r}${g}${b}`),
+  fc.constantFrom(
+    'oklch(0.7 0.1 250)',
+    'rgb(110 168 254 / 0.16)',
+    'color-mix(in srgb, red, blue)',
+    'var(--accent)',
+    'white',
+    '',
+  ),
+  fc.string(),
+);
+
+describe('contrastRatio, over every pair of colours', () => {
+  it('does not depend on the order of its arguments', () => {
+    // The examples above assert this for black and white. Symmetry is a claim
+    // about every pair, and a version that divides `first` by `second`
+    // satisfies that example and fails here.
+    fc.assert(
+      fc.property(colour, colour, (a, b) => {
+        expect(contrastRatio(a, b)).toBe(contrastRatio(b, a));
+      }),
+      config,
+    );
+  });
+
+  it('stays inside the range the specification defines', () => {
+    // Exact bounds rather than approximate ones: white sums to a luminance of
+    // 1 in floating point, so 21 is reached and never passed.
+    fc.assert(
+      fc.property(colour, colour, (a, b) => {
+        const ratio = contrastRatio(a, b);
+        expect(ratio).toBeGreaterThanOrEqual(1);
+        expect(ratio).toBeLessThanOrEqual(21);
+      }),
+      config,
+    );
+  });
+
+  it('never rises as one grey moves toward the other', () => {
+    const grey = (value: number): Rgb => ({ r: value, g: value, b: value });
+
+    fc.assert(
+      fc.property(channel, channel, channel, (x, y, z) => {
+        const light = Math.max(x, y, z);
+        const dark = Math.min(x, y, z);
+        const between = x + y + z - light - dark;
+        expect(contrastRatio(grey(dark), grey(light))).toBeGreaterThanOrEqual(
+          contrastRatio(grey(between), grey(light)),
+        );
+      }),
+      config,
+    );
+  });
+});
+
+describe('luminance, over every colour', () => {
+  it('rises when any one channel rises', () => {
+    // Monotone in each channel separately. A coefficient written as zero, or
+    // with the wrong sign, passes the weighting example above for the other
+    // two channels and fails here on the one it broke.
+    fc.assert(
+      fc.property(colour, fc.constantFrom('r', 'g', 'b'), rising, (base, key, [low, high]) => {
+        expect(luminance({ ...base, [key]: high })).toBeGreaterThan(
+          luminance({ ...base, [key]: low }),
+        );
+      }),
+      config,
+    );
+  });
+});
+
+describe('parseHex, over every string', () => {
+  it('round trips a colour through its long form', () => {
+    fc.assert(
+      fc.property(colour, (rgb) => {
+        expect(parseHex(longHex(rgb))).toEqual(rgb);
+      }),
+      config,
+    );
+  });
+
+  it('reads a short form as the long form with each digit doubled', () => {
+    fc.assert(
+      fc.property(hexDigit, hexDigit, hexDigit, (r, g, b) => {
+        expect(parseHex(`#${r}${g}${b}`)).toEqual(parseHex(`#${r}${r}${g}${g}${b}${b}`));
+      }),
+      config,
+    );
+  });
+
+  it('returns whole channels in range, or nothing at all', () => {
+    /*
+     * The failure this rules out is a partial read. `Number.parseInt` returns
+     * NaN for a digit it does not recognise, and a NaN channel reaches a ratio
+     * that compares as false against every threshold — a palette that fails
+     * for a reason no message names.
+     */
+    let read = 0;
+
+    fc.assert(
+      fc.property(tokenValue, (text) => {
+        const rgb = parseHex(text);
+        if (rgb === undefined) return;
+        read += 1;
+        for (const value of [rgb.r, rgb.g, rgb.b]) {
+          expect(Number.isInteger(value)).toBe(true);
+          expect(value).toBeGreaterThanOrEqual(0);
+          expect(value).toBeLessThanOrEqual(255);
+        }
+      }),
+      config,
+    );
+
+    expect(read, 'no generated value parsed, so the assertions never ran').toBeGreaterThan(0);
+  });
+});
+
+describe('meets, over every ratio', () => {
+  const ratio = fc.double({ min: 1, max: 21, noNaN: true });
+
+  it('passes a ratio against itself, which is where the boundary is', () => {
+    // `>` satisfies every example except the one on the boundary. This is that
+    // example, at every point.
+    fc.assert(
+      fc.property(ratio, (value) => {
+        expect(meets(value, value)).toBe(true);
+      }),
+      config,
+    );
+  });
+
+  it('never fails a threshold below one it clears', () => {
+    let cleared = 0;
+
+    fc.assert(
+      fc.property(ratio, ratio, ratio, (value, x, y) => {
+        if (!meets(value, Math.max(x, y))) return;
+        cleared += 1;
+        expect(meets(value, Math.min(x, y))).toBe(true);
+      }),
+      config,
+    );
+
+    expect(cleared, 'no generated ratio cleared its higher threshold').toBeGreaterThan(0);
+  });
+});
+
+describe('checkPalette, over every palette', () => {
+  /*
+   * Built inside each test rather than beside them. Read at describe time,
+   * this runs while the file is being collected, and a mutant that empties
+   * `REQUIRED_TOKENS` then throws before a single test exists — which the
+   * mutation runner scores as a survivor rather than as a failure. It cost a
+   * point off `npm run mutate` once already.
+   */
+  const palettes = () => fc.dictionary(fc.constantFrom(...REQUIRED_TOKENS), tokenValue);
+  const key = (pair: { foreground: string; background: string }): string =>
+    `${pair.foreground}|${pair.background}`;
+  const expected = CONTRAST_PAIRS.map(key).sort();
+
+  it('reports every pair exactly once, checked or skipped', () => {
+    /*
+     * The machine-checked form of the second false pass this repository
+     * recorded. `checkPalette` returned only the pairs it could judge, so a
+     * palette written in `oklch()` produced an empty list and read as a clean
+     * run. Nothing may vanish, whatever the palette says.
+     */
+    let checked = 0;
+    let skipped = 0;
+
+    fc.assert(
+      fc.property(palettes(), (values) => {
+        const report = checkPalette(values);
+        checked += report.checked.length;
+        skipped += report.skipped.length;
+
+        expect([...report.checked, ...report.skipped].map(key).sort()).toEqual(expected);
+      }),
+      config,
+    );
+
+    expect(checked, 'no pair was ever judged, so `checked` was never examined').toBeGreaterThan(
+      0,
+    );
+    expect(skipped, 'no pair was ever skipped, so `skipped` was never examined').toBeGreaterThan(
+      0,
+    );
+  });
+
+  it('never reports a verdict on a colour it could not read', () => {
+    let judged = 0;
+    let declined = 0;
+
+    fc.assert(
+      fc.property(palettes(), (values) => {
+        const report = checkPalette(values);
+
+        for (const result of report.checked) {
+          judged += 1;
+          expect(parseHex(values[result.foreground] ?? '')).toBeDefined();
+          expect(parseHex(values[result.background] ?? '')).toBeDefined();
+        }
+
+        for (const pair of report.skipped) {
+          declined += 1;
+          expect(pair.unreadable.length).toBeGreaterThan(0);
+          for (const token of pair.unreadable) {
+            expect(parseHex(values[token] ?? '')).toBeUndefined();
+          }
+        }
+      }),
+      config,
+    );
+
+    expect(judged, 'no pair was judged, so the verdicts went unexamined').toBeGreaterThan(0);
+    expect(declined, 'no pair was skipped, so the reasons went unexamined').toBeGreaterThan(0);
+  });
+
+  it('skips every pair that names a token the palette does not define', () => {
+    // The cross-check between the two halves of the report. A missing token is
+    // reported once in `missing`, and again as the reason each pair naming it
+    // reached no verdict.
+    fc.assert(
+      fc.property(palettes(), (values) => {
+        const report = checkPalette(values);
+
+        for (const token of report.missing) {
+          for (const pair of CONTRAST_PAIRS) {
+            if (pair.foreground !== token && pair.background !== token) continue;
+            const entry = report.skipped.find((candidate) => key(candidate) === key(pair));
+            expect(entry?.unreadable, `${token} in ${pair.where}`).toContain(token);
+          }
+        }
+      }),
+      config,
+    );
   });
 });

@@ -107,6 +107,36 @@ it better than anything written here before.
 
 Never lower the threshold to make a change fit.
 
+## Property testing, over one module
+
+`fast-check` runs over the numeric core of `src/renderer/lib/contrast.ts`, and
+nowhere else. It answers the question mutation testing cannot: Stryker mutates
+the code that exists, so it proves every syntactic variant is caught by some
+test, and it can never find an input nobody wrote a test for. `parseHex`,
+`luminance`, `contrastRatio` and `meets` all run over a domain far larger than
+the points `tests/contrast.test.ts` pins by hand.
+
+Three rules come with it.
+
+- **The seed is fixed, and `FAST_CHECK_SEED` moves it.** Stryker maps tests to
+  mutants from a dry run and reruns the covering tests once per mutant. A suite
+  that draws different inputs on the second run can report a mutant as
+  surviving for a reason that has nothing to do with the mutant, and
+  `npm run mutate` breaks below 100. Exploration is something a person does by
+  moving the seed, not something a gate does by accident.
+- **A property over an empty set asserts nothing.** The same rule as a check
+  with no scope. A property whose body returns early for most inputs counts the
+  runs that reached the assertions and fails when that count is zero;
+  `checkPalette`'s accounting property counts the pairs it saw checked and the
+  pairs it saw skipped, because a generator that only ever produced unreadable
+  colours would leave half of it unexercised.
+- **A property that has never shrunk to a failure is a declaration.** Break the
+  implementation, record the counterexample fast-check prints, and put it in
+  the pull request. #132 carries two.
+
+Do not extend it to a domain the tests already enumerate. The rejection below
+holds, and it is the reason this section names one module.
+
 ## The packaged application answers for itself
 
 `npm run test:e2e` drives the unpackaged build, because
@@ -176,6 +206,22 @@ Use `capture` from `e2e/harness.ts` rather than `page.screenshot`. macOS stops
 giving an occluded window frames. The plain call then hangs until its timeout.
 That reproduced against the overlay under seed 587000642. `capture` reads the
 renderer through the debugger, which does not care what is in front.
+
+### A declared focus trap is not a walked one
+
+`role="dialog"`, `aria-modal`, and an inert background declare a modal to
+assistive technology. None of them enforces one, and axe reports no violation
+against a dialog focus escapes from on the third Tab press, because it reads
+the declaration. A `.click()` proves less again: `inert` blocks a real pointer
+and a real key without blocking a programmatic call.
+
+So the overlay has two scenarios rather than one. The first reads the
+attributes. The second presses Tab past the end of the card, then Shift+Tab,
+and reads `document.activeElement` after every press — not a `focusin`
+listener, because focus leaving an untrapped dialog lands on `document.body`
+and that fires no `focusin` at all. It counts what Tab can reach before it
+walks, and fails on zero: a trap over an empty card is an empty scope. See
+#131.
 
 ### A still is not an oracle
 
@@ -317,7 +363,8 @@ here. That is worse than not having it, because a green run reads as verified.
   `escapeAction` takes two booleans and its whole input domain is four values.
   Generating inputs for that is exhaustive testing done slower, with a
   dependency to show for it. The numeric core of `src/renderer/lib/contrast.ts`
-  is the one place a continuous domain makes it pay.
+  is the one place a continuous domain makes it pay, and it is the only place
+  the dependency is used. See "Property testing, over one module" above.
 
 ### Infrastructure rejected for the same question
 
