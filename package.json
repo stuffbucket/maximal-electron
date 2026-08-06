@@ -42,7 +42,6 @@
     "prepack": "npm run build:package",
     "prepare": "npm run build:package",
     "package": "electron-forge package",
-    "make": "electron-forge make",
     "icons": "node scripts/gen-icons.mjs",
     "verify:package": "node scripts/verify-package.mjs",
     "verify:exports": "npm run build:package && node scripts/verify-exports.mjs",
@@ -84,9 +83,6 @@
   },
   "devDependencies": {
     "@electron-forge/cli": "7.11.2",
-    "@electron-forge/maker-deb": "7.11.2",
-    "@electron-forge/maker-rpm": "7.11.2",
-    "@electron-forge/maker-zip": "7.11.2",
     "@electron-forge/plugin-fuses": "7.11.2",
     "@electron-forge/plugin-vite": "7.11.2",
     "@electron-forge/shared-types": "7.11.2",

@@ -91,8 +91,8 @@ describe('the workflow files', () => {
 
 /**
  * An artifact passes between jobs by name, and nothing checks the pair.
- * `windows-msi-verify` reads the MSI this way since #81, so a rename on one
- * side leaves a download that finds nothing.
+ * `dry-run-artifacts` reads the tarball this way, and a rename on one side
+ * leaves a download that finds nothing. #81 was that failure.
  */
 describe('artifact hand-off', () => {
   const pairs: string[] = [];
@@ -197,8 +197,6 @@ describe('the release workflow', () => {
   it('ends a dry run with a job that asserts the artifacts exist', () => {
     const job = release?.jobs?.['dry-run-artifacts'];
     expect(job?.if).toContain("github.event_name == 'workflow_dispatch'");
-    expect(needsOf(job ?? {})).toEqual(
-      expect.arrayContaining(['windows-msi-verify', 'package-tarball']),
-    );
+    expect(needsOf(job ?? {})).toEqual(expect.arrayContaining(['package-tarball']));
   });
 });

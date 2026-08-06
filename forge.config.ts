@@ -1,9 +1,6 @@
 import { existsSync, readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 
-import { MakerDeb } from '@electron-forge/maker-deb';
-import { MakerRpm } from '@electron-forge/maker-rpm';
-import { MakerZIP } from '@electron-forge/maker-zip';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import type { ForgeConfig } from '@electron-forge/shared-types';
@@ -176,16 +173,11 @@ const config: ForgeConfig = {
       return Promise.resolve();
     },
   },
-  makers: [
-    // Scope every maker to its platform. An unscoped maker fails on the wrong
-    // host: deb needs dpkg, rpm needs rpmbuild.
-    new MakerZIP({}, ['darwin', 'linux']),
-    // Configured but not released yet. Linux is deferred; see docs/release.md.
-    new MakerDeb({}, ['linux']),
-    new MakerRpm({}, ['linux']),
-    // No Windows maker. build/windows/app.wxs plus `wix build` produce the MSI,
-    // which matches the last known good installer in stuffbucket/maximal.
-  ],
+  // No makers. This repository ships a library tarball, not an installer, and
+  // the MSI and dmg that used to be built here are gone; see `docs/release.md`.
+  // `npm run package` is what CI runs and what `scripts/verify-package.mjs`
+  // inspects. A fork that distributes an application adds its own maker.
+  makers: [],
   plugins: [
     new VitePlugin({
       build: [
