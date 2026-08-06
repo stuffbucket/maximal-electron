@@ -60,11 +60,45 @@ jobs:
       # The shipped palette stays legible. See src/renderer/lib/contrast.ts.
       - run: npm run check:contrast
 
+      # The shipped shell knows nothing about the application it hosts. An
+      # AST parse over src, because require.resolve and createRequire launder
+      # an import past a grep, plus a word-boundary scan for the terms in
+      # FORBIDDEN_TERMS. See scripts/verify-neutral.mjs for the scope.
+      - run: npm run verify:neutral
+
       # The library exports. This rebuilds dist/, walks the renderer import
       # graph, and asserts the committed artifact matches that build. Nothing
       # in CI ran it before, so the published ./renderer export was free to
       # drift behind src/ — and did.
       - run: npm run verify:exports
+
+  # The other way this package is consumed. `stuffbucket/maximal` pins it as
+  # `github:stuffbucket/maximal-electron#<ref>`, and npm runs `prepare` for a
+  # git install where it runs `prepack` for a tarball. #70 wired the build to
+  # `prepack` alone and shipped a tag that installs with no `dist/` at all;
+  # `verify:exports` above walks the tarball path and saw nothing. Issue #83.
+  #
+  # It runs on the head of the branch under review rather than on `main`, so a
+  # regression fails here before it lands. The ref has to be pushed, which it
+  # is: this job is the network half of a check that also runs offline against
+  # a local clone.
+  git-install:
+    name: install by git ref
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      # No `npm ci`. The script imports nothing outside `scripts/`, and the
+      # install under test builds from the ref, not from this checkout.
+      - name: Install the ref under review and resolve every export
+        env:
+          REPOSITORY: github:${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          REF: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: npm run verify:git-install -- --repository "$REPOSITORY" --ref "$REF"
 
   package:
     name: package (${{ matrix.os }})

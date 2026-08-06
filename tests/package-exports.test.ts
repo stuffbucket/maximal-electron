@@ -4,7 +4,12 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
+import { selectors, unscopedSelectors } from '../scripts/css-selectors.mjs';
+
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+/** The class every rule in the package stylesheet has to sit under. */
+const SHELL_ROOT = '.sb-shell';
 
 interface PackageManifest {
   exports: Record<string, unknown>;
@@ -86,22 +91,30 @@ describe('package exports', () => {
     );
   });
 
+  /*
+   * Every selector, not the ones a prefix heuristic recognises.
+   *
+   * This list used to be lines starting `.` or `*` and ending `,` or `{`. A
+   * rule of any other shape was not in the list and so was never judged:
+   * `button { color: red; }` appended here left the suite green and turned
+   * every button in a consumer's application red. Issue #51.
+   *
+   * `scripts/verify-exports.mjs` runs the same parse over
+   * `dist/renderer/styles.css`, which is the file a consumer installs, and
+   * asserts the two agree. It runs after a build, so the artifact is there;
+   * this reads the source, which needs none.
+   */
   it('scopes every exported structural selector to the shell root', async () => {
     const stylesheet = await readFile(
       path.join(ROOT, 'src/renderer/styles/structural.css'),
       'utf8',
     );
-    const selectorLines = stylesheet
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(
-        (line) =>
-          (line.startsWith('.') || line.startsWith('*')) &&
-          (line.endsWith(',') || line.endsWith('{')),
-      );
+    const parsed = selectors(stylesheet);
 
-    expect(selectorLines.length).toBeGreaterThan(0);
-    expect(selectorLines.every((line) => line.startsWith('.sb-shell'))).toBe(true);
+    // The floor. A parser that returned nothing would report a clean
+    // stylesheet over no selectors at all.
+    expect(parsed.length).toBeGreaterThan(30);
+    expect(unscopedSelectors(stylesheet, SHELL_ROOT)).toEqual([]);
     expect(stylesheet).toContain('.sb-shell.app {');
   });
 });

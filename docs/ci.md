@@ -8,7 +8,7 @@ tag, `merge-preview.yml` tests what a merge would produce, and
 
 | Workflow | Trigger | What it is for |
 | --- | --- | --- |
-| `ci.yml` | pull request, push to `main` and `release/**` | Lint, types, unit and mutation tests, packaging and the end-to-end suite on macOS and Windows |
+| `ci.yml` | pull request, push to `main` and `release/**` | Lint, types, unit and mutation tests, a git-ref install, packaging and the end-to-end suite on macOS and Windows |
 | `merge-preview.yml` | push to `main` and `release/**` | Replays every open pull request against the new tip |
 | `release.yml` | tag `v*.*.*`, or a dispatch for a dry run | The draft release, the MSI, the dmg, the tarball, publish |
 | `windows-msi-dev.yml` | dispatch | Builds and installs the MSI from any branch |
@@ -24,6 +24,43 @@ runs behind a tag is a check nobody has run.
 So the rule for anything added here is that it must be possible to run it
 before a tag, and it must fail when it has nothing to do.
 
+## The two install paths
+
+A consumer installs this package one of two ways, and npm runs a different
+lifecycle script for each. `npm pack` and a registry publish run `prepack`. A
+git dependency runs `prepare`. `stuffbucket/maximal` pins the git form:
+
+```
+"stuffbucket-electron": "github:stuffbucket/maximal-electron#<ref>"
+```
+
+`v0.0.2` shipped with the build in `prepack` alone. Installing that tag by git
+ref produces a package holding the licence, the readme, and the manifest, and
+no `dist/` at all. Nothing here noticed, because `verify:exports` runs
+`npm pack` and walks the other path.
+
+`npm run verify:git-install` walks the git path. It installs this package into
+a scratch directory, resolves every entry in `exports` from inside that
+directory, and asserts each target is a file that exists. Resolution alone is
+not enough: `import.meta.resolve` answers from the manifest and never touches
+the disk, so every specifier of the broken `v0.0.2` "resolved". It then checks
+the installed renderer entry against the approved component surface and walks
+its import graph, which is the same pair of questions `verify:exports` asks of
+the local build; `scripts/export-checks.mjs` holds both, so the two paths share
+one definition of what an export has to satisfy.
+
+It runs in three places, because the ref it installs is the whole point:
+
+| Where | Ref |
+| --- | --- |
+| Locally, with no arguments | `git+file:` onto this checkout at `HEAD`, so it needs no network and no push |
+| `ci.yml`, the `git-install` job | The pushed head of the branch under review, as `github:owner/name#sha` |
+| `release.yml`, in `package-tarball` | The commit being released, beside the tarball that is about to be attached |
+
+The local default is what makes it runnable before cutting. The CI job is what
+makes a regression fail before it lands rather than after a consumer installs
+it.
+
 ## The release dry run
 
 `release.yml` accepts a dispatch, and **a dispatch run is always a dry run**.
@@ -37,7 +74,8 @@ A dry run does everything a tag does, except attach and publish:
 - `windows-msi` builds and checksums the MSI, and `windows-msi-verify` installs
   it, asserts the files and the registry entries, uninstalls, and asserts clean
   removal.
-- `package-tarball` runs `npm run verify:exports` and packs.
+- `package-tarball` runs `npm run verify:exports`, packs, and installs the
+  commit by git ref.
 - `macos-dmg` and `publish` do not run at all. The first needs
   `MACOS_BUILDER_PAT` and produces nothing but an asset on the draft.
 
@@ -79,7 +117,50 @@ What it costs: one runner per open pull request per push, for the fast half of
 What it does not close: a race shorter than the run. Two merges 180 seconds
 apart is exactly that case, and only a queue serialises it.
 
-### The two settings, and why neither is enabled
+### The neutrality guard
+
+`npm run verify:neutral` runs in the `static` job and answers whether this
+shell knows anything about the application it hosts. Issue #16 asks for it, and
+a named consumer waits on it.
+
+Two checks, because two things go wrong.
+
+`scripts/neutrality.mjs` parses every TypeScript source under `src` with the
+compiler API and denies a specifier that reaches `maximal`,
+`maximal-core`, or `@stuffbucket/maximal-core`. A parse rather than a grep,
+because `require.resolve`, `createRequire(import.meta.url)('…')`, an aliased
+`createRequire`, `import.meta.resolve`, and a type-position `import('…')` each
+launder an import past a text search. A specifier the parse cannot read — one
+built from a variable — fails too, because that is the one shape it cannot
+judge.
+
+The second check scans for the terms in `FORBIDDEN_TERMS`, which defaults to
+`maximal`, `maximal-core`, and `copilot`. The boundary treats `_` and `-` as
+separators, so `MAXIMAL_BASE` matches where `\b` would not.
+
+**The scope is decided, not inherited.** Every file under `src`, plus
+`README.md`, which is the only prose npm puts in the tarball. `docs/` is out:
+it is this repository's own record, written throughout by comparison with the
+repository this one was extracted from, and no consumer installs it. The guard
+asserts that boundary rather than assuming it, so a manifest that starts
+packing documentation fails.
+
+One exemption, stated once: a term inside a `stuffbucket/…` slug names a
+repository rather than depends on one, and this repository is called
+`maximal-electron`. An npm scope is not a slug, so `@stuffbucket/maximal-core`
+in a string is still reported.
+
+Two files carry a narrow exemption with the reason inline, both waiting on
+issue #22. Each exemption is checked three ways: the file must exist, it must
+still contain a match, and it must be absent from the export graph. A fixed
+file therefore cannot keep its exemption, and no exemption can ever cover a
+file a consumer installs.
+
+Every part of this has a floor, because a scan of nothing reports a clean tree.
+The run parses a built-in fixture of all ten laundering forms and stops before
+touching the tree if it does not catch every one.
+
+## The two settings, and why neither is enabled
 
 Both change how merging behaves for everyone, so both are the repository
 owner's call. Neither is enabled. `ci.yml` carries the `merge_group` trigger so

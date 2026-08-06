@@ -37,8 +37,7 @@ export interface HostWindowOptions {
  * `nodeIntegration`; every external link and cross-origin navigation is handed
  * to the real browser where it cannot reach Electron APIs. The consumer injects
  * its own preload and renderer through `options`, so the shell stays agnostic
- * about what it hosts. (Reusable seam consumed by e.g. maximal/client;
- * see maximal-electron#22.)
+ * about what it hosts. See issue #22 for the seam a consumer composes.
  */
 export function createHostWindow(options: HostWindowOptions): BrowserWindow {
   const window = new BrowserWindow({
