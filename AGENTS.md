@@ -77,8 +77,17 @@ neutral.
 
 Six checks here have passed while examining an empty set, and one of them
 shipped a broken terminal. A check you add or change reports how many things it
-examined and fails on zero. Commit your own work first, then break it on
-purpose and put the failure message in the pull request. See
+examined and fails on zero. `scripts/check-scope.mjs` is the runner that does
+it: `check(ok, message, { count, of })` prints the count beside the message and
+fails on zero whatever `ok` says. It throws without a scope, so the convention
+is not something to remember.
+
+`tests/check-scope.test.ts` discovers every `verify:*` and `check:*` script from
+`package.json` and requires it to use the runner. A script not on it yet is
+named there with the issue that will move it, and the list may only shrink.
+
+Commit your own work first, then break it on purpose and put the failure
+message in the pull request. See
 `.claude/skills/write-a-check/SKILL.md`.
 
 ## Writing code
