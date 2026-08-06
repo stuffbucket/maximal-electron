@@ -132,29 +132,6 @@ jobs:
       # shell inside the package. Issue #89.
       - run: npm run smoke:packaged
 
-      # TEMPORARY, for the pull request that adds the Windows half of #89.
-      # Establishes by measurement which native file the terminal cannot
-      # resolve without, rather than taking the issue text's word for it.
-      # Deleted before merge.
-      - name: which native file the resolution depends on
-        if: runner.os == 'Windows'
-        continue-on-error: true
-        shell: pwsh
-        run: |
-          $prebuild = "out/Stuffbucket-win32-x64/resources/app.asar.unpacked/node_modules/node-pty/prebuilds/win32-x64"
-          Get-ChildItem -Recurse -File $prebuild | ForEach-Object { Write-Host "$($_.FullName) $($_.Length)" }
-          foreach ($relative in @("conpty\conpty.dll", "conpty\OpenConsole.exe", "conpty_console_list.node")) {
-            $path = Join-Path $prebuild $relative
-            $name = Split-Path $path -Leaf
-            $parent = Split-Path $path -Parent
-            Write-Host "=================== moving $relative aside ==================="
-            Rename-Item -LiteralPath $path -NewName "$name.aside"
-            npm run smoke:packaged
-            Write-Host "=================== $relative removed: exit $LASTEXITCODE ==================="
-            Rename-Item -LiteralPath (Join-Path $parent "$name.aside") -NewName $name
-          }
-          exit 0
-
   e2e:
     name: end-to-end (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
