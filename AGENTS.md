@@ -153,11 +153,12 @@ Skills carry the walk-throughs: `.claude/skills/add-ipc-channel/SKILL.md`,
 
 ## Two rules that live outside those documents
 
-**Fuses.** `forge.config.ts` fuses the packaged binary, and
-`scripts/verify-package.mjs` holds a copy of the expected values. Change both in
-the same commit, or the check passes on a stale expectation. A change to
-`FusesPlugin` also invalidates an existing signature, so say so in the pull
-request: the macOS build must be redone.
+**Fuses.** `scripts/package-contract.mjs` holds the expected fuse values.
+`forge.config.ts` burns them into the binary and `scripts/verify-package.mjs`
+reads them back off it, both from that one list, so a seventh fuse is applied
+and checked from a single edit rather than from a review convention. A change to
+the values invalidates an existing signature, so say so in the pull request: the
+macOS build must be redone.
 
 **External native modules.** Adding one means editing three places: the Vite
 external list, the `packagerConfig.ignore` filter in `forge.config.ts`, and
@@ -166,11 +167,11 @@ and the feature is absent for a user. `node-pty` needs a fourth: `prunePrebuilds
 in `forge.config.ts` drops the platforms a build cannot use, and it throws
 rather than skipping.
 
-**Icons** are a third instance of the same duplication. `STUFFBUCKET_ICON_DIR`
-names the directory, defaults to `build/icons`, and is the seam a consumer
-swaps. `forge.config.ts` and `scripts/verify-package.mjs` each hold a copy of
-the run-time file names; change both in one commit. Resolution lives in
-`src/main/native/icons.ts`, which imports no `electron` and is on the mutate
-list — keep it that way, and leave `nativeImage` to `app-icon.ts`. A macOS
-development run shows Electron's own dock icon until `app.dock.setIcon` runs.
-That is not a defect, and packaging does not change it.
+**Icons.** `STUFFBUCKET_ICON_DIR` names the directory, defaults to
+`build/icons`, and is the seam a consumer swaps. The run-time file names live in
+`scripts/package-contract.mjs`, which `forge.config.ts` copies from and
+`scripts/verify-package.mjs` checks against, so there is one list rather than
+two. Resolution lives in `src/main/native/icons.ts`, which imports no `electron`
+and is on the mutate list — keep it that way, and leave `nativeImage` to
+`app-icon.ts`. A macOS development run shows Electron's own dock icon until
+`app.dock.setIcon` runs. That is not a defect, and packaging does not change it.
