@@ -29,7 +29,8 @@
     "scripts/shell-variables.mjs",
     "scripts/check-scope.mjs",
     "scripts/docs-claims.mjs",
-    "scripts/peer-table.mjs"
+    "scripts/peer-table.mjs",
+    "scripts/publish-decision.mjs"
   ],
   "reporters": [
     "progress",
