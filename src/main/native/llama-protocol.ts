@@ -255,6 +255,8 @@ export function describeEngineWait(phase: EnginePhase, ms: number): string {
  */
 export const LLAMA_CHECK_FLAG = '--self-check=llama';
 export const LLAMA_CHECK_OK = 'self-check llama: ok';
+/** Printed where the engine is gated off. An asserted gate, not a skip. */
+export const LLAMA_CHECK_GATED = 'self-check llama: gated';
 export const LLAMA_CHECK_FAILED = 'self-check llama: failed';
 
 /**
@@ -270,6 +272,7 @@ export const LLAMA_NO_LIBRARY = 'did not load llama.cpp';
 
 export type LlamaCheckResult =
   | { ok: true; device: string; loadMs: number; releasedBy: string; survived: string }
+  | { ok: true; gated: string }
   | { ok: false; reason: string };
 
 export function llamaCheckRequested(argv: readonly string[]): boolean {
@@ -294,6 +297,31 @@ export function engineCheckTimeoutMs(platform: string): number {
 }
 
 /**
+ * Whether the engine is known to work on a platform, and why not.
+ *
+ * **This is a workaround, not a fix.** On Windows `getLlama()` does not return:
+ * a packaged run reaches `phase acknowledged` — the child read the request —
+ * and then waits out the full limit. The 30 s bound on the ESM import does not
+ * fire, so the module loads and it is `getLlama()` itself that hangs, and it
+ * hangs identically with the `@node-llama-cpp` scope moved aside, where it
+ * should fail in milliseconds. Issue #149.
+ *
+ * The gate exists because a spinner forever is worse than a legible error. It
+ * is retired by one thing: a Windows run where the engine names a device.
+ */
+export function embeddedEngineStatus(
+  platform: string,
+): { supported: true } | { supported: false; reason: string } {
+  if (platform !== 'win32') return { supported: true };
+  return {
+    supported: false,
+    reason:
+      'The embedded model is not available on Windows yet: its engine does not ' +
+      'finish loading. Run a local model server instead. See issue #149.',
+  };
+}
+
+/**
  * The one line the driver reads.
  *
  * A pass names the backend, what loading cost, and what released the request
@@ -304,8 +332,10 @@ export function engineCheckTimeoutMs(platform: string): number {
  * nothing.
  */
 export function llamaCheckLine(result: LlamaCheckResult): string {
-  return result.ok
-    ? `${LLAMA_CHECK_OK} device=${result.device} loadMs=${String(result.loadMs)} ` +
-      `released-by=${result.releasedBy} survived=${result.survived}`
-    : `${LLAMA_CHECK_FAILED}: ${result.reason}`;
+  if (!result.ok) return `${LLAMA_CHECK_FAILED}: ${result.reason}`;
+  if ('gated' in result) return `${LLAMA_CHECK_GATED}: ${result.gated}`;
+  return (
+    `${LLAMA_CHECK_OK} device=${result.device} loadMs=${String(result.loadMs)} ` +
+    `released-by=${result.releasedBy} survived=${result.survived}`
+  );
 }

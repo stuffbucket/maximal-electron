@@ -345,6 +345,45 @@ everywhere is that the supervisor named it as a fault at all: a code
 `llama-protocol.ts` cannot name reads as "exited with code N", which fails the
 check and puts the number in the log to be pinned.
 
+## The embedded engine is gated off on Windows
+
+`getLlama()` does not return there. A packaged run reaches `phase acknowledged`
+— the child read the request off its port — and then waits out the whole limit,
+twice, including with the `@node-llama-cpp` scope moved aside where it should
+fail in milliseconds. The 30 s bound `llama-worker.ts` puts on the ESM import
+does not fire, so the module loads and it is `getLlama()` itself that stops.
+Issue #149 carries the log lines.
+
+So `embeddedEngineStatus` reports the provider unavailable on `win32` with a
+reason, `discoverProvider` falls through, and a Windows user reads a sentence
+instead of watching a spinner. **This is a workaround, not a fix**, and it is
+retired by one observation: a Windows run where the engine names a device.
+
+`--self-check=llama` asserts the gate on that platform rather than skipping —
+that the application exits rather than hanging, that it says the engine is
+gated, and that it names the issue. A skip examines nothing; an asserted gate
+still fails if the application starts hanging again.
+
+### What the diagnosis cost, and what actually found it
+
+Three explanations were proposed for the Windows hang and all three were wrong:
+a slow `getLlama()`, a `spawn` event that never fires, and a request that never
+arrived. What moved each step forward was not a theory but making the check
+report what it did rather than that it passed:
+
+| Added | What it settled |
+| --- | --- |
+| `phase` | The child had started, so it was not a fork or resolution failure |
+| `released-by` | The queue flushed, and on which signal |
+| `queued` | Nothing was left held, so delivery was not the problem |
+| `ack` | The child read the request, which moved the fault past the boundary |
+| `loadMs` | 256 ms on macOS, so slowness was never a plausible cause |
+
+Two of those found bugs in the instrumentation itself before they found
+anything about Windows: `released-by=nothing` on a run that plainly worked,
+because the record was already cleared by the time the reporter read it. A
+green check that says only "ok" would have hidden both.
+
 That check found a defect on its first run. `packagerConfig.prune` is off and
 the keep-list names directories, so a dependency npm hoisted out of
 `node-llama-cpp` never reached the package: the library failed to load with

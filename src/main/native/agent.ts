@@ -25,6 +25,7 @@ import type {
 import { describeToolCall, needsApproval, riskOf, type ToolRisk } from './approval.js';
 import { runEmbedded } from './embedded.js';
 import { EMBEDDED_MODEL_LABEL, EMBEDDED_MODEL_MB, isModelPresent } from './llama.js';
+import { embeddedEngineStatus } from './llama-protocol.js';
 import { getPreferences } from './preferences.js';
 import {
   resolveEndpoints,
@@ -167,11 +168,17 @@ function chooseOllamaModel(tags: unknown): string | undefined {
  * the application work offline and with nothing installed.
  */
 export async function discoverProvider(): Promise<ProviderStatus> {
+  // The engine does not finish loading on Windows, and a spinner forever is
+  // worse than a legible error. A workaround, retired by a Windows run that
+  // names a device. Issue #149.
+  const engine = embeddedEngineStatus(process.platform);
+
   // Pin a provider, for testing and for support. Without it the embedded path
   // is unreachable on any machine that has a proxy running, which is every
   // machine that develops this.
   const { pin, base } = environment();
   if (pin === 'embedded') {
+    if (!engine.supported) return { state: 'unavailable', reason: engine.reason };
     return isModelPresent()
       ? { state: 'ready', provider: 'embedded', model: EMBEDDED_MODEL_LABEL }
       : { state: 'needs-model', model: EMBEDDED_MODEL_LABEL, approxMb: EMBEDDED_MODEL_MB };
@@ -196,6 +203,8 @@ export async function discoverProvider(): Promise<ProviderStatus> {
   if (pin !== undefined) {
     return { state: 'unavailable', reason: `No ${pin} backend answered.` };
   }
+
+  if (!engine.supported) return { state: 'unavailable', reason: engine.reason };
 
   if (isModelPresent()) {
     return { state: 'ready', provider: 'embedded', model: EMBEDDED_MODEL_LABEL };
