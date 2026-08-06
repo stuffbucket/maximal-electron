@@ -139,13 +139,14 @@ jobs:
       # archive listing cannot check. It runs on both packaging hosts: the
       # negative control moves `spawn-helper` aside on macOS and `conpty.node`
       # on Windows, so neither can report success without having started a
-      # shell inside the package. Issue #89.
+      # shell inside the package. Issue #89. It launches from a copy of the
+      # package outside this checkout, because a package that resolves into the
+      # repository above it is not the one a user installs. Issue #149.
       - run: npm run smoke:packaged
 
       # Crashes the packaged application's engine on purpose and reads the
       # minidump back off disk, against a control run that crashes nothing.
-      # Where #149 gates the engine off, the gate is asserted and the artifact
-      # is not proven. Issue #134.
+      # Issue #134.
       - run: npm run verify:crash-artifact
 
   e2e:

@@ -338,28 +338,61 @@ abort well enough to print a line about it. A negative control moves the
 `@node-llama-cpp` scope aside and requires the same run to fail by reporting the
 engine.
 
-**The fault name is pinned per platform, and only where it has been seen.**
+### It is launched from outside this repository
+
+`out/` sits inside the checkout, so a package started in place resolves modules
+one directory above itself and reaches the repository's own `node_modules`.
+That is 600 MB the build never ships. On `win32-x64` it is where the engine
+found the vulkan prebuild `pruneLlamaBackends` prunes, and the `#113` negative
+control found it too — the control moves the scope **inside** the package, not
+the one above it, so both runs took a branch no user's install can take.
+
+`scripts/packaged-app.mjs` copies the package to a temporary directory first,
+and both `smoke:packaged` and `verify:crash-artifact` launch it from there.
+`nodeModulesAbove` states the property as two assertions rather than as an
+intention: that something is above `out/`, which is the premise and fails at
+zero, and that nothing is above the copy.
+
+A copy rather than a move, because `verify:package` reads `out/` and
+`verify:crash-artifact` runs after `smoke:packaged` on the same build.
+
+**On `darwin-arm64` this changes nothing, which was worth measuring.** With the
+scope moved aside the in-place run already failed with `NoBinaryFoundError`, so
+resolution was not escaping the package there;
+`detectBestComputeLayersAvailable` short-circuits to `["metal"]` and never
+reaches the branch that walks up. `device=metal` and `loadMs` are the same
+either way once the Metal shader cache is warm — 206 ms relocated against
+231 ms in place. The first run from each temporary directory pays a cold cache
+and costs about 9.4 s, which is inside the 60 s `engineCheckTimeoutMs` allows.
+
+**The fault name is pinned per platform, from a run rather than from a table.**
 macOS reports a signal death as the bare signal number, so `SIGABRT` is
-asserted by name. Windows reports a status code instead, and which one a CRT
-`abort()` produces has not been observed here. The assertion that holds
-everywhere is that the supervisor named it as a fault at all: a code
+asserted by name against 6. Windows reports 134 for the same abort, which is
+the POSIX `128 + SIGABRT` convention and not an NTSTATUS at all; that was
+measured the first time the packaged Windows check got far enough to crash,
+and it failed the run until `faultName` learned it. The assertion that holds
+everywhere is that the supervisor named it as a fault: a code
 `llama-protocol.ts` cannot name reads as "exited with code N", which fails the
 check and puts the number in the log to be pinned.
 
-## The embedded engine is gated off on Windows
+## The embedded engine was gated off on Windows, and is not any more
 
-The packaged self check waits out its whole limit there, twice, including with
-the `@node-llama-cpp` scope moved aside where it should fail in milliseconds.
-So `embeddedEngineStatus` reports the provider unavailable on `win32` with a
-reason, `discoverProvider` falls through, and a Windows user reads a sentence
-instead of watching a spinner. **This is a workaround, not a fix**, and it is
-retired by one observation: a packaged Windows run where the engine names a
-device.
+From #144 until #149 `embeddedEngineStatus` reported the provider unavailable
+on `win32`, because the packaged self check waited out its whole limit there,
+twice, including with the `@node-llama-cpp` scope moved aside where it should
+fail in milliseconds. A spinner forever is worse than a legible error, so
+`discoverProvider` fell through and a Windows user read a sentence.
 
-**It is not `getLlama()`.** #144 read the absent 30 s import bound as proof that
-the module graph had loaded and the engine call was what stopped. That reading
-was wrong. Building the environment one rung at a time on `windows-latest`,
-`getLlama()` returns and names a device every time:
+**What produced that was where the check ran, not the platform.** Both runs
+launched `out/Stuffbucket-win32-x64` in place, inside this repository, and both
+reached a vulkan prebuild in the repository's own `node_modules` that the build
+prunes. Launched from a copy with nothing above it, the packaged binary names a
+device. The gate is gone, and `embeddedEngineStatus` with it.
+
+**It is not `getLlama()` either.** #144 read the absent 30 s import bound as
+proof that the module graph had loaded and the engine call was what stopped.
+That reading was wrong. Building the environment one rung at a time on
+`windows-latest`, `getLlama()` returns and names a device every time:
 
 | Where | What came back |
 | --- | --- |
@@ -392,23 +425,28 @@ The same file under `node` answers `{"type":"ready"}` in 376 ms.
 `engineCheckTimeoutMs` gives up at three, which is the timeout #149 opens with.
 
 **And a build ships no vulkan prebuild.** `pruneLlamaBackends` keeps only
-`@node-llama-cpp/win-x64`. The engine finds one anyway because `out/` sits
-inside this repository, so the resolution walks one directory above the package
+`@node-llama-cpp/win-x64`. The engine found one anyway because `out/` sits
+inside this repository, so the resolution walked one directory above the package
 into `node_modules`. The last row of the table is the same package copied to a
 temporary directory, where nothing is above it: no test, no fork, and llama.cpp
-loaded. Moving the `@node-llama-cpp` scope aside inside the package does not
-move that copy, which is why the `#113` negative control hangs for exactly as
-long as the real run.
+loaded. Moving the `@node-llama-cpp` scope aside inside the package did not
+move that copy, which is why the `#113` negative control hung for exactly as
+long as the real run. Both checks now launch from a copy, as above.
 
-So the one rung nothing has run is `--self-check=llama` inside
-`Stuffbucket.exe`, which the gate short-circuits. Issue #149 carries the runs
-and the two things that retire the gate: launch the packaged application from
-outside this repository, and lift the gate behind it.
+The rung nothing had run was `--self-check=llama` inside `Stuffbucket.exe`,
+which the gate short-circuited. `smoke:packaged` runs it now, from a copy of
+the package outside this repository, and asserts the same four things it
+asserts on macOS: that the engine named a device, that the main process
+outlived the abort, that it named a fault rather than a bare exit code, and
+that the `#113` control fails by reporting a library that would not load.
 
-`--self-check=llama` asserts the gate on that platform rather than skipping —
-that the application exits rather than hanging, that it says the engine is
-gated, and that it names the issue. A skip examines nothing; an asserted gate
-still fails if the application starts hanging again.
+**The half that is upstream is untouched.** A build that ships a GPU backend —
+`STUFFBUCKET_LLAMA_BACKENDS=vulkan` or `cuda` — still takes the fork, on a real
+machine and not only in CI, and still waits five minutes for an answer.
+`testBindingBinary` assumes a fork of `process.execPath` yields a node process,
+which is false for any Electron application with the recommended fuses burned.
+The default build does not ship such a backend, so it does not reach that path.
+`engineCheckTimeoutMs` keeps its 180 s ceiling on Windows for the same reason.
 
 ### What the diagnosis cost, and what actually found it
 
@@ -462,7 +500,8 @@ Electron 43 before any of this was written.
 
 | Process | Covered | Established by |
 | --- | --- | --- |
-| `utilityProcess` (the engine) | yes | `npm run verify:crash-artifact` on a packaged build |
+| `utilityProcess` (the engine), macOS | yes | `npm run verify:crash-artifact` on a packaged build |
+| `utilityProcess` (the engine), Windows | **no** | The engine aborts, the application survives, and Crashpad writes nothing. Issue #156 |
 | Renderer | yes | A `forcefullyCrashRenderer` run on Electron 43. No check drives it |
 | Main | yes | A `process.crash()` run on Electron 43. No check drives it |
 
@@ -484,18 +523,26 @@ uploaded.
 ### What proves it
 
 `npm run verify:crash-artifact` launches the packaged binary twice, each into a
-throwaway profile given by `--user-data-dir`, and compares the two crash
-databases. The first run is `--self-check=terminal`: it starts the reporter,
-crashes nothing, and must leave a database with no dump in it. The second is
-`--self-check=llama` — #144's crash, not a new one — which forks the engine,
-loads the packaged llama.cpp, and calls `process.abort()` in native code. That
-run must leave a dump where the first left none.
+throwaway profile given by `--user-data-dir`, and from a copy of the package
+outside this repository for the reason above. The first run is
+`--self-check=terminal`: it starts the reporter, crashes nothing, and must
+leave a database with no dump in it. The second is `--self-check=llama` —
+#144's crash, not a new one — which forks the engine, loads the packaged
+llama.cpp, and calls `process.abort()` in native code. That run must leave a
+dump where the first left none.
 
-Which of the two it demands is read off the line the application printed rather
-than off a platform table. Where #149 gates the engine off, the gated run
-crashes nothing, so the check asserts the gate and **the artifact is not proven
-on that platform**. The day a Windows run names a device, the same check starts
-demanding the dump there without anyone editing it.
+Both platforms crash now. #149's Windows gate is retired, so a run that does
+not report the engine loading and dying is a defect rather than a disposition,
+and the check demands that on both packaging hosts.
+
+**Only macOS leaves a file, and that is a finding rather than a disposition.**
+The same abort on `windows-latest` exits the utility process with 134 — the
+POSIX `128 + SIGABRT` convention, not a structured exception — and Crashpad
+writes nothing in the 30 s the check waits. The database is on disk, so the
+reporter started; the supervisor names the fault, so the engine really died.
+Nothing could have seen this before, because the engine never got far enough to
+crash on Windows. The check asserts what happens there rather than skipping, so
+a Windows dump appearing fails it. Issue #156.
 
 ## The terminal a consumer gets
 

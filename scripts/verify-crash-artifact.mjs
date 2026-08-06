@@ -15,10 +15,12 @@
  * survives it, so it is the crash least likely to be noticed and the one most
  * in need of a record.
  *
- * Which of the three process types this covers is decided by the run rather
- * than asserted here. The engine is a `utilityProcess`; the main process and
- * the renderer are covered by the same reporter and are not exercised by any
- * check. See `docs/architecture.md`.
+ * This covers the engine's `utilityProcess` and nothing else. The main process
+ * and the renderer use the same reporter and no check drives either. It covers
+ * the artifact on macOS and only the crash on Windows, where Crashpad writes
+ * nothing for this abort. See `docs/architecture.md`.
+ *
+ * The package is launched from a copy outside this repository. Issue #149.
  *
  * Issue #134.
  */
@@ -31,6 +33,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { scopedChecks } from './check-scope.mjs';
+import { ancestors, nodeModulesAbove, packagedApp, relocate } from './packaged-app.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -41,7 +44,6 @@ const TOKEN_FLAG = '--self-check-token=';
 /** Kept in step with `src/main/native/llama-protocol.ts` by `tests/llama-protocol.test.ts`. */
 const LLAMA_FLAG = '--self-check=llama';
 const LLAMA_OK = 'self-check llama: ok';
-const LLAMA_GATED = 'self-check llama: gated';
 
 const TERMINAL_TIMEOUT_MS = 90_000;
 /** Above `engineCheckTimeoutMs`, which is 180 s on Windows. */
@@ -78,26 +80,40 @@ const MIN_DUMP_BYTES = 4096;
 /** Where Electron puts the Crashpad database, relative to the profile. */
 const DATABASE = 'Crashpad';
 
-function target() {
-  if (process.platform === 'darwin') {
-    const bundle = path.join(ROOT, `out/Stuffbucket-darwin-${process.arch}/Stuffbucket.app`);
-    return path.join(bundle, 'Contents/MacOS/Stuffbucket');
-  }
-  if (process.platform === 'win32') {
-    return path.join(ROOT, `out/Stuffbucket-win32-${process.arch}/Stuffbucket.exe`);
-  }
-  return undefined;
-}
+/**
+ * Whether this platform records the engine's abort as a crash artifact.
+ *
+ * macOS does. `process.abort()` raises SIGABRT and Crashpad writes a minidump
+ * of about 800 KB.
+ *
+ * Windows does not, and every other half of it works: the database is on disk,
+ * the supervisor names the fault, the application survives, and Crashpad
+ * writes nothing in 30 s. The abort goes through the CRT rather than through a
+ * structured exception, and Electron reports it as exit code 134. Nothing
+ * could have seen that until #149 let the packaged engine crash there at all.
+ * Issue #156.
+ */
+const DUMPS_ON_ABORT = process.platform !== 'win32';
 
-const BINARY = target();
-if (!BINARY) {
+const built = packagedApp();
+if (!built) {
   console.error(`This check runs on macOS and Windows, and the host is ${process.platform}.`);
   process.exit(1);
 }
-if (!existsSync(BINARY)) {
-  console.error(`No packaged application at ${path.relative(ROOT, BINARY)}. Run \`npm run package\`.`);
+if (!existsSync(built.binary)) {
+  console.error(`No packaged application at ${path.relative(ROOT, built.binary)}. Run \`npm run package\`.`);
   process.exit(1);
 }
+
+/**
+ * Launched from outside this repository, for the reason
+ * `scripts/packaged-app.mjs` gives: `out/` is inside it, so a package started
+ * in place resolves modules one directory up into the repository's own
+ * `node_modules`. The engine has to load llama.cpp before it can abort inside
+ * it, and in place that load takes a path a user's install cannot. Issue #149.
+ */
+const packaged = relocate(built);
+const BINARY = packaged.binary;
 
 /**
  * Every minidump under a profile's crash database.
@@ -178,21 +194,39 @@ function launch(args, timeoutMs) {
 
     child.stdout.on('data', (chunk) => (stdout += chunk));
     child.stderr.on('data', (chunk) => (stderr += chunk));
-    child.on('close', (code) => {
+    child.on('close', (code, signal) => {
       clearTimeout(timer);
-      resolve({ profile, database: path.join(profile, DATABASE), stdout, stderr, code, timedOut });
+      resolve({
+        profile,
+        database: path.join(profile, DATABASE),
+        stdout,
+        stderr,
+        code,
+        signal,
+        timedOut,
+      });
     });
   });
 }
 
 function describe(run, timeoutMs) {
-  const status = run.timedOut ? `killed after ${String(timeoutMs)} ms` : `exit ${String(run.code)}`;
+  // The signal is named, not dropped. A run killed by one reports `exit null`
+  // without it, which reads as a check that could not tell what happened.
+  const status = run.timedOut
+    ? `killed after ${String(timeoutMs)} ms`
+    : `exit ${String(run.code)}${run.signal ? ` signal ${run.signal}` : ''}`;
   return `${status}\n${[run.stdout, run.stderr].join('').trimEnd()}`;
 }
 
 const { check, summary } = scopedChecks();
 
-console.log(`Launching ${path.relative(ROOT, BINARY)}\n`);
+console.log(`Launching ${path.basename(BINARY)} from ${packaged.root}\n`);
+
+const above = nodeModulesAbove(packaged.directory);
+check(above.length === 0, 'nothing above the launched package can be resolved from inside it', {
+  count: ancestors(packaged.directory).length,
+  of: 'directories walked above it',
+});
 
 /* ---------------------------------- a run that does not crash writes none */
 
@@ -246,15 +280,12 @@ console.log(`${describe(crashed, LLAMA_TIMEOUT_MS)}\n`);
  * Whether the engine really died, read off the run rather than off a platform
  * table.
  *
- * `embeddedEngineStatus` gates the engine off on Windows while #149 is open,
- * and a gated run crashes nothing. Deciding from the line the application
- * printed means this check demands a dump on Windows the day that gate is
- * retired, without anyone remembering to come back here.
+ * Every platform crashes now: #149's Windows gate is retired, so a run that
+ * does not report the engine loading and dying is a defect rather than a
+ * disposition. What differs by platform is only whether Crashpad records it,
+ * and that is `DUMPS_ON_ABORT` above.
  */
-const aborted = crashed.stdout.includes(LLAMA_OK);
-const gated = crashed.stdout.includes(LLAMA_GATED);
-
-check(aborted !== gated, 'the run reports the engine as either crashed or gated', {
+check(crashed.stdout.includes(LLAMA_OK), 'the run reports the engine as crashed', {
   count: 1,
   of: 'engine runs',
 });
@@ -263,9 +294,9 @@ check(crashed.code === 0, 'the application outlives whatever the engine did', {
   of: 'engine runs',
 });
 
-const crashDumps = await waitForDumps(crashed.database, aborted);
+const crashDumps = await waitForDumps(crashed.database, DUMPS_ON_ABORT);
 
-if (aborted) {
+if (DUMPS_ON_ABORT) {
   check(
     crashDumps.length > cleanDumps.length,
     'the engine crash left a minidump, where the run without a crash left none',
@@ -281,25 +312,25 @@ if (aborted) {
   }
 } else {
   /**
-   * Not a skip. The gate is asserted instead, and the assertion is the one
-   * thing that is true here: nothing crashed, so nothing was written. This
-   * platform therefore proves the reporter starts and does not prove the
-   * artifact. `docs/architecture.md` says so in as many words. Issue #149.
+   * Not a skip, and not "nothing to check". The one thing that is true here is
+   * asserted: the reporter ran, and it wrote no minidump for the abort. The
+   * day Crashpad starts catching it, `crashDumps` stops being empty and this
+   * fails, which is how #156 gets noticed rather than remembered.
    */
-  check(crashDumps.length === 0, 'the gated run crashes nothing, and writes no minidump', {
-    count: 1,
-    of: 'gated runs',
-  });
-  check(crashed.stdout.includes('#149'), 'and the gate names the issue that retires it', {
-    count: 1,
-    of: 'gated runs',
-  });
+  const entries = databaseEntries(crashed.database);
+  check(
+    crashDumps.length === 0 && entries.length > 0,
+    'the reporter ran and wrote no minidump for the abort, which is what this platform does',
+    { count: entries.length, of: 'crash database files after the abort' },
+  );
   console.log(
-    '\n  note  no crash artifact is proven on this platform: the only crash this\n' +
-      '        repository can reproduce is the engine abort, and #149 gates it off.',
+    '\n  note  no crash artifact is proven on this platform. The engine really\n' +
+      '        aborts and the application really survives; Crashpad writes\n' +
+      '        nothing for it. Issue #156.',
   );
 }
 
 for (const run of [clean, crashed]) rmSync(run.profile, { recursive: true, force: true });
+packaged.cleanup();
 
 process.exit(summary('verify:crash-artifact'));

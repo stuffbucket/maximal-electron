@@ -106,8 +106,16 @@ const POSIX_FAULTS: Readonly<Record<string, number>> = {
 
 const SIGBUS: Readonly<Record<string, number>> = { darwin: 10, linux: 7 };
 
-/** Windows reports a status code rather than a signal. */
+/**
+ * Windows reports a status code rather than a signal.
+ *
+ * 134 is not one. It is the POSIX `128 + SIGABRT` convention, and it is what
+ * Electron reported for the engine's own `process.abort()` on `windows-latest`
+ * once the packaged self check got that far. Measured, not assumed: run
+ * 31108183394 printed `exited with code 134` and the check failed over it.
+ */
 const WINDOWS_FAULTS: Readonly<Record<number, string>> = {
+  134: 'SIGABRT',
   0xc0000005: 'access violation',
   0xc0000374: 'heap corruption',
   0xc0000409: 'stack buffer overrun',
@@ -255,8 +263,6 @@ export function describeEngineWait(phase: EnginePhase, ms: number): string {
  */
 export const LLAMA_CHECK_FLAG = '--self-check=llama';
 export const LLAMA_CHECK_OK = 'self-check llama: ok';
-/** Printed where the engine is gated off. An asserted gate, not a skip. */
-export const LLAMA_CHECK_GATED = 'self-check llama: gated';
 export const LLAMA_CHECK_FAILED = 'self-check llama: failed';
 
 /**
@@ -272,7 +278,6 @@ export const LLAMA_NO_LIBRARY = 'did not load llama.cpp';
 
 export type LlamaCheckResult =
   | { ok: true; device: string; loadMs: number; releasedBy: string; survived: string }
-  | { ok: true; gated: string }
   | { ok: false; reason: string };
 
 export function llamaCheckRequested(argv: readonly string[]): boolean {
@@ -285,41 +290,15 @@ export function llamaCheckRequested(argv: readonly string[]): boolean {
  * macOS is measured: `getLlama()` costs 0.4 s warm and 9.3 s on a cold Metal
  * shader cache, so 60 s is ample.
  *
- * **Windows is not measured.** No run has yet loaded llama.cpp there, and a
- * runner with no GPU takes a CPU path macOS never exercises. The value is a
- * ceiling generous enough to get one successful measurement, not a number
- * anyone has justified. `loadMs` on the pass line is what replaces it: the
- * first green Windows run says what the load actually cost, and this comes
- * down to fit. Issue #133.
+ * Windows gets longer because it takes a path macOS never does. It tests a
+ * prebuilt binary before loading it, and that test forks `process.execPath`
+ * and waits five minutes for an answer the packaged binary does not give. A
+ * build that ships a GPU backend still takes that fork, which is why the
+ * ceiling stays generous rather than coming down to the `loadMs` a default
+ * build now reports. Issue #149.
  */
 export function engineCheckTimeoutMs(platform: string): number {
   return platform === 'win32' ? 180_000 : 60_000;
-}
-
-/**
- * Whether the engine is known to work on a platform, and why not.
- *
- * **This is a workaround, not a fix.** A packaged Windows run reaches `phase
- * acknowledged` and then waits out the whole limit. It is not `getLlama()`:
- * that returns and names a device on Windows in every environment below the
- * packaged binary. What Windows does and macOS does not is fork
- * `process.execPath` to test a GPU prebuild, and the packaged binary answers
- * nothing when forked. `docs/architecture.md` has the ladder, #149 has the runs.
- *
- * The gate exists because a spinner forever is worse than a legible error. It
- * is retired by one thing: a packaged Windows run where the engine names a
- * device.
- */
-export function embeddedEngineStatus(
-  platform: string,
-): { supported: true } | { supported: false; reason: string } {
-  if (platform !== 'win32') return { supported: true };
-  return {
-    supported: false,
-    reason:
-      'The embedded model is not available on Windows yet: its engine does not ' +
-      'finish loading. Run a local model server instead. See issue #149.',
-  };
 }
 
 /**
@@ -334,7 +313,6 @@ export function embeddedEngineStatus(
  */
 export function llamaCheckLine(result: LlamaCheckResult): string {
   if (!result.ok) return `${LLAMA_CHECK_FAILED}: ${result.reason}`;
-  if ('gated' in result) return `${LLAMA_CHECK_GATED}: ${result.gated}`;
   return (
     `${LLAMA_CHECK_OK} device=${result.device} loadMs=${String(result.loadMs)} ` +
     `released-by=${result.releasedBy} survived=${result.survived}`

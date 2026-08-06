@@ -127,10 +127,12 @@ a step that finds nothing fails rather than reporting success.
 
 `npm run smoke:packaged` is the newest job step and is written to that rule. It
 runs in `package (macos-latest)` and `package (windows-latest)`, after
-`verify:package`, and it launches the application it just built. Its own floor
-is a second launch with a native file moved aside, which has to fail: the step
-cannot report success without having started a shell inside the package.
-`docs/testing.md` describes it.
+`verify:package`, and it launches the application it just built — from a copy
+of the package outside this checkout, because `out/` is inside one and a
+package that resolves into the repository above it is not the package a user
+installs. Issue #149. Its own floor is a second launch with a native file moved
+aside, which has to fail: the step cannot report success without having started
+a shell inside the package. `docs/testing.md` describes it.
 
 The file is `spawn-helper` on macOS and `conpty.node` on Windows. The vehicle
 on Windows is the packaged directory, `out/Stuffbucket-win32-x64`, rather than

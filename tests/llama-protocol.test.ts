@@ -9,10 +9,8 @@ import {
   LLAMA_CHECK_FAILED,
   LLAMA_CHECK_FLAG,
   LLAMA_CHECK_OK,
-  LLAMA_CHECK_GATED,
   LLAMA_NO_LIBRARY,
   describeEngineExit,
-  embeddedEngineStatus,
   describeEngineWait,
   engineCheckTimeoutMs,
   exhaustedMessage,
@@ -63,6 +61,14 @@ describe('faultName', () => {
     expect(faultName(0xc0000374, 'win32')).toBe('heap corruption');
     expect(faultName(0xc0000409, 'win32')).toBe('stack buffer overrun');
     expect(faultName(0xc000001d, 'win32')).toBe('illegal instruction');
+  });
+
+  it('names the one Windows code that is not a status code', () => {
+    // The engine's own `process.abort()`. Electron reported 134 for it on
+    // `windows-latest`, which is `128 + SIGABRT` rather than an NTSTATUS, and
+    // the packaged check failed over it before this line existed.
+    expect(faultName(134, 'win32')).toBe('SIGABRT');
+    expect(faultName(134, 'darwin')).toBeUndefined();
   });
 
   it('names an unlisted Windows status code by its number', () => {
@@ -233,27 +239,6 @@ describe('the lifecycle id', () => {
   });
 });
 
-describe('embeddedEngineStatus', () => {
-  /**
-   * A workaround, and the tests say so. On Windows the packaged engine reaches
-   * `phase acknowledged` and then never names a device, with the ESM import
-   * bound not firing and the absent-library case hanging identically. Issue
-   * #149 holds the evidence and retires this.
-   */
-  it('gates Windows off, with a reason a user can act on', () => {
-    const status = embeddedEngineStatus('win32');
-    expect(status.supported).toBe(false);
-    if (status.supported) return;
-    expect(status.reason).toContain('not available on Windows');
-    expect(status.reason).toContain('#149');
-  });
-
-  it('leaves every other platform alone', () => {
-    expect(embeddedEngineStatus('darwin').supported).toBe(true);
-    expect(embeddedEngineStatus('linux').supported).toBe(true);
-  });
-});
-
 describe('engineCheckTimeoutMs', () => {
   it('gives Windows longer, because nothing has measured it there', () => {
     expect(engineCheckTimeoutMs('win32')).toBe(180_000);
@@ -281,7 +266,6 @@ describe('the packaged llama check', () => {
     expect(LLAMA_CHECK_FLAG).toBe('--self-check=llama');
     expect(LLAMA_CHECK_OK).toBe('self-check llama: ok');
     expect(LLAMA_CHECK_FAILED).toBe('self-check llama: failed');
-    expect(LLAMA_CHECK_GATED).toBe('self-check llama: gated');
     expect(LLAMA_NO_LIBRARY).toBe('did not load llama.cpp');
   });
 
@@ -304,14 +288,6 @@ describe('the packaged llama check', () => {
         survived: 'SIGABRT',
       }),
     ).toBe(`${LLAMA_CHECK_OK} device=metal loadMs=418 released-by=spawn survived=SIGABRT`);
-  });
-
-  it('prints a gated line where the engine is not supported', () => {
-    expect(llamaCheckLine({ ok: true, gated: 'no engine on this platform' })).toBe(
-      `${LLAMA_CHECK_GATED}: no engine on this platform`,
-    );
-    // A gate is not a pass. The driver asserts they are different lines.
-    expect(llamaCheckLine({ ok: true, gated: 'x' })).not.toContain(LLAMA_CHECK_OK);
   });
 
   it('says why it failed', () => {
@@ -350,7 +326,6 @@ describe('the driver and the application agree', () => {
     LLAMA_CHECK_OK,
     LLAMA_CHECK_FAILED,
     LLAMA_NO_LIBRARY,
-    LLAMA_CHECK_GATED,
   ]) {
     it(`scripts/smoke-packaged.mjs names ${value}`, () => {
       expect(driver).toContain(value);
