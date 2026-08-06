@@ -77,3 +77,7 @@ jobs:
       - name: rung 4b, can the packaged binary start a node child of itself
         timeout-minutes: 5
         run: node probe/fuse-fork.mjs "${{ matrix.binary }}"
+
+      - name: rung 4c, the real packaged binary
+        timeout-minutes: 10
+        run: node probe/self-check.mjs "${{ matrix.binary }}"
