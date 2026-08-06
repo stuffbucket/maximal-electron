@@ -68,6 +68,7 @@ export const DEFERRED = new Map([
   ['scripts/storybook-check.mjs', 125],
   ['scripts/tag-history.mjs', 125],
   ['scripts/verify-docs.mjs', 125],
+  ['scripts/verify-electron-cache.mjs', 125],
   ['scripts/verify-exports.mjs', 125],
   ['scripts/verify-git-install.mjs', 125],
   ['scripts/verify-neutral.mjs', 125],

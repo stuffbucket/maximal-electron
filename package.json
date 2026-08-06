@@ -64,6 +64,7 @@
     "package": "electron-forge package",
     "icons": "node scripts/gen-icons.mjs",
     "verify:package": "node scripts/verify-package.mjs",
+    "verify:electron-cache": "node scripts/verify-electron-cache.mjs",
     "smoke:packaged": "node scripts/smoke-packaged.mjs",
     "verify:exports": "npm run build:package && node scripts/verify-exports.mjs",
     "verify:publish": "node scripts/verify-publish.mjs",

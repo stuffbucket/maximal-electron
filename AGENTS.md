@@ -26,6 +26,7 @@ linked document.
 | Check the palette | `npm run check:contrast` |
 | Package | `npm run package` |
 | Verify a package | `npm run verify:package` |
+| Verify the Electron download cache | `npm run verify:electron-cache` |
 | Verify a publish | `npm run verify:publish` |
 | Launch a package | `npm run smoke:packaged` |
 | Verify the exports | `npm run verify:exports` |

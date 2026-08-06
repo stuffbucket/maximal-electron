@@ -1,0 +1,62 @@
+# Cache Electron's own binary download.
+#
+# `actions/setup-node`'s `cache: npm` caches the npm tarball cache, which is a
+# different surface: `node_modules/electron/install.js` fetches the platform
+# zip from GitHub through `@electron/get`, not from the registry. Nothing here
+# cached it, and six jobs a pull request paid for that.
+#
+# `@electron/get` falls back to `env-paths`, which resolves to a different
+# directory on each runner OS — `~/Library/Caches/electron`,
+# `~/.cache/electron`, and `%LOCALAPPDATA%\electron\Cache`. Pinning
+# `electron_config_cache`, which `install.js` reads for its `cacheRoot`, makes
+# one path cover all three.
+#
+# The key carries the resolved Electron version, so a version bump misses. It
+# does not carry the lockfile hash: this cache holds Electron and nothing else,
+# and a hash would evict it on every unrelated dependency bump.
+#
+# Run `npm run verify:electron-cache` after `npm ci` in any job that uses this.
+# A misspelled variable leaves the pinned root empty, and an empty root saves
+# and restores forever without ever holding a binary.
+
+name: Cache the Electron binary
+description: Pin Electron's download cache to one path and restore it by version
+
+outputs:
+  cache-hit:
+    description: Whether the cache was restored
+    value: ${{ steps.restore.outputs.cache-hit }}
+  version:
+    description: The Electron version the lockfile resolves to
+    value: ${{ steps.resolve.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Point @electron/get at one path on every runner
+      shell: bash
+      run: echo "electron_config_cache=${RUNNER_TEMP}/electron-cache" >> "$GITHUB_ENV"
+
+    - name: Read the Electron version the lockfile resolves to
+      id: resolve
+      shell: bash
+      run: |
+        set -euo pipefail
+        version="$(node -p "require('./package-lock.json').packages['node_modules/electron'].version")"
+        [[ -n "$version" ]] || { echo "::error::package-lock.json pins no electron version"; exit 1; }
+        echo "version=${version}" >> "$GITHUB_OUTPUT"
+        echo "Electron ${version}"
+
+    - id: restore
+      uses: actions/cache@v4
+      with:
+        path: ${{ runner.temp }}/electron-cache
+        key: electron-${{ runner.os }}-${{ runner.arch }}-${{ steps.resolve.outputs.version }}
+
+    - name: Report the hit
+      shell: bash
+      env:
+        HIT: ${{ steps.restore.outputs.cache-hit }}
+        VERSION: ${{ steps.resolve.outputs.version }}
+      run: |
+        echo "electron ${VERSION} on ${RUNNER_OS}/${RUNNER_ARCH}: cache-hit=${HIT:-false}"

@@ -21,6 +21,48 @@ packaging is a property of the shell and it is where the defects were found.
 What was removed was the MSI and the dmg built on top of it, and
 `windows-msi-dev.yml` with them. See `docs/release.md`.
 
+## The two caches
+
+`actions/setup-node` with `cache: npm` caches npm's own tarball cache, so a
+registry package does not download twice. Electron's binary is not a registry
+package. `node_modules/electron/install.js` fetches a platform zip from GitHub
+through `@electron/get`, into a directory that library manages itself, and
+nothing cached it until #129: every job that ran `npm ci` re-fetched around 120
+MB.
+
+`@electron/get` reads its cache root from `electron_config_cache` and, unset,
+falls back to `env-paths`. That resolves to `~/Library/Caches/electron` on
+macOS, `~/.cache/electron` on Linux, and a `Cache` folder under
+`%LOCALAPPDATA%\electron` on Windows. Three directories, so
+[`.github/actions/electron-cache/action.yml`](../.github/actions/electron-cache/action.yml)
+pins the variable to one path under the runner's temporary directory and one
+`actions/cache` entry covers every runner.
+
+**The key carries the Electron version**, read out of `package-lock.json`, so a
+version bump misses rather than restoring the wrong binary. It deliberately
+does not carry a lockfile hash: this cache holds Electron and nothing else, and
+a hash would throw it away on every unrelated dependency bump. Underneath,
+`@electron/get` puts each version in its own directory and names the file
+`electron-v<version>-<platform>-<arch>.zip`, so a stale binary cannot be served
+even when a key collides.
+
+`release.yml` does not use it. That job runs once per tag, the release path is
+the one that cannot be re-run, and a cache that rarely hits pays for nothing.
+
+### Why there is a check on it
+
+A cache is exactly the shape of defect this page is about. Misspell
+`electron_config_cache` and the pinned root stays empty, `actions/cache` saves
+an empty directory, and every later run restores it, reports a hit, and
+downloads the binary again. Nothing in the log says so.
+
+So every job that uses the action runs `npm run verify:electron-cache` straight
+after `npm ci`. It counts the files under the pinned root, fails on zero, and
+asserts that the download for this runner's platform and architecture is there
+at the version `node_modules/electron` actually installed. It reads
+`electron_config_cache` rather than falling back to the per-OS default, because
+a green run against a cache CI is not using is the same defect one level along.
+
 ## The problem this page exists for
 
 Every defect in the release pipeline so far was a job that had never executed.
