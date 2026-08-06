@@ -97,7 +97,7 @@ export function countFiles(directory) {
  * the artifact under test.
  */
 export function relocate(app) {
-  const root = mkdtempSync(path.join(tmpdir(), 'stuffbucket-packaged-'));
+  const root = mkdtempSync(path.join(path.dirname(app.directory), 'stuffbucket-packaged-'));
   const directory = path.join(root, path.basename(app.directory));
   cpSync(app.directory, directory, { recursive: true, verbatimSymlinks: true });
 
