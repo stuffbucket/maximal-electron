@@ -369,6 +369,16 @@ jobs:
           path: dist-release/*.tgz
           if-no-files-found: error
 
+      # The other install path. `npm pack` runs `prepack`; a consumer pinning a
+      # git ref gets `prepare`, and a tag has shipped with only the first wired.
+      # Issue #83. The commit rather than the tag name, because a dry run has no
+      # tag to resolve and the two name the same objects on a tag push.
+      - name: Install this commit by git ref, the way a consumer pins it
+        env:
+          REPOSITORY: github:${{ github.repository }}
+          REF: ${{ github.sha }}
+        run: npm run verify:git-install -- --repository "$REPOSITORY" --ref "$REF"
+
       - name: Attach the tarball to the draft
         if: github.event_name != 'workflow_dispatch'
         env:
