@@ -68,8 +68,23 @@ Then a range rather than a pin:
 "@stuffbucket/maximal-electron": "^0.0.5"
 ```
 
-A range is the thing the other three forms cannot give. Each of those pins a
-ref, a SHA, or a URL, and moving one forward is a deliberate edit.
+A range is not the reason to prefer it. The `github:` form takes one too —
+`#semver:<range>`, matched against this repository's tags:
+
+```json
+"@stuffbucket/maximal-electron": "github:stuffbucket/maximal-electron#semver:0.0.x"
+```
+
+Measured against `v0.0.3` and `v0.0.4`: `0.0.x` and `>=0.0.3` both resolve to
+`0.0.4`. `^0.0.3` resolves to `0.0.3`, which is ordinary semver rather than a
+defect — a caret pins the patch below `0.1.0`, so `^` is the wrong operator at
+this version. A tarball URL genuinely cannot take a range; the git form can.
+
+What the registry gives that the git form does not is one install path instead
+of three, and no build on the consumer's machine. `npm pack` runs `prepack`,
+`github:` runs `prepare`, and an `https://` tarball runs neither — which is why
+a codeload pin cannot be moved forward at all. A registry serves a built
+tarball. Weigh that against a classic token on every machine that installs.
 
 ### The token
 
