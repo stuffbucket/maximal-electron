@@ -141,12 +141,13 @@ function declaredPolicy(document) {
   let html;
   try {
     /*
-     * `listPackage` reports forward slashes on every platform and a leading
-     * one; `extractFile` resolves the inner path by splitting on `path.sep`
-     * (`filesystem.js`, `searchNodeFromDirectory`). The two disagree on
-     * Windows, where a forward-slashed path collapses to one bogus segment and
-     * resolves nowhere. Rebuild it from segments so the separator is the
-     * host's.
+     * Every path in this file is forward-slashed with a leading slash, to match
+     * `listing` above after its rewrite. `extractFile` wants neither: it
+     * resolves the inner path by splitting on `path.sep`
+     * (`filesystem.js`, `searchNodeFromDirectory`), so on Windows a
+     * forward-slashed path collapses to one bogus segment and resolves nowhere.
+     * Worse, that function creates the segment it fails to find rather than
+     * throwing, so the error arrives later as "not found in this archive".
      */
     const inner = path.join(...document.replace(/^\//, '').split('/'));
     html = extractFile(asar, inner).toString('utf8');
