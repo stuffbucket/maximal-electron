@@ -74,7 +74,7 @@ its published URL and resolve every export:
 
 ```bash
 node scripts/verify-git-install.mjs --tarball \
-  https://github.com/stuffbucket/maximal-electron/releases/download/v0.1.0/stuffbucket-electron-0.1.0.tgz
+  https://github.com/stuffbucket/maximal-electron/releases/download/v0.1.0/stuffbucket-maximal-electron-0.1.0.tgz
 ```
 
 No job does this. The asset exists only after `publish`, which is after every

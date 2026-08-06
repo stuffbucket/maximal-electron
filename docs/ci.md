@@ -10,13 +10,14 @@ fourth, `triage.yml`, only labels issues and is described in its own header.
 | --- | --- | --- |
 | `ci.yml` | pull request, push to `main` and `release/**` | Lint, types, unit and mutation tests, a git-ref install, packaging and the end-to-end suite on macOS and Windows, and the packaged smoke test on macOS |
 | `merge-preview.yml` | push to `main` and `release/**` | Replays every open pull request against the new tip |
-| `release.yml` | tag `v*.*.*`, or a dispatch for a dry run | The draft release, the tarball, publish |
+| `release.yml` | tag `v*.*.*`, or a dispatch for a dry run | The draft release, the tarball, the registry publish, publish |
 
 This repository ships no installer. `npm run package`, `npm run
 verify:package` and `npm run smoke:packaged` still run in `ci.yml`, because
 packaging is a property of the shell and it is where the defects were found.
 What was removed was the MSI and the dmg built on top of it, and
 `windows-msi-dev.yml` with them. See `docs/release.md`.
+>>>>>>> origin/release/0.0.5
 
 ## The problem this page exists for
 
@@ -49,16 +50,18 @@ Windows has no equivalent. The same argument would drive
 command would have to be one `cmd.exe` echoes rather than `printf`. The step
 here is scoped to macOS rather than run as a job that skips.
 
-## The three install paths
+## The four install paths
 
 
-A consumer installs this package one of three ways, and npm runs a different
+A consumer installs this package one of four ways, and npm runs a different
 lifecycle script for each. `npm pack` and a registry publish run `prepack`. A
-git dependency runs `prepare`. An `https://` source archive runs neither.
-`stuffbucket/maximal` pins the git form:
+git dependency runs `prepare`. An `https://` source archive runs neither. A
+registry install runs none of them and needs none: the archive it serves was
+built by `prepack` at publish time, which is what makes the registry the
+supported path. `stuffbucket/maximal` pins the git form today:
 
 ```
-"stuffbucket-electron": "github:stuffbucket/maximal-electron#<ref>"
+"@stuffbucket/maximal-electron": "github:stuffbucket/maximal-electron#<ref>"
 ```
 
 `v0.0.2` shipped with the build in `prepack` alone. Installing that tag by git
@@ -90,7 +93,7 @@ it.
 
 ### The archive path, which cannot be made to work
 
-The third form is a `codeload.github.com/.../tar.gz/<sha>` URL, which npm takes
+The unsupported form is a `codeload.github.com/.../tar.gz/<sha>` URL, which npm takes
 for a packed tarball. It is the repository tree, and `dist/` is not in the
 tree, so the install produces a package whose exports name files that are not
 there — with exit 0. `stuffbucket/maximal` pinned one, and it worked only
@@ -117,6 +120,8 @@ A dry run does everything a tag does, except attach and publish:
   checks the format.
 - `package-tarball` runs `npm run verify:exports`, packs, and installs the
   commit by git ref.
+- `publish-package` runs `npm run verify:publish` against the packed archive,
+  then `npm publish --dry-run` with an invalid token. Nothing is uploaded.
 - `publish` does not run at all.
 
 `dry-run-artifacts` is what stops a dry run being green for nothing. Every
@@ -246,6 +251,11 @@ what a compiler would if YAML went through one:
   why that is deliberate.
 - Every step in `release.yml` that creates, uploads to, or edits a release is
   guarded, so a dry run cannot publish.
+- Every `npm publish` that is not a dry run is guarded, in every workflow
+  rather than `release.yml` alone. A release can be redone. A version in a
+  registry cannot.
+- `publish-package` asks for `packages: write`, and a dispatch run rehearses
+  the publish with `--dry-run`.
 - Every `needs` names a job that exists.
 
 Each rule also asserts that it found something to check, because a rule that

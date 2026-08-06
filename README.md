@@ -60,25 +60,35 @@ A dock badge tracks real application state.
 
 ## Consume the shell frame
 
-Install it from a git ref, or from the tarball a release attaches:
+The package is `@stuffbucket/maximal-electron`, on the GitHub Packages npm
+registry:
 
 ```json
-"stuffbucket-electron": "github:stuffbucket/maximal-electron#<ref>"
-"stuffbucket-electron": "https://github.com/stuffbucket/maximal-electron/releases/download/v0.0.3/stuffbucket-electron-0.0.3.tgz"
+"@stuffbucket/maximal-electron": "^0.0.5"
+```
+
+Installing from that registry needs an `.npmrc` and a token, for a public
+package as much as a private one. The git ref and the release tarball still
+work and need neither:
+
+```json
+"@stuffbucket/maximal-electron": "github:stuffbucket/maximal-electron#<ref>"
+"@stuffbucket/maximal-electron": "https://github.com/stuffbucket/maximal-electron/releases/download/v0.0.5/stuffbucket-maximal-electron-0.0.5.tgz"
 ```
 
 `dist/` is built by a lifecycle script rather than committed, and npm runs a
 different one for each form. A `codeload.github.com` archive URL runs neither,
-so that form is unsupported and refuses to install. This package is not on the
-public npm registry. Read [docs/consuming.md](./docs/consuming.md).
+so that form is unsupported and refuses to install. Read
+[docs/consuming.md](./docs/consuming.md), which states the token cost and the
+migration from the old unscoped name.
 
-Either supported form exposes the main-process lifecycle at
-`stuffbucket-electron/main`, the secured host window at
-`stuffbucket-electron/host` and the generic renderer frame at
-`stuffbucket-electron/host` and the generic renderer frame at
-`stuffbucket-electron/renderer`. The renderer entry exports `ShellLayout`,
-`TitleBar`, `TabBar`, `NavRail`, `Canvas`, and `IconButton`. It does not export
-the reference application, terminal, agent, sample data, or fixtures.
+Every supported form exposes the main-process lifecycle at
+`@stuffbucket/maximal-electron/main`, the secured host window at
+`@stuffbucket/maximal-electron/host`, and the generic renderer frame at
+`@stuffbucket/maximal-electron/renderer`. The renderer entry exports
+`ShellLayout`, `TitleBar`, `TabBar`, `NavRail`, `Canvas`, and `IconButton`. It
+does not export the reference application, terminal, agent, sample data, or
+fixtures.
 
 `runMain(runtime, options)` runs a main process on this shell's lifecycle: the
 profile directory, the single instance lock, the window, the quit policy, and a
@@ -87,18 +97,18 @@ whose shape is versioned. This application's own `src/main/index.ts` runs on it.
 See [docs/embedding.md](./docs/embedding.md).
 
 The package declares no runtime dependencies. Every package an export imports is
-an optional peer, so installing it for `stuffbucket-electron/host` adds nothing
+an optional peer, so installing it for `@stuffbucket/maximal-electron/host` adds nothing
 to `node_modules` beyond the package itself. Install the peers for the entries
 you use:
 
 | Entry | Peers |
 | --- | --- |
-| `stuffbucket-electron/main` | `electron` |
-| `stuffbucket-electron/host` | `electron` |
-| `stuffbucket-electron/host/terminal` | `node-pty` |
-| `stuffbucket-electron/renderer` | `react`, `react-dom`, `ghostty-web`, `lucide-react`, `react-resizable-panels`, `@radix-ui/react-collapsible`, `@radix-ui/react-tabs`, `@radix-ui/react-tooltip`, `@radix-ui/react-visually-hidden` |
-| `stuffbucket-electron/verify` | none |
-| `stuffbucket-electron/verify/shell-variables` | none |
+| `@stuffbucket/maximal-electron/main` | `electron` |
+| `@stuffbucket/maximal-electron/host` | `electron` |
+| `@stuffbucket/maximal-electron/host/terminal` | `node-pty` |
+| `@stuffbucket/maximal-electron/renderer` | `react`, `react-dom`, `ghostty-web`, `lucide-react`, `react-resizable-panels`, `@radix-ui/react-collapsible`, `@radix-ui/react-tabs`, `@radix-ui/react-tooltip`, `@radix-ui/react-visually-hidden` |
+| `@stuffbucket/maximal-electron/verify` | none |
+| `@stuffbucket/maximal-electron/verify/shell-variables` | none |
 
 npm says nothing about a missing optional peer at install time. The failure
 lands later: a bundler stops on the unresolved import and names the package,
@@ -115,8 +125,8 @@ import {
   ShellLayout,
   TabBar,
   TitleBar,
-} from 'stuffbucket-electron/renderer';
-import 'stuffbucket-electron/renderer/styles.css';
+} from '@stuffbucket/maximal-electron/renderer';
+import '@stuffbucket/maximal-electron/renderer/styles.css';
 ```
 
 The stylesheet ships no palette and scopes every rule under `.sb-shell`.
@@ -142,7 +152,7 @@ Sixteen more variables have structural fallbacks in the CSS, and two are read
 by JavaScript rather than by any rule. `docs/shell-variables.md` holds the whole
 contract, derived from the stylesheet and checked against it in both directions.
 Set the ones your design system disagrees with.
-`stuffbucket-electron/verify/shell-variables` exports the derivation so an
+`@stuffbucket/maximal-electron/verify/shell-variables` exports the derivation so an
 application can assert its own adapter against the stylesheet it installed.
 
 `TitleBar` accepts caller-owned `leading` and `actions` nodes. Direct `TitleBar`
@@ -158,8 +168,9 @@ and verify that every export target appears in `npm pack`.
 
 ## Package the terminal
 
-`stuffbucket-electron/host/terminal` and `stuffbucket-electron/renderer` give a
-working terminal and leave two packaging traps behind.
+`@stuffbucket/maximal-electron/host/terminal` and
+`@stuffbucket/maximal-electron/renderer` give a working terminal and leave two
+packaging traps behind.
 
 - `ghostty-web` inlines its WebAssembly as a data URL and fetches it at startup.
   The content policy needs `'wasm-unsafe-eval'` in `script-src` and `data:` in
@@ -169,8 +180,8 @@ working terminal and leave two packaging traps behind.
   `spawn-helper`, which has no extension and is executed from outside the
   archive.
 
-`stuffbucket-electron/verify` exports those assertions as a function to run
-against a built application. `docs/architecture.md` has the call.
+`@stuffbucket/maximal-electron/verify` exports those assertions as a function
+to run against a built application. `docs/architecture.md` has the call.
 
 ## Your own icon
 

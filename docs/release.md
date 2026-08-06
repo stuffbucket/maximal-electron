@@ -80,11 +80,13 @@ target, so `git push --delete origin v0.0.3` succeeds today.
 
 ## The shape
 
-Push a tag. Four jobs run. The tarball lands on a **draft** release, and one
-job flips it to published at the end.
+Push a tag. Five jobs run. The tarball lands on a **draft** release, one job
+publishes the package to the registry, and one flips the draft to published at
+the end.
 
 ```
-tag-check ──> release (draft) ──> package-tarball ──> publish
+tag-check ──> release (draft) ──> package-tarball ──┬─> publish
+                                                    └─> publish-package
 ```
 
 The same workflow runs from a dispatch as a dry run, which builds everything
@@ -143,15 +145,31 @@ different lifecycle script: npm runs `prepare` for a git dependency and
 `prepack` for a tarball. `stuffbucket/maximal` pins the git form, and `v0.0.2`
 shipped installing to nothing on it. See `docs/ci.md`.
 
-The asset is `stuffbucket-electron-<version>.tgz`. A consumer installs it from
-the release:
+`publish-package` then publishes that same archive to the GitHub Packages npm
+registry as `@stuffbucket/maximal-electron`. It publishes the artifact
+`package-tarball` uploaded rather than packing a second time, so the bytes that
+were checked are the bytes that go up. `npm run verify:publish` reads the
+archive and asserts the publish identity and its contents; that runs on a dry
+run too.
+
+Publishing adds no secret. `GITHUB_TOKEN` with `packages: write` publishes to
+the registry for the repository the workflow runs in, and the scope has to be
+the account that owns that repository. **Installing does need a token**, for a
+public package as much as a private one. `docs/consuming.md` states that cost
+and shows the `.npmrc`.
+
+The release still carries the tarball as an asset, named
+`stuffbucket-maximal-electron-<version>.tgz`. A consumer installs it from the
+release without a token:
 
 ```
-npm install https://github.com/stuffbucket/maximal-electron/releases/download/v0.0.1/stuffbucket-electron-0.0.1.tgz
+npm install https://github.com/stuffbucket/maximal-electron/releases/download/v0.0.5/stuffbucket-maximal-electron-0.0.5.tgz
 ```
 
-No registry and no publish token. The cost is that npm cannot resolve a version
-range, so a consumer pins a URL and updates it deliberately.
+That path costs a pinned URL rather than a version range, and it runs neither
+`prepack` nor `prepare`, so it depends entirely on what the attached archive
+already contains. The registry is the supported path. This one is the fallback
+for a consumer who will not hold a token.
 
 ## Why a draft
 

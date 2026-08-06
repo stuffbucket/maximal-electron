@@ -26,6 +26,7 @@ linked document.
 | Check the palette | `npm run check:contrast` |
 | Package | `npm run package` |
 | Verify a package | `npm run verify:package` |
+| Verify a publish | `npm run verify:publish` |
 | Launch a package | `npm run smoke:packaged` |
 | Verify the exports | `npm run verify:exports` |
 | Verify an install by specifier | `npm run verify:git-install` |
@@ -136,7 +137,9 @@ checks names, not prose.
 - **A pushed tag is immutable.** If the build on a tag fails, cut the next patch
   rather than moving the tag. A consumer installs this package from a git ref,
   so a moved tag changes what they install without changing anything they can
-  see. `v0.0.2` was deleted and re-pushed eight minutes later.
+  see. `v0.0.2` was deleted and re-pushed eight minutes later. A tag now also
+  publishes `@stuffbucket/maximal-electron` to the GitHub Packages registry,
+  and a published version cannot be replaced at all.
 - Bump the patch version on the release branch when the train reaches a stable
   state, so `main` never claims a version that has not shipped.
 
@@ -157,7 +160,7 @@ only background.
 | Stories, the a11y run, what is deliberately not in CI | `docs/storybook.md` |
 | Capture and compose, the pacing constants | `docs/recording.md` |
 | Trains, the draft release, macOS signing | `docs/release.md` |
-| The install specifiers a consumer may write | `docs/consuming.md` |
+| The install specifiers a consumer may write, and the registry | `docs/consuming.md` |
 | The workflows, the release dry run, the merge race | `docs/ci.md` |
 | Code signing | `docs/signing.md` |
 | What is planned and what is deliberately not | `docs/roadmap.md` |

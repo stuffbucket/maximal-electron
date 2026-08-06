@@ -253,7 +253,7 @@ drift.
 ```js
 import { readdirSync } from 'node:fs';
 import { listPackage } from '@electron/asar';
-import { terminalPackageChecks } from 'stuffbucket-electron/verify';
+import { terminalPackageChecks } from '@stuffbucket/maximal-electron/verify';
 
 const resources = 'dist/mac-arm64/YourApp.app/Contents/Resources';
 const checks = terminalPackageChecks({

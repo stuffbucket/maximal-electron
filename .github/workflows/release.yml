@@ -7,8 +7,9 @@
 #
 # A dispatch run is always a dry run. There is no input that makes one publish,
 # so the only way to touch a release is to push a tag. The tarball is packed,
-# installed by git ref, and checked, and `dry-run-artifacts` asserts the file
-# exists rather than letting an empty run look green. See `docs/ci.md`.
+# installed by git ref, and checked, `npm publish` runs with `--dry-run` and no
+# token, and `dry-run-artifacts` asserts the file exists rather than letting an
+# empty run look green. See `docs/ci.md`.
 #
 # ## Why every asset lands on a DRAFT
 #
@@ -188,6 +189,73 @@ jobs:
           echo "Published ${TAG}"
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name'
 
+  # The npm registry publish, to GitHub Packages. No secret is added for it:
+  # `GITHUB_TOKEN` with `packages: write` publishes to the registry for the
+  # repository the workflow runs in, and the scope has to be the account that
+  # owns that repository.
+  #
+  # It publishes the artifact `package-tarball` produced rather than packing a
+  # second time, so the bytes that were checked are the bytes that go up.
+  #
+  # `publish` does not gate on this, for the reason it does not gate on the
+  # installers: a registry failure must not strand a draft nobody can publish.
+  # A version cannot be republished, so a failure here is fixed by cutting the
+  # next patch, the same way a bad tag is.
+  publish-package:
+    needs: [tag-check, package-tarball]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      TAG: ${{ needs.tag-check.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          registry-url: https://npm.pkg.github.com
+          scope: '@stuffbucket'
+      - uses: actions/download-artifact@v4
+        with:
+          name: package-tarball
+          path: dist-release
+
+      - name: Check what would be published
+        shell: bash
+        run: node scripts/verify-publish.mjs dist-release --version "$TAG"
+
+      # No token, deliberately. The condition above is the guard; an invalid
+      # `NODE_AUTH_TOKEN` is the second one, so a dispatch that somehow reached
+      # the registry authenticates as nobody.
+      #
+      # `./` is load-bearing. Without it npm reads `dist-release/name.tgz` as
+      # an `owner/repo` git shorthand and clones over SSH. The first dry run
+      # found that, which is what the dry run is for.
+      - name: Dry run, so nothing is published
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          NODE_AUTH_TOKEN: dry-run-carries-no-token
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(dist-release/*.tgz)
+          npm publish "./${files[0]}" --dry-run
+          echo "Dry run for ${TAG}. Nothing was uploaded to any registry."
+
+      - name: Publish to GitHub Packages
+        if: github.event_name != 'workflow_dispatch'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(dist-release/*.tgz)
+          npm publish "./${files[0]}"
+          echo "Published $(basename "${files[0]}") to https://npm.pkg.github.com"
+
   # The dry run's terminal job. Every attach step above is skipped on a
   # dispatch, so without this a run that produced nothing would end green.
   #
@@ -198,7 +266,7 @@ jobs:
   # #81 was, or whether the file that crossed has any bytes.
   dry-run-artifacts:
     if: github.event_name == 'workflow_dispatch'
-    needs: [package-tarball]
+    needs: [package-tarball, publish-package]
     runs-on: ubuntu-latest
     steps:
       # By name, not the whole run. An unnamed download would pass by finding

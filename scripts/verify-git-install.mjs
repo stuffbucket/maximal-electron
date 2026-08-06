@@ -23,7 +23,7 @@
  *
  *   node scripts/verify-git-install.mjs
  *   node scripts/verify-git-install.mjs --repository github:stuffbucket/maximal-electron --ref v0.0.4
- *   node scripts/verify-git-install.mjs --tarball https://github.com/.../stuffbucket-electron-0.0.3.tgz
+ *   node scripts/verify-git-install.mjs --tarball https://github.com/.../stuffbucket-maximal-electron-0.0.5.tgz
  */
 
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -313,9 +313,17 @@ async function archiveRun() {
   const target =
     github === null ? path.join(scratch, 'source.tar.gz') : `https://codeload.github.com/${github[1]}/tar.gz/${ref}`;
   if (github === null) {
+    /*
+     * One directory, so the scope's slash cannot become a second one. npm
+     * strips a single leading directory, so `@scope/name-<ref>/` leaves it
+     * looking for a manifest inside `name-<ref>/` and failing with ENOENT
+     * before `check-install.mjs` ever runs. Both assertions below then read a
+     * failure that is not the one they are about.
+     */
+    const prefix = name.replace('@', '').replace('/', '-');
     execFileSync(
       'git',
-      ['archive', '--format=tar.gz', `--prefix=${name}-${ref}/`, '--output', target, ref],
+      ['archive', '--format=tar.gz', `--prefix=${prefix}-${ref}/`, '--output', target, ref],
       { cwd: root },
     );
   }

@@ -35,7 +35,7 @@ the deferred shutdown. It decides nothing about the application it hosts.
 
 ```ts
 import { app } from 'electron';
-import { RUN_MAIN_OPTIONS_VERSION, runMain } from 'stuffbucket-electron/main';
+import { RUN_MAIN_OPTIONS_VERSION, runMain } from '@stuffbucket/maximal-electron/main';
 
 await runMain(
   { app },
