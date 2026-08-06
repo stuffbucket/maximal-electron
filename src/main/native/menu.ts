@@ -23,6 +23,12 @@ interface MenuCallbacks {
   onTogglePanel: (panel: 'left' | 'right') => void;
   onCheckForUpdates: () => void;
   onOpenPreferences: () => void;
+  /**
+   * Reveal the local crash artifacts. Omitted where nothing writes them, so a
+   * shell with no crash reporter has no item that opens an absent directory.
+   * Issue #134.
+   */
+  onShowCrashReports?: () => void;
 }
 
 const REPO_URL = 'https://github.com/stuffbucket/maximal-electron';
@@ -152,6 +158,14 @@ export function buildApplicationMenu(callbacks: MenuCallbacks): Menu {
             void shell.openExternal(REPO_URL);
           },
         },
+        ...(callbacks.onShowCrashReports
+          ? ([
+              {
+                label: 'Show Crash Reports',
+                click: callbacks.onShowCrashReports,
+              },
+            ] satisfies MenuItemConstructorOptions[])
+          : []),
         ...(isMac
           ? []
           : ([{ role: 'about' }] satisfies MenuItemConstructorOptions[])),

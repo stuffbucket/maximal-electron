@@ -55,22 +55,25 @@ await runMain(
 );
 ```
 
-`runtime` carries `app` and an optional `platform`. Injecting the runtime
-rather than importing it is what lets the unit suite drive the whole lifecycle
-in plain Node, without an Electron process.
+`runtime` carries `app`, an optional `platform`, and an optional
+`crashReporter`. Injecting the runtime rather than importing it is what lets
+the unit suite drive the whole lifecycle in plain Node, without an Electron
+process.
 
 ### The order
 
 1. `userDataDirectory` is applied. It has to precede the lock, because Chromium
    derives the lock from the profile directory.
-2. The single instance lock is taken. Without it, `runMain` quits this process
+2. `collectCrashDumps` starts the crash reporter, if it is on. It has to follow
+   the profile: Crashpad reads `userData` once, when it starts.
+3. The single instance lock is taken. Without it, `runMain` quits this process
    and resolves with no window, and no handler is registered.
-3. `whenReady`.
-4. `discoverDaemonUrl` runs once. Its result is normalized and put on the
+4. `whenReady`.
+5. `discoverDaemonUrl` runs once. Its result is normalized and put on the
    context.
-5. `onReady` runs, with the context. Register channels here: it precedes the
+6. `onReady` runs, with the context. Register channels here: it precedes the
    first window, so nothing the renderer calls is missing when it loads.
-6. `window(context)` is asked for options, and the window opens.
+7. `window(context)` is asked for options, and the window opens.
 
 `onActivate` then runs on every activation — a dock click, a menu bar click, a
 second launch. `runMain` opens a replacement window when none is left, and
@@ -84,6 +87,7 @@ second launch. `runMain` opens a replacement window when none is left, and
 | `window` | required | Options for each window, given the context |
 | `userDataDirectory` | Electron's own | Profile directory |
 | `singleInstance` | `true` | Take the single instance lock |
+| `collectCrashDumps` | `false` | Write a local minidump for every process the shell owns |
 | `keepRunningWithoutWindows` | `() => false` | Survive the last window on every platform |
 | `discoverDaemonUrl` | none | An origin to resolve before the first window |
 | `onReady` | none | After discovery, before the first window |
@@ -95,6 +99,14 @@ second launch. `runMain` opens a replacement window when none is left, and
 `keepRunningWithoutWindows` is a callback rather than a value because the
 answer changes while the application runs: this shell reads a preference the
 user can toggle. macOS keeps an application alive without windows regardless.
+
+`collectCrashDumps` is off by default and needs `runtime.crashReporter` when it
+is on, or `runMain` throws rather than starting nothing in silence. A crash
+reporter is process-wide, so starting one inside somebody else's application is
+their decision and not this shell's, and a consumer that already runs one would
+otherwise get a second. Nothing is uploaded either way: there is no
+`submitURL`, no endpoint, and no credential. See `docs/architecture.md` for
+where the dumps land and what covers them.
 
 `beforeShutdown` returning a promise defers the quit until it settles, and the
 quit that follows does not run it again. Returning nothing lets the quit

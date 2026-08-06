@@ -9,6 +9,7 @@
   "mutate": [
     "src/shared/urls.ts",
     "src/host/main-options.ts",
+    "src/host/crash-artifacts.ts",
     "src/preload/capabilities.ts",
     "src/renderer/lib/data.ts",
     "src/renderer/lib/theme.ts",
