@@ -92,4 +92,47 @@ describe.skipIf(!POSIX)('TerminalHost, per owner', () => {
     staying.host.terminateAll();
     expect(await until(() => !alive(stayingPid!))).toBe(true);
   });
+
+  it('keeps a session its view left, lists it, and attaches to it again', async () => {
+    let output = '';
+    const host = new TerminalHost({
+      homeDirectory: homedir(),
+      defaultShell: '/bin/sh',
+      flushMs: 1,
+      emit: (_id, chunk) => {
+        output += chunk;
+      },
+      onExit: () => undefined,
+    });
+
+    host.spawn({ id: 'kept', cols: 80, rows: 24 });
+    host.write('kept', 'echo PID:$$\n');
+    await until(() => /PID:(\d+)/.test(output), 20_000);
+    const pid = Number(/PID:(\d+)/.exec(output)?.[1]);
+
+    // The floor. Without a real pid nothing below inspects a process at all.
+    expect(pid).toBeGreaterThan(0);
+    expect(alive(pid)).toBe(true);
+
+    // The view goes away. Detach is the absence of a terminate, so nothing is
+    // called here, and the session has to still be findable afterwards.
+    expect(host.list()).toEqual([
+      { id: 'kept', cwd: homedir(), shell: '/bin/sh', startedAt: expect.any(Number) },
+    ]);
+    expect(alive(pid)).toBe(true);
+
+    output = '';
+    host.spawn({ id: 'kept', cols: 100, rows: 30 });
+    expect(await until(() => output.includes(`PID:${String(pid)}`))).toBe(true);
+
+    // The same process, rather than a second one spawned under the same id.
+    host.write('kept', 'echo AGAIN:$$\n');
+    expect(await until(() => output.includes(`AGAIN:${String(pid)}`))).toBe(true);
+    expect(host.list()).toHaveLength(1);
+
+    // The owner still reaps it, which is what keeps a detach from being a leak.
+    host.terminateAll();
+    expect(await until(() => !alive(pid))).toBe(true);
+    expect(host.list()).toEqual([]);
+  });
 });

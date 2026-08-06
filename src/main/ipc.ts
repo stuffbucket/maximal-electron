@@ -23,6 +23,7 @@ import { getPreferences, setPreferences } from './native/preferences.js';
 import {
   defaultShell,
   killPty,
+  listPtys,
   resizePty,
   spawnPty,
   writePty,
@@ -86,6 +87,7 @@ const handlers: IpcHandlers = {
   'pty:resize': (request, window) =>
     resizePty(window, request.id, request.cols, request.rows),
   'pty:kill': (request, window) => killPty(window, request.id),
+  'pty:list': (_request, window) => listPtys(window),
   'pty:default-shell': () => defaultShell(),
 
   'overlay:toggle': () => toggleOverlay(),

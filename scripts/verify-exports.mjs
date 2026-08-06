@@ -11,6 +11,7 @@ import {
   RENDERER_SURFACE,
   VERIFY_SURFACE,
   exportTargets,
+  mainSurfaceChecks,
   moduleGraphChecks,
   reExportedNames,
 } from './export-checks.mjs';
@@ -128,6 +129,13 @@ check(
   JSON.stringify(verifyNames) === JSON.stringify(VERIFY_SURFACE),
   'the ./verify export exposes the documented names',
 );
+
+/*
+ * The main-process seam. Issue #15.
+ */
+console.log('\nMain-process seam');
+const mainChecks = await mainSurfaceChecks(root, manifest.exports['./main']?.types);
+for (const { name, ok } of mainChecks.checks) check(ok, name);
 
 console.log('\nRenderer import graph');
 const { checks: graphChecks, inspected } = await moduleGraphChecks(root, rendererEntry);
