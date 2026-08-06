@@ -41,6 +41,26 @@ export const RUNTIME_ICONS = [
   'trayTemplate@2x.png',
 ];
 
+/**
+ * The icon packager embeds in the bundle, by the platform being built for.
+ *
+ * macOS reads an `icns`, Windows an `ico`, and every other target the png.
+ * `forge.config.ts` checks the chosen file is present, because a missing one is
+ * silent: packager logs a warning and ships the Electron default.
+ *
+ * Here rather than in `forge.config.ts` so all three answers are unit tested. A
+ * `win32` build has never run on a developer machine here, and the CI job that
+ * runs it proves the file exists rather than that this picked the right name.
+ *
+ * @param {string} platform A Node `process.platform` value.
+ * @returns {string}
+ */
+export function bundleIcon(platform) {
+  if (platform === 'darwin') return 'icon.icns';
+  if (platform === 'win32') return 'icon.ico';
+  return 'icon.png';
+}
+
 /* -------------------------------------------------- llama.cpp prebuilds */
 
 /**

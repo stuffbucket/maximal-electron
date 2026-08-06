@@ -34,7 +34,7 @@ export function mainWindowOptions(): HostWindowOptions {
     backgroundColor: '#16181d',
     // Windows and Linux draw the taskbar and window icon from the window.
     // macOS uses the bundle, so `windowIcon` returns nothing there.
-    icon: windowIcon(),
+    icon: windowIcon(process.platform),
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
     // Windows and Linux draw the system controls over our toolbar.
     ...(process.platform === 'darwin'

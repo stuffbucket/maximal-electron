@@ -14,6 +14,8 @@ export declare const PACKAGE_FUSES: Readonly<Record<string, boolean>>;
 
 export declare const RUNTIME_ICONS: readonly string[];
 
+export declare function bundleIcon(platform: string): string;
+
 export declare const OPTIONAL_LLAMA_BACKENDS: readonly string[];
 
 export declare const LLAMA_BACKENDS_VARIABLE: string;
