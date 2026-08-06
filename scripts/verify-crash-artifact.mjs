@@ -91,7 +91,7 @@ const DATABASE = 'Crashpad';
  * could have seen that until #149 let the packaged engine crash there at all.
  * Issue #156.
  */
-const DUMPS_ON_ABORT = false;
+const DUMPS_ON_ABORT = process.platform !== 'win32';
 
 const built = packagedApp();
 if (!built) {
