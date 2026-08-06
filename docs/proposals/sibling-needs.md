@@ -1,5 +1,21 @@
 # What maximal and maximal-core need from this shell next
 
+> **Superseded in part, 6 August 2026.** Two claims below are now false and one
+> of them is a hazard. `client/` has since landed on `maximal`'s `main` (their
+> #419), and on their #424 and #425 the renderer imports
+> `stuffbucket-electron/renderer/styles.css` and five components from
+> `./renderer` — so "three of our four export paths have zero consumers" no
+> longer holds, and everything ranked speculative on that basis has been
+> re-ranked.
+>
+> **Do not act on the `#v0.0.2` repin recommended below.** That tag has
+> `prepack` but no `prepare`, and npm runs `prepare` for a `github:` install,
+> so it resolves to a package with no `dist/` at all — exit 0, no warning,
+> every export broken. `#v0.0.3` is the first tag that installs; verified
+> against a real scratch install. See #83 for the check that should have
+> caught this, and #93 for the `--shell-*` contract the new renderer
+> consumer needs.
+
 `v0.0.2` published today. This asks what the two consumers this shell exists
 for actually need, and which of our open issues serve that need. The answer
 below rests on reading their code, not their issue titles: `maximal`'s
