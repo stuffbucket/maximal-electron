@@ -159,12 +159,7 @@ export function buildApplicationMenu(callbacks: MenuCallbacks): Menu {
           },
         },
         ...(callbacks.onShowCrashReports
-          ? ([
-              {
-                label: 'Show Crash Reports',
-                click: callbacks.onShowCrashReports,
-              },
-            ] satisfies MenuItemConstructorOptions[])
+          ? ([] satisfies MenuItemConstructorOptions[])
           : []),
         ...(isMac
           ? []
