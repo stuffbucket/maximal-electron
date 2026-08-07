@@ -1,7 +1,7 @@
 {
   "name": "@stuffbucket/maximal-electron",
   "productName": "Stuffbucket",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Reference Electron application with cross-platform build and release mechanics",
   "license": "MIT",
   "author": "stuffbucket",
@@ -69,6 +69,7 @@
     "smoke:packaged": "node scripts/smoke-packaged.mjs",
     "verify:exports": "npm run build:package && node scripts/verify-exports.mjs",
     "verify:publish": "node scripts/verify-publish.mjs",
+    "publish:package": "node scripts/publish-package.mjs",
     "verify:neutral": "node scripts/verify-neutral.mjs",
     "verify:rulesets": "node scripts/verify-rulesets.mjs",
     "verify:workflow-health": "node scripts/verify-workflow-health.mjs",

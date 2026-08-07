@@ -26,6 +26,8 @@ knows. A third train would be that decision made too early.
 |          | preload bridge, client integration, theming from an external source.    |
 | `v0.0.3` | What a consumer installs: the artifact is correct and provably so.      |
 | `v0.0.4` | What a consumer carries: install weight, the entrypoint seam, guards.   |
+| `v0.0.5` | Whether the instruments are honest, and what the package is called.     |
+| `v0.0.6` | What a consumer can trust: the preload seam, crash isolation, coverage. |
 
 The test for which train a change belongs on is whether
 `stuffbucket/maximal` has to change to benefit from it. If it does, the change
@@ -51,6 +53,19 @@ that has not shipped.
 4. Open the next train: a `v0.0.(n+2)` milestone, branch, and draft release, so
    two are open again.
 
+If step 2's run does not complete — an Actions outage, a cancelled queue, a
+runner that never arrived — the tag is not spent. Dispatch the same workflow
+against it:
+
+```
+gh workflow run release.yml --ref v0.0.5 -f publish=true
+```
+
+Every job is re-runnable, so the retry picks up wherever the last attempt
+stopped and says which parts had already been done. See `docs/ci.md` for the
+rail that keeps a dispatch against a branch from publishing, and for the
+outage that made this necessary.
+
 ## A pushed tag is immutable
 
 `v0.0.2` was pushed at 23:29:43, deleted, and pushed again at 23:37:44 onto a
@@ -64,9 +79,14 @@ at now. Moving a tag changes what a consumer installs without changing anything
 they can see. That is the same class of hazard as adding an asset to a
 published release, and it has the same answer: cut the next patch.
 
-If a tag's build fails, the tag stays where it is. Fix the cause on the release
-branch, bump the patch, and push a new tag. The failed run is the record of what
-happened, and deleting the tag deletes that record too.
+If a tag's build fails **because the code is wrong**, the tag stays where it is.
+Fix the cause on the release branch, bump the patch, and push a new tag. The
+failed run is the record of what happened, and deleting the tag deletes that
+record too.
+
+A run that failed for a reason outside the code is the other case, and it used
+to have the same remedy. It does not now: retry the publish against the tag
+instead of burning a version on somebody else's outage.
 
 `stuffbucket/maximal-core` reached the same rule from the other direction. Their
 #60 refuses a tag that is not above every tag that already exists, checked
@@ -102,8 +122,10 @@ tag-check ──> release (draft) ──> package-tarball ──┬─> publish
                                                     └─> publish-package
 ```
 
-The same workflow runs from a dispatch as a dry run, which builds everything
-and attaches nothing. See `docs/ci.md`.
+The same workflow runs from a dispatch. With `publish` at its default it
+rehearses: it builds everything and attaches nothing. With `publish` set true
+against a **tag** ref it is the retry described above. A branch cannot publish
+however the input is set. See `docs/ci.md`.
 
 ## There is no installer
 

@@ -34,6 +34,12 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
  * `icons.ts`, which took the platform branches out of `app-icon.ts` and
  * `tray.ts` where nothing could mutate them. `icons.ts` went from 6 mutants to
  * 22. Issue #49.
+ *
+ * The two trains raised this from different bases and neither number survived
+ * the fold. `release/0.0.6` read 1737 and `main` read 1662, the second from
+ * #162 putting `publish-decision.mjs` on the mutate list. A tree holding both
+ * sets of changes holds both sets of mutants, so this is what the merged tree
+ * measured rather than either number or their sum.
  */export const MUTANT_FLOOR = 1737;
 
 /**

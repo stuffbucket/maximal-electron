@@ -36,9 +36,11 @@ export function codeSpans(text) {
 /**
  * Every `npm run <name>` in the text, wherever it sits.
  *
- * One pattern, read by the rule and by the count of what the rule declines.
- * Two copies of it would have to stay in step, and the number that says how
- * much is out of scope is only worth printing if it is the same question.
+ * One pattern, read by the rule and by the count of what the rule declines:
+ * the number that says how much is out of scope is only worth printing if it
+ * is the same question. Two copies drifted apart in nothing but mutation
+ * score, because the count the second fed is a length rather than a list of
+ * names, so every mutant of it survived.
  */
 const NPM_RUN = /\bnpm run ([a-z][a-z0-9:-]*)/g;
 
@@ -87,9 +89,11 @@ const OWN_TREE = /^[a-z]/i;
  * attempts that passed that way. `declined` is the residue, so the caller can
  * print a number instead of nothing.
  *
- * A `:142` line reference is trimmed to the file it points at. Globs are kept
- * as written: the caller decides whether a pattern matching nothing is a
- * defect, and there it is.
+ * A colon cannot appear in a path this repository carries — Windows forbids one
+ * in a file name — so everything from the first colon is a location, whether it
+ * is `:142` or `:142:7`, and the span is trimmed to the file it points at.
+ * Globs are kept as written: the caller decides whether a pattern matching
+ * nothing is a defect, and there it is.
  *
  * - `repo` sits under `roots` and names a file in the checkout.
  * - `build` sits under `buildRoots`, which a checkout does not contain. An
@@ -100,7 +104,7 @@ const OWN_TREE = /^[a-z]/i;
 export function pathClaims(text, { roots, buildRoots, moduleExtensions }) {
   const claims = { repo: [], build: [], relative: [], declined: [] };
   for (const raw of codeSpans(text)) {
-    const span = raw.trim().replace(/:\d+$/, '');
+    const span = raw.trim().split(':')[0];
     if (!pathShaped(span)) continue;
     const listed = span.startsWith('/') ? span.slice(1) : span;
 
