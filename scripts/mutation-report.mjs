@@ -36,11 +36,12 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
  * 22. Issue #49.
  *
  * The two trains raised this from different bases and neither number survived
- * the fold. `release/0.0.6` read 1737 and `main` read 1662, the second from
- * #162 putting `publish-decision.mjs` on the mutate list. A tree holding both
- * sets of changes holds both sets of mutants, so this is what the merged tree
- * measured rather than either number or their sum.
- */export const MUTANT_FLOOR = 1737;
+ * the fold. `release/0.0.6` read 1737 and `main` read 1662. A tree holding
+ * both sets of changes holds both sets of mutants, so neither is the count
+ * here and nor is their difference: 2082 is what the merged tree measured.
+ * `publish-decision.mjs`, `check-scope.mjs` and `peer-table.mjs` arrived from
+ * `main`, and `icons.ts` at 22 mutants arrived from the release branch.
+ */export const MUTANT_FLOOR = 2082;
 
 /**
  * `// Stryker disable` suppressions, counted in mutants rather than comments
