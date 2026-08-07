@@ -16,6 +16,7 @@ repository is a defect, not a convenience.
 | --- | --- |
 | `./main` | `runMain`, the main-process lifecycle |
 | `./host` | `createHostWindow`, one secured window |
+| `./preload` | `exposeBridge`, the generic renderer bridge |
 | `./host/terminal` | The terminal host |
 | `./renderer` | The React control surface |
 | `./renderer/styles.css` | The structural stylesheet |
@@ -54,22 +55,25 @@ await runMain(
 );
 ```
 
-`runtime` carries `app` and an optional `platform`. Injecting the runtime
-rather than importing it is what lets the unit suite drive the whole lifecycle
-in plain Node, without an Electron process.
+`runtime` carries `app`, an optional `platform`, and an optional
+`crashReporter`. Injecting the runtime rather than importing it is what lets
+the unit suite drive the whole lifecycle in plain Node, without an Electron
+process.
 
 ### The order
 
 1. `userDataDirectory` is applied. It has to precede the lock, because Chromium
    derives the lock from the profile directory.
-2. The single instance lock is taken. Without it, `runMain` quits this process
+2. `collectCrashDumps` starts the crash reporter, if it is on. It has to follow
+   the profile: Crashpad reads `userData` once, when it starts.
+3. The single instance lock is taken. Without it, `runMain` quits this process
    and resolves with no window, and no handler is registered.
-3. `whenReady`.
-4. `discoverDaemonUrl` runs once. Its result is normalized and put on the
+4. `whenReady`.
+5. `discoverDaemonUrl` runs once. Its result is normalized and put on the
    context.
-5. `onReady` runs, with the context. Register channels here: it precedes the
+6. `onReady` runs, with the context. Register channels here: it precedes the
    first window, so nothing the renderer calls is missing when it loads.
-6. `window(context)` is asked for options, and the window opens.
+7. `window(context)` is asked for options, and the window opens.
 
 `onActivate` then runs on every activation — a dock click, a menu bar click, a
 second launch. `runMain` opens a replacement window when none is left, and
@@ -83,6 +87,7 @@ second launch. `runMain` opens a replacement window when none is left, and
 | `window` | required | Options for each window, given the context |
 | `userDataDirectory` | Electron's own | Profile directory |
 | `singleInstance` | `true` | Take the single instance lock |
+| `collectCrashDumps` | `false` | Write a local minidump for every process the shell owns |
 | `keepRunningWithoutWindows` | `() => false` | Survive the last window on every platform |
 | `discoverDaemonUrl` | none | An origin to resolve before the first window |
 | `onReady` | none | After discovery, before the first window |
@@ -94,6 +99,14 @@ second launch. `runMain` opens a replacement window when none is left, and
 `keepRunningWithoutWindows` is a callback rather than a value because the
 answer changes while the application runs: this shell reads a preference the
 user can toggle. macOS keeps an application alive without windows regardless.
+
+`collectCrashDumps` is off by default and needs `runtime.crashReporter` when it
+is on, or `runMain` throws rather than starting nothing in silence. A crash
+reporter is process-wide, so starting one inside somebody else's application is
+their decision and not this shell's, and a consumer that already runs one would
+otherwise get a second. Nothing is uploaded either way: there is no
+`submitURL`, no endpoint, and no credential. See `docs/architecture.md` for
+where the dumps land and what covers them.
 
 `beforeShutdown` returning a promise defers the quit until it settles, and the
 quit that follows does not run it again. Returning nothing lets the quit
@@ -148,10 +161,150 @@ rather than reading a field that is no longer there.
 
 ## What is not here
 
-There is no preload export. `maximal/client` wrote its own in three methods,
-and a bridge nobody imports is a shape nobody has tested. The renderer-side
-half of that, `resolveBridge`, exists for this repository's own Storybook.
-
 `src/main/index.ts` runs on `runMain`, which is the point: a seam this
 repository's own application does not use is exercised by nothing anybody runs,
-and it drifts. `npm run test:e2e` drives that application.
+and it drifts. `npm run test:e2e` drives that application, and it now drives
+the bridge with it.
+
+There is no renderer-side client for the bridge. `resolveBridge` in
+`src/renderer/lib/resolve-bridge.ts` answers "is a bridge here", and it is not
+exported. A consumer writes `typeof window.myApp?.openExternal === 'function'`,
+which is one line and needs no package.
+
+## The preload bridge
+
+`@stuffbucket/maximal-electron/preload` is the seam issue #17 asks for: one
+namespaced global, generic native powers, `{ok}` envelopes, working under
+`sandbox: true`. `maximal/client` wrote three methods of it by hand because
+this export did not exist.
+
+```ts
+// the consumer's own preload entry, bundled by the consumer's own bundler
+import { exposeBridge } from '@stuffbucket/maximal-electron/preload';
+
+exposeBridge({ namespace: 'myApp' });
+```
+
+```ts
+// the consumer's main process
+window: ({ daemonUrl }) => ({
+  preloadPath: join(__dirname, 'preload.js'),
+  bridge: { capabilities: ['openExternal', 'versions'], serviceOrigin: daemonUrl },
+  // …
+}),
+```
+
+```ts
+// the consumer's renderer
+const bridge = (window as { myApp?: Bridge }).myApp;
+if (bridge?.openExternal) {
+  const result = await bridge.openExternal('https://example.com');
+  if (!result.ok) console.warn(result.code, result.message);
+}
+```
+
+`namespace` has no default. A key this package picked would be one every
+consumer collides on, and issue #22 asks for it caller-set.
+
+### The capabilities
+
+| Capability | Channel the host handles | Argument |
+| --- | --- | --- |
+| `openExternal` | `shell:open-external` | `{ url }` |
+| `versions` | `app:versions` | none |
+| `checkForUpdate` | `update:check` | none |
+
+Those channel names are literals in `src/preload/capabilities.ts`, not an
+import of `src/shared/ipc.ts`. A bridge that imported this shell's contract
+would put this repository's own application on the export graph, and
+`npm run verify:neutral` fails on exactly that. The duplication owes a check
+and has one: `tests/bridge-capabilities.test.ts` asserts every channel the
+bridge names is one this shell answers.
+
+`serviceOrigin` is a value rather than a channel. `runMain` already resolves
+`discoverDaemonUrl` before the first window, so the origin exists by the time
+`window(context)` is called and there is nothing to round-trip. It arrives as
+`bridge.serviceOrigin`, normalized, or `null`. A scheme other than `http` or
+`https` is refused rather than injected.
+
+### Feature detection
+
+A method the host did not declare is **absent**, not present and failing. The
+whole feature test is `typeof bridge.openExternal === 'function'`, and
+`bridge.capabilities` lists what the host declared.
+
+The declaration travels through `webPreferences.additionalArguments`, which
+Electron appends to the renderer's `process.argv` and which a sandboxed preload
+reads. `createHostWindow` writes it from `options.bridge`, and the preload
+parses it back.
+
+This is not a version handshake, and that is deliberate. A version number is a
+second thing to keep in step with the first, and it drifts the moment a host
+implements four capabilities and reports three. Here the host states which
+handlers it registered, once, in the same object that opens the window. A
+capability a host forgets to declare has no method, which is visible on the
+first call rather than at the first release that changed the number.
+
+Probing by calling was the alternative and is worse: `openExternal` cannot be
+probed without opening something. A `bridge:capabilities` channel was the other,
+and it is a channel that may itself be unimplemented, which is the same problem
+one level down.
+
+Filtering is one-way. `declaredCapabilities` keeps only names this build knows,
+so a newer host talking to an older bridge loses a method rather than gaining a
+broken one.
+
+### Envelopes, not rejections
+
+Every method resolves. None rejects.
+
+```ts
+type Envelope<T> =
+  | { ok: true; value: T }
+  | { ok: false; code: 'unavailable' | 'refused' | 'failed'; message: string };
+```
+
+A rejection crosses `contextBridge` as a copied `Error` with its class gone, so
+a caller cannot tell "no handler" from "the handler said no" without reading
+the message as prose. And a caller who forgets `catch` gets an unhandled
+rejection, which a packaged renderer with no DevTools shows nobody. An envelope
+is a value, and a discriminated union makes the caller discriminate.
+
+`unavailable` is a channel no handler answers. `refused` is a handler that
+threw. `failed` is the bridge refusing before the call left the renderer. A
+capability that was never declared produces none of the three, because there is
+no method to call.
+
+The envelope is made in the preload, not in the host. A consumer writes
+ordinary `ipcMain.handle` that returns a value or throws, and the bridge wraps
+it. Nothing about envelopes reaches the main process.
+
+### `sandbox: true`
+
+`createHostWindow` sets it and will not stop. It constrains this seam in two
+ways worth stating rather than discovering.
+
+A sandboxed preload cannot `require` a package. Its `require` reaches a handful
+of Electron and Node built-ins and nothing in `node_modules`, so
+`require('@stuffbucket/maximal-electron/preload')` from a preload file does not
+work and cannot be made to. **The consumer bundles this module into their own
+preload entry.** That is the one thing they must still do themselves, and it is
+why `preloadPath` stays a path they supply: the shell never chooses the file,
+only what the file is told.
+
+A sandboxed preload does get `process.argv`, which is what carries the
+declaration. That is asserted rather than assumed —
+`e2e/preload-bridge.spec.ts` reads `window.stuffbucket.capabilities` out of the
+real application's renderer, in a window with `sandbox: true`.
+
+### What replaces what
+
+This shell's own `src/preload/index.ts` calls `exposeBridge`. It passes
+`extend` for its own twenty channels, which are this application's and no
+consumer's business, and the generic surface underneath is the exported one.
+So the export is not a second implementation that can drift from the one this
+repository runs: it is the one this repository runs.
+
+`extend` exists because `contextBridge.exposeInMainWorld` allows one call per
+key. A consumer wanting only the generic surface omits it.
+

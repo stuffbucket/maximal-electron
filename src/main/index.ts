@@ -19,7 +19,10 @@ import {
   quietBounds,
 } from './native/preferences.js';
 import { configurePty, killAllPtys } from './native/pty.js';
+import { showCrashReports, startCrashReports } from './native/crash-reports.js';
+import { llamaCheckRequested } from './native/llama-protocol.js';
 import { selfCheckRequested } from './native/self-check.js';
+import { runLlamaCheck } from './llama-check.js';
 import { runSelfCheck } from './self-check.js';
 import { destroyTray, setTrayEnabled } from './native/tray.js';
 import { checkForUpdates } from './native/updates.js';
@@ -30,10 +33,10 @@ import { closeSplashWindow, createSplashWindow } from './windows/splash.js';
 /*
  * Pick the profile before anything else touches it.
  *
- * `runMain` applies this before it takes the single instance lock, because the
- * lock is derived from the profile directory. Two builds pointing at the same
- * directory are the same application as far as Chromium is concerned, and the
- * second one to start will not get a window.
+ * It is applied before the single instance lock, because the lock is derived
+ * from the profile directory. Two builds pointing at the same directory are
+ * the same application as far as Chromium is concerned, and the second one to
+ * start will not get a window.
  *
  * - Under test: a throwaway directory, so a run never clobbers a developer's
  *   real preferences.
@@ -175,7 +178,7 @@ function bootstrap(): void {
   // An unpackaged run shows Electron's own dock icon until this call. A
   // packaged build already carries the bundle icon; this keeps the two the
   // same when `STUFFBUCKET_ICON_DIR` overrides it.
-  applyDockIcon();
+  applyDockIcon(process.platform);
 
   registerIpcHandlers();
 
@@ -198,17 +201,18 @@ function bootstrap(): void {
     },
     onCheckForUpdates: () => void runUpdateCheck(),
     onOpenPreferences: () => activate(),
+    onShowCrashReports: showCrashReports,
   });
 
   // The tray is a plain click target: it activates the application.
-  setTrayEnabled(prefs.menuBarIcon, activate);
+  setTrayEnabled(prefs.menuBarIcon, process.platform, activate);
 
   bindOverlayHotkey(prefs.overlayHotkey);
 
   // Preferences are the single source of truth, so react to a change from any
   // origin rather than only from the settings panel.
   onPreferencesChanged((next) => {
-    setTrayEnabled(next.menuBarIcon, activate);
+    setTrayEnabled(next.menuBarIcon, process.platform, activate);
     bindOverlayHotkey(next.overlayHotkey);
     // Turning the menu bar icon off while no window is open would otherwise
     // strand the application with no way to reach it.
@@ -244,6 +248,18 @@ function shutdown(): Promise<void> | undefined {
 
 /* ------------------------------------------------------------- lifecycle */
 
+/*
+ * Crash artifacts, before the branch below rather than inside it.
+ *
+ * Crashpad derives its database from the profile directory at the moment it
+ * starts, so the profile is chosen here and `runMain` is handed the same one.
+ * It sits above the branch because the self-check paths never reach `runMain`,
+ * and those are the runs that crash on purpose. Issue #134.
+ */
+const userDataDirectory = profileDirectory();
+if (userDataDirectory !== undefined) app.setPath('userData', userDataDirectory);
+startCrashReports();
+
 if (selfCheckRequested(process.argv)) {
   /*
    * The packaged smoke test, ahead of `runMain` because `runMain` takes the
@@ -252,12 +268,16 @@ if (selfCheckRequested(process.argv)) {
    * which is a green run of a check that launched nothing. Issue #89.
    */
   runSelfCheck(process.argv);
+} else if (llamaCheckRequested(process.argv)) {
+  // The other half of the same idea: load the packaged llama.cpp out of
+  // process and survive it aborting. Issue #133.
+  runLlamaCheck();
 } else {
   void runMain(
     { app },
     {
       version: RUN_MAIN_OPTIONS_VERSION,
-      userDataDirectory: profileDirectory(),
+      userDataDirectory,
       keepRunningWithoutWindows: () => getPreferences().menuBarIcon,
       window: mainWindowOptions,
       onReady: (context) => {

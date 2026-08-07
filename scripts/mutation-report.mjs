@@ -19,12 +19,29 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 /**
- * The mutant count `npm run mutate` produced when this floor was last raised.
+ * The mutant count `npm run mutate` produced when this floor was last set.
  *
  * 1246 was a number nothing asserted, so a configuration change that halved
  * the mutated set would still have printed 100.00. Raise this when the count
  * rises; a fall is the defect it exists to catch.
- */export const MUTANT_FLOOR = 1662;
+ *
+ * It has come down once, from 1736, and only because code was deleted on
+ * purpose: `embeddedEngineStatus` and the gated result `llamaCheckLine`
+ * printed went with the Windows gate in #149, which is 15 mutants. Lowering it
+ * for any other reason is the defect. Say which deletion paid for it.
+ *
+ * 1721 to 1737 is `windowIconName`, `dockIconName` and `trayIconChoice` in
+ * `icons.ts`, which took the platform branches out of `app-icon.ts` and
+ * `tray.ts` where nothing could mutate them. `icons.ts` went from 6 mutants to
+ * 22. Issue #49.
+ *
+ * The two trains raised this from different bases and neither number survived
+ * the fold. `release/0.0.6` read 1737 and `main` read 1662. A tree holding
+ * both sets of changes holds both sets of mutants, so neither is the count
+ * here and nor is their difference: 2082 is what the merged tree measured.
+ * `publish-decision.mjs`, `check-scope.mjs` and `peer-table.mjs` arrived from
+ * `main`, and `icons.ts` at 22 mutants arrived from the release branch.
+ */export const MUTANT_FLOOR = 2082;
 
 /**
  * `// Stryker disable` suppressions, counted in mutants rather than comments

@@ -1,15 +1,21 @@
-import { expect, test, type Locator } from '@playwright/test';
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import {
   closeApp,
+  getPrefs,
   launchApp,
-  providerAnswers,
-  providerState,
+  providerStatus,
   resetShell,
+  setPrefs,
   setTheme,
   terminalScreen,
   type Harness,
 } from './harness.js';
+import { SCRIPTED_MODEL, startScriptedModel, type ScriptedModel } from './model-server.js';
 import { createRegistry } from './shuffle.js';
 
 /**
@@ -24,14 +30,23 @@ import { createRegistry } from './shuffle.js';
  * Tests run in a **random order**. Each one must therefore set up whatever it
  * needs, and `resetShell` returns the application to a known state first. The
  * seed is printed on every run; `E2E_SEED` replays one.
+ *
+ * The application is pinned to the scripted backend in `e2e/model-server.ts`,
+ * so the agent scenarios run on a machine with no model. Read that file before
+ * changing one: it says what a scripted reply can and cannot prove.
  */
 
 let harness: Harness;
+let model: ScriptedModel;
 
 const { scenario, registerShuffled } = createRegistry();
 
 test.beforeAll(async () => {
-  harness = await launchApp();
+  model = await startScriptedModel();
+  harness = await launchApp({
+    STUFFBUCKET_PROVIDER: 'ollama',
+    STUFFBUCKET_PROVIDER_URL: model.baseUrl,
+  });
 });
 
 test.beforeEach(async () => {
@@ -40,6 +55,7 @@ test.beforeEach(async () => {
 
 test.afterAll(async () => {
   await closeApp(harness);
+  await model.stop();
 });
 
 /* ------------------------------------------------------------------ shell */
@@ -387,6 +403,205 @@ scenario('the overlay card is a real dialog', async () => {
   await overlay.keyboard.press('Escape');
 });
 
+/**
+ * What Tab can reach, by the definition a browser uses.
+ *
+ * Radix gives the card itself `tabindex="-1"`, so it is focusable
+ * programmatically and unreachable by Tab. Excluding it is the point: a walk
+ * that counted it would report a scope of one over a card with no fields.
+ */
+const TABBABLE = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(', ');
+
+/**
+ * Where focus is now, and what holds it.
+ *
+ * Read from `document.activeElement` after every press rather than from a
+ * `focusin` listener. Focus leaving the last field of an untrapped dialog
+ * lands on `document.body`, and that fires no `focusin` at all, so a listener
+ * records nothing and the walk reads as clean. The escape this test exists to
+ * catch is exactly that one.
+ */
+function focusHolder(overlay: Page): Promise<{ inside: boolean; element: string }> {
+  return overlay.evaluate(() => {
+    const card = document.querySelector('[data-testid="overlay-card"]');
+    const active = document.activeElement;
+    const name = active
+      ? `${active.tagName.toLowerCase()}${active.getAttribute('data-testid') ? `[${active.getAttribute('data-testid') ?? ''}]` : ''}`
+      : 'nothing';
+    return { inside: Boolean(card && active && card.contains(active)), element: name };
+  });
+}
+
+/** Press a key `times` times, recording where focus sat after each press. */
+async function walk(
+  overlay: Page,
+  key: 'Tab' | 'Shift+Tab',
+  times: number,
+): Promise<{ inside: boolean; element: string }[]> {
+  const trail: { inside: boolean; element: string }[] = [];
+  for (let press = 0; press < times; press += 1) {
+    await overlay.keyboard.press(key);
+    trail.push(await focusHolder(overlay));
+  }
+  return trail;
+}
+
+/**
+ * Somewhere for focus to escape to, and the count of what can hold it.
+ *
+ * The overlay window holds the dialog and nothing else. With one field inside
+ * the card and no background content, Tab has nowhere to go, and a card with
+ * no trap at all walks exactly like a trapped one — the check would pass while
+ * examining nothing. So the walk supplies the background element. Radix marks
+ * the siblings that exist when the dialog mounts; this one arrives afterwards,
+ * which is the harder case and the one a later render would produce.
+ */
+const HATCH = 'focus-escape-hatch';
+
+async function openEscapeHatch(overlay: Page): Promise<void> {
+  await overlay.evaluate((testId) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset['testid'] = testId;
+    button.textContent = 'outside the card';
+    document.body.append(button);
+  }, HATCH);
+}
+
+async function closeEscapeHatch(overlay: Page): Promise<void> {
+  await overlay.evaluate((testId) => {
+    document.querySelector(`[data-testid="${testId}"]`)?.remove();
+  }, HATCH);
+}
+
+/**
+ * Tell the renderer it has the keyboard, without taking the user's.
+ *
+ * Sequential focus navigation is the browser's own, and Chromium performs it
+ * only for a focused widget. The suite parks its windows off the side of the
+ * display and never activates them, so a dispatched Tab arrives and moves
+ * nothing: the walk reads as trapped whatever the dialog does. `bringToFront`
+ * would fix it by pulling the keyboard out of whatever the developer is doing,
+ * once per run. Focus emulation is the same claim made to the renderer alone.
+ */
+async function withKeyboardFocus<T>(page: Page, run: () => Promise<T>): Promise<T> {
+  const session = await page.context().newCDPSession(page);
+  await session.send('Emulation.setFocusEmulationEnabled', { enabled: true });
+  try {
+    return await run();
+  } finally {
+    await session
+      .send('Emulation.setFocusEmulationEnabled', { enabled: false })
+      .catch(() => undefined);
+    await session.detach().catch(() => undefined);
+  }
+}
+
+/** What Tab can reach inside the card, and what it can reach outside it. */
+function tabbableCounts(
+  overlay: Page,
+): Promise<{ inside: number; outside: number; hatch: boolean }> {
+  return overlay.evaluate(
+    ({ selector, testId }) => {
+      const card = document.querySelector('[data-testid="overlay-card"]');
+      const all = [...document.querySelectorAll(selector)];
+      const inside = all.filter((element) => card?.contains(element) === true);
+      const outside = all.filter((element) => card?.contains(element) !== true);
+      return {
+        inside: inside.length,
+        outside: outside.length,
+        hatch: outside.some((element) => element.getAttribute('data-testid') === testId),
+      };
+    },
+    { selector: TABBABLE, testId: HATCH },
+  );
+}
+
+scenario('Tab and Shift+Tab stay inside the overlay dialog', async () => {
+  /*
+   * The trap, walked. `role="dialog"` and an inert background declare a modal
+   * to assistive technology; neither enforces one, and axe reports no
+   * violation against a dialog focus still escapes from. The scenario above
+   * checks the declaration. This presses the key.
+   *
+   * No model is needed: the card renders and traps focus whatever the provider
+   * reports, which is why this runs in CI while the agent scenarios skip. See
+   * #131.
+   */
+  const overlay = await openOverlay();
+
+  await openEscapeHatch(overlay);
+  try {
+    await withKeyboardFocus(overlay, async () => {
+      // The card renders while the provider is still being probed, and in that
+      // moment it holds a disabled field and no buttons. Waiting for something
+      // Tab can reach is the floor: a card that never grows one fails here
+      // rather than reporting a walk over nothing.
+      await expect
+        .poll(async () => (await tabbableCounts(overlay)).inside, {
+          timeout: 15_000,
+          message: 'nothing inside the card can be reached by Tab, so a walk would prove nothing',
+        })
+        .toBeGreaterThan(0);
+
+      const reachable = await tabbableCounts(overlay);
+      expect(
+        reachable.hatch,
+        'the element outside the card is not reachable, so an escape has nowhere to land',
+      ).toBe(true);
+      // Start the walk somewhere defined. Where focus lands on a summon is the
+      // scenario above, and these run in a random order, so this puts it on
+      // the first field rather than assuming.
+      await overlay.locator('[data-testid="overlay-card"]').locator(TABBABLE).first().focus();
+      expect((await focusHolder(overlay)).inside, 'the walk starts inside the card').toBe(
+        true,
+      );
+
+      // Two past the end. One press per element only proves the last one is
+      // reachable; the escape happens on the press after that.
+      const presses = reachable.inside + reachable.outside + 2;
+
+      const forward = await walk(overlay, 'Tab', presses);
+      expect(
+        forward.filter((step) => !step.inside).map((step) => step.element),
+        'Tab left the card',
+      ).toEqual([]);
+
+      const backward = await walk(overlay, 'Shift+Tab', presses);
+      expect(
+        backward.filter((step) => !step.inside).map((step) => step.element),
+        'Shift+Tab left the card',
+      ).toEqual([]);
+    });
+  } finally {
+    // These specs share one overlay page, and they run in a random order.
+    await closeEscapeHatch(overlay);
+  }
+
+  // Escape hands the window back to the main process. Hiding and summoning
+  // again must not leave focus outside the card, because the next key the user
+  // presses goes wherever it sits.
+  const handle = await harness.app.browserWindow(overlay);
+  await overlay.keyboard.press('Escape');
+  await expect
+    .poll(() => handle.evaluate((win) => win.isVisible()), { timeout: 10_000 })
+    .toBe(false);
+
+  await openOverlay();
+  expect((await focusHolder(overlay)).inside, 'focus should return inside the card').toBe(
+    true,
+  );
+
+  await overlay.keyboard.press('Escape');
+});
+
 scenario('the floating overlay summons and dismisses', async () => {
   const { app, window } = harness;
 
@@ -424,40 +639,6 @@ scenario('the floating overlay summons and dismisses', async () => {
     .toBe(false);
 });
 
-scenario('the overlay answers when a local backend is running', async () => {
-  const { app, window } = harness;
-
-  await window.click('[data-testid="toggle-overlay"]');
-  const overlay =
-    app.windows().find((page) => page.url().includes('overlay')) ??
-    (await app.waitForEvent('window', { timeout: 15_000 }));
-
-  await overlay.waitForSelector('[data-testid="overlay-card"]', {
-    timeout: 15_000,
-  });
-
-  // Skip rather than fail when nothing is listening. A contributor without
-  // maximal or Ollama should still get a green suite, and CI has neither.
-  const state = await providerState(overlay);
-  test.skip(state !== 'ready', `No local model backend: ${state}`);
-  test.skip(
-    !(await providerAnswers(overlay)),
-    'The backend reported ready and did not answer a one-word prompt',
-  );
-
-  await overlay.fill('[data-testid="overlay-input"]', 'Reply with exactly: OVERLAY_OK');
-  await overlay.keyboard.press('Enter');
-
-  // The answer streams in as `agent:delta` events, so this asserts the whole
-  // path: pi agent loop, provider, IPC events, and incremental render.
-  await expect(overlay.locator('[data-testid="overlay-answer"]')).toContainText(
-    'OVERLAY_OK',
-    { timeout: 90_000 },
-  );
-
-  await overlay.keyboard.press('Escape');
-});
-
 /**
  * Summon the overlay and wait for its card.
  *
@@ -479,82 +660,178 @@ async function openOverlay() {
 }
 
 /**
- * Skip rather than fail when no local model is running.
+ * Insist the run is about to use the scripted backend.
  *
- * A contributor without maximal or Ollama should still get a green suite, and
- * CI has neither. This reads the state from the IPC contract rather than the
- * status line's wording; see `providerState` in `e2e/harness.ts` for why the
- * substring version could never fire.
+ * The floor for every agent scenario. This file starts the backend, so anything
+ * else answering is a defect rather than a machine without a model. The model
+ * name is distinctive, so a real Ollama on the developer's machine cannot
+ * satisfy this by accident.
  */
-async function requireBackend(overlay: Awaited<ReturnType<typeof openOverlay>>) {
-  const state = await providerState(overlay);
-  test.skip(state !== 'ready', `No local model backend: ${state}`);
-  test.skip(
-    !(await providerAnswers(overlay)),
-    'The backend reported ready and did not answer a one-word prompt',
-  );
+async function requireScriptedBackend(overlay: Page) {
+  await expect
+    .poll(() => providerStatus(overlay), { timeout: 15_000 })
+    .toEqual({ state: 'ready', provider: 'ollama', model: SCRIPTED_MODEL });
 }
 
-scenario('the overlay agent asks before it runs bash, and runs it when allowed', async () => {
-  const overlay = await openOverlay();
-  await requireBackend(overlay);
+/**
+ * State the preferences the gate reads, rather than trusting the defaults.
+ *
+ * `agentApproval` and `agentTools` persist, and these scenarios run in a random
+ * order against one profile.
+ */
+async function armTheGate() {
+  const before = await getPrefs(harness.window);
+  await setPrefs(harness.window, { agentApproval: 'writes', agentTools: true });
+  return before;
+}
 
-  // A tool call is what separates the pi agent loop from a plain chat call.
-  // The marker can only appear if a real shell ran.
-  await overlay.fill(
-    '[data-testid="overlay-input"]',
-    'Use your bash tool to run: echo AGENT_TOOL_5521 — then report the output.',
-  );
+/**
+ * A file only a real shell can write, and a path a shell writes on either
+ * platform.
+ *
+ * This is what makes the gate scenarios mean something. The backend is
+ * scripted, so it chooses what comes back: an assertion that the answer
+ * contains a marker would pass with the shell never touched, because the
+ * script put the marker there. The filesystem cannot be scripted.
+ *
+ * Git Bash on the Windows runner takes a `C:/…` path, so one form works on
+ * both.
+ */
+function sentinel(): { file: string; shellPath: string } {
+  const file = path.join(mkdtempSync(path.join(tmpdir(), 'overlay-gate-')), 'ran.txt');
+  return { file, shellPath: file.split(path.sep).join('/') };
+}
+
+function contents(file: string): string | undefined {
+  try {
+    return readFileSync(file, 'utf8');
+  } catch {
+    return undefined;
+  }
+}
+
+scenario('the overlay streams an answer back into the card', async () => {
+  const overlay = await openOverlay();
+  await requireScriptedBackend(overlay);
+
+  await overlay.fill('[data-testid="overlay-input"]', 'Reply with exactly: OVERLAY_OK');
   await overlay.keyboard.press('Enter');
 
-  // The gate must fire first. `agentApproval` defaults to `writes`, and bash
-  // is not a read, so nothing should reach the shell without this prompt.
-  const approval = overlay.locator('[data-testid="overlay-approval"]');
-  await expect(approval).toBeVisible({ timeout: 120_000 });
-  await expect(
-    overlay.locator('[data-testid="overlay-approval-summary"]'),
-  ).toContainText('AGENT_TOOL_5521');
-
-  // The prompt has to be on screen, not merely in the DOM. A hidden window
-  // still answers every locator, so this is the only assertion that proves
-  // the user could actually have seen the question.
-  const handle = await harness.app.browserWindow(overlay);
-  await expect
-    .poll(() => handle.evaluate((win) => win.isVisible()), { timeout: 10_000 })
-    .toBe(true);
-
-
-  await overlay.click('[data-testid="overlay-allow"]');
-
+  // The answer arrives as `agent:delta` events, so this asserts the whole path:
+  // the pi agent loop, the provider's HTTP and SSE handling, the IPC events,
+  // and incremental render. The scripted backend sends the word in several
+  // deltas rather than one, so a card that only rendered the last chunk fails.
   await expect(overlay.locator('[data-testid="overlay-answer"]')).toContainText(
-    'AGENT_TOOL_5521',
-    { timeout: 120_000 },
+    'OVERLAY_OK',
+    { timeout: 30_000 },
   );
+
+  expect(model.calls.length, 'the scripted backend answered').toBeGreaterThan(0);
 
   await overlay.keyboard.press('Escape');
 });
 
+scenario('the overlay agent asks before it runs bash, and runs it when allowed', async () => {
+  const overlay = await openOverlay();
+  await requireScriptedBackend(overlay);
+  const before = await armTheGate();
+
+  const ran = sentinel();
+
+  try {
+    // A tool call is what separates the pi agent loop from a plain chat call.
+    // `tee` writes the marker to a file and prints it, so the run leaves
+    // evidence in two places that mean different things.
+    await overlay.fill(
+      '[data-testid="overlay-input"]',
+      `Use your bash tool to run: printf '%s' AGENT_TOOL_5521 | tee '${ran.shellPath}' — then report the output.`,
+    );
+    await overlay.keyboard.press('Enter');
+
+    // The gate must fire first. `agentApproval` is `writes`, and bash is not a
+    // read, so nothing should reach the shell without this prompt.
+    const approval = overlay.locator('[data-testid="overlay-approval"]');
+    await expect(approval).toBeVisible({ timeout: 30_000 });
+    await expect(
+      overlay.locator('[data-testid="overlay-approval-summary"]'),
+    ).toContainText('AGENT_TOOL_5521');
+
+    // Nothing has run yet. Without this the scenario would pass against a gate
+    // that shows a card after starting the command.
+    expect(contents(ran.file), 'the shell ran before anyone allowed it').toBeUndefined();
+
+    // The prompt has to be on screen, not merely in the DOM. A hidden window
+    // still answers every locator, so this is the only assertion that proves
+    // the user could actually have seen the question.
+    const handle = await harness.app.browserWindow(overlay);
+    await expect
+      .poll(() => handle.evaluate((win) => win.isVisible()), { timeout: 10_000 })
+      .toBe(true);
+
+    await overlay.click('[data-testid="overlay-allow"]');
+
+    // The file is the proof that a shell ran. The answer is the proof that the
+    // output travelled back through the tool loop to the model.
+    await expect
+      .poll(() => contents(ran.file), {
+        timeout: 30_000,
+        message: 'the allowed command never reached a shell',
+      })
+      .toContain('AGENT_TOOL_5521');
+
+    await expect(overlay.locator('[data-testid="overlay-answer"]')).toContainText(
+      'AGENT_TOOL_5521',
+      { timeout: 30_000 },
+    );
+
+    await overlay.keyboard.press('Escape');
+  } finally {
+    await setPrefs(harness.window, before);
+  }
+});
+
 scenario('Escape answers a pending approval rather than dismissing the overlay', async () => {
   const overlay = await openOverlay();
-  await requireBackend(overlay);
+  await requireScriptedBackend(overlay);
+  const before = await armTheGate();
 
-  await overlay.fill(
-    '[data-testid="overlay-input"]',
-    'Use your bash tool to run: echo AGENT_DENY_7788',
-  );
-  await overlay.keyboard.press('Enter');
+  const ran = sentinel();
 
-  const approval = overlay.locator('[data-testid="overlay-approval"]');
-  await expect(approval).toBeVisible({ timeout: 120_000 });
+  try {
+    await overlay.fill(
+      '[data-testid="overlay-input"]',
+      `Use your bash tool to run: printf '%s' AGENT_DENY_7788 | tee '${ran.shellPath}'`,
+    );
+    await overlay.keyboard.press('Enter');
 
-  await overlay.keyboard.press('Escape');
+    const approval = overlay.locator('[data-testid="overlay-approval"]');
+    await expect(approval).toBeVisible({ timeout: 30_000 });
 
-  // The prompt goes, and the card stays. A pending question owns Escape, so
-  // denying a tool call must not also tear down the run behind it.
-  await expect(approval).toBeHidden();
-  await expect(overlay.locator('[data-testid="overlay-card"]')).toBeVisible();
+    await overlay.keyboard.press('Escape');
 
-  await overlay.keyboard.press('Escape');
+    // The prompt goes, and the card stays. A pending question owns Escape, so
+    // denying a tool call must not also tear down the run behind it.
+    await expect(approval).toBeHidden();
+    await expect(overlay.locator('[data-testid="overlay-card"]')).toBeVisible();
+
+    // The run carries on, and the model is told what happened. Waiting for
+    // that is what gives a command that was wrongly allowed the time to have
+    // run, so the filesystem claim below is made against a finished run.
+    const answer = overlay.locator('[data-testid="overlay-answer"]');
+    await expect(answer).toBeVisible({ timeout: 30_000 });
+
+    // What a denial is for, and the strongest claim here. A card that closes is
+    // not a command that did not run, and only one of those is the property
+    // worth protecting.
+    expect(contents(ran.file), 'the denied command reached a shell anyway').toBeUndefined();
+
+    // The refusal reached the loop rather than only the card.
+    await expect(answer).toContainText('denied', { timeout: 30_000 });
+
+    await overlay.keyboard.press('Escape');
+  } finally {
+    await setPrefs(harness.window, before);
+  }
 });
 
 /* ------------------------------------------------------------- registration */

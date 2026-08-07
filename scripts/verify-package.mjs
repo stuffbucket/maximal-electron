@@ -14,7 +14,7 @@
  * This script closes that gap. Run it after `npm run package`.
  */
 
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -25,6 +25,7 @@ import {
   LLAMA_BACKENDS_VARIABLE,
   PACKAGE_FUSES,
   RUNTIME_ICONS,
+  hoistedDependencies,
   llamaPackagePlan,
   parseLlamaBackends,
 } from './package-contract.mjs';
@@ -96,6 +97,9 @@ const RENDERER = '/.vite/renderer/main_window';
 
 check(listing.includes('/.vite/build/main.js'), 'main bundle is packed');
 check(listing.includes('/.vite/build/preload.js'), 'preload bundle is packed');
+// `native/llama-host.ts` forks this from `__dirname`, so it has to sit beside
+// the main bundle. Absent, every embedded run fails at the fork. Issue #133.
+check(listing.includes('/.vite/build/llama-worker.js'), 'llama engine bundle is packed');
 check(listing.includes(`${RENDERER}/index.html`), 'renderer shell is packed');
 check(listing.includes(`${RENDERER}/splash.html`), 'splash window is packed');
 check(listing.includes(`${RENDERER}/overlay.html`), 'overlay window is packed');
@@ -344,6 +348,58 @@ check(
   strays.length === 0
     ? `all ${String(shippedScopeEntries.length)} scope entries belong to a shipped package`
     : `${String(strays.length)} scope entr(ies) belong to a dropped package, first ${strays[0]}`,
+);
+
+/**
+ * Every package npm hoisted out of the two external modules.
+ *
+ * The keep-list names directories, so a dependency that landed at the top
+ * level was silently absent and `node-llama-cpp` could not load in any
+ * packaged build. Derived from the installed tree by `hoistedDependencies`, so
+ * this checks the same set `forge.config.ts` kept rather than a second list.
+ * Issue #133.
+ */
+const hoisted = hoistedDependencies(
+  {
+    join: (...parts) => path.join(...parts),
+    readPackageJson: (dir) => {
+      const file = path.join(dir, 'package.json');
+      return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : undefined;
+    },
+  },
+  path.join(ROOT, 'node_modules'),
+  ['node-pty', 'node-llama-cpp'],
+);
+
+// The floor. With an empty closure every assertion below runs zero times, and
+// the run is green over a package that cannot load the library at all.
+check(
+  hoisted.length > 0,
+  hoisted.length > 0
+    ? `the external modules hoist ${String(hoisted.length)} package(s)`
+    : 'nothing to check: the external modules hoist 0 packages',
+);
+
+/**
+ * Which top-level packages the archive carries. A scoped name is two segments,
+ * so `@huggingface` alone would report `@huggingface/jinja` as present when
+ * some other package under that scope is the one that shipped.
+ */
+const packedPackages = new Set(
+  listing
+    .filter((entry) => entry.startsWith('/node_modules/'))
+    .map((entry) => {
+      const parts = entry.split('/').slice(2);
+      return parts[0]?.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
+    })
+    .filter((name) => name !== undefined && !name.startsWith('.')),
+);
+const absent = hoisted.filter((name) => !packedPackages.has(name));
+check(
+  absent.length === 0,
+  absent.length === 0
+    ? `all ${String(hoisted.length)} hoisted dependencies are packed`
+    : `${String(absent.length)} hoisted dependenc(ies) are missing, first ${absent[0]}`,
 );
 
 /* ---------------------------------------------------------------- icons */

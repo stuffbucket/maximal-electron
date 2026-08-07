@@ -1,25 +1,112 @@
 # Continuous integration
 
 Three workflows build. `ci.yml` is the blocking gate, `release.yml` builds and
-ships a tag, and `merge-preview.yml` tests what a merge would produce. Two more
-build nothing: `triage.yml` labels issues, and `watch-rulesets.yml` reads the
-repository settings that no pull request can see change. Each is described in
-its own header.
+ships a tag, and `merge-preview.yml` tests what a merge would produce. Three
+more build nothing: `triage.yml` labels issues, `watch-rulesets.yml` reads the
+repository settings that no pull request can see change, and
+`workflow-health.yml` reads whether the others still run at all. Each is
+described in its own header.
 
 ## What each one runs
 
 | Workflow | Trigger | What it is for |
 | --- | --- | --- |
-| `ci.yml` | pull request, push to `main` and `release/**` | Lint, types, unit and mutation tests, a git-ref install, packaging and the end-to-end suite on macOS and Windows, and the packaged smoke test on macOS |
+| `ci.yml` | pull request, push to `main` and `release/**` | Lint, types, unit and mutation tests, a git-ref install, packaging, the packaged smoke test and the end-to-end suite on macOS and Windows |
 | `merge-preview.yml` | push to `main` and `release/**` | Replays every open pull request against the new tip |
 | `release.yml` | tag `v*.*.*`, or a dispatch to rehearse or to retry | The draft release, the tarball, the registry publish, publish |
 | `watch-rulesets.yml` | daily, or a dispatch | Reads the live repository rulesets and files one issue when a protection drops below its floor |
+| `workflow-health.yml` | daily, a pull request, or a dispatch | Reads every workflow's run history and files one issue when one has never run, has stopped running, or fails every time |
 
 This repository ships no installer. `npm run package`, `npm run
 verify:package` and `npm run smoke:packaged` still run in `ci.yml`, because
 packaging is a property of the shell and it is where the defects were found.
 What was removed was the MSI and the dmg built on top of it, and
 `windows-msi-dev.yml` with them. See `docs/release.md`.
+
+## The two caches
+
+`actions/setup-node` with `cache: npm` caches npm's own tarball cache, so a
+registry package does not download twice. Electron's binary is not a registry
+package: it is fetched from GitHub through `@electron/get`, into a directory
+that library manages itself, and nothing cached it until #129.
+
+**It is not `npm ci` that downloads it.** Electron 43 ships no `postinstall` at
+all. `node_modules/electron/index.js` fetches the binary the first time
+something resolves the executable path, and here that is
+`electron-forge package`. #129 opened on the assumption that every job paid for
+the download; the first run of the check below found the `lint, types, tests`
+job's cache root empty after `npm ci`, which is what disproved it. So the cache
+is restored in the four jobs that package — `package` and `end-to-end` on both
+hosts — and in no others.
+
+There are two downloads, not one. `install.js` reads `electron_config_cache`
+for its cache root; `@electron/packager` calls `@electron/get` without one and
+takes the default. CI therefore does **not** pin the variable: pinning it would
+move one download and leave the other in the default directory, so the cached
+path would hold half of what the job fetched and still look populated.
+
+The default is `env-paths('electron').cache`, which is
+`~/Library/Caches/electron` on macOS, `~/.cache/electron` (or `XDG_CACHE_HOME`)
+on Linux, and a `Cache` folder under `%LOCALAPPDATA%\electron` on Windows.
+`scripts/electron-cache.mjs` computes it, and
+[`.github/actions/electron-cache/action.yml`](../.github/actions/electron-cache/action.yml)
+asks the script for it with `--path` rather than writing the three paths into
+YAML. The check reads the same function, so the directory that is cached and
+the directory that is asserted cannot drift apart.
+
+**The key carries the Electron version**, read out of `package-lock.json`, so a
+version bump misses rather than restoring the wrong binary. It deliberately
+does not carry a lockfile hash: this cache holds Electron and nothing else, and
+a hash would throw it away on every unrelated dependency bump. Underneath,
+`@electron/get` puts each version in its own hashed directory and names the file
+`electron-v<version>-<platform>-<arch>.zip`, so a stale binary cannot be served
+even when a key collides.
+
+`release.yml` does not use it. `package-tarball` never packages, so it never
+resolves the binary either.
+
+### What it has been measured to save, which is nothing yet
+
+The first three runs missed every time: a cache written under
+`refs/pull/<n>/merge` is invisible to `refs/heads/release/**`, so the pull
+request that added it and the push that merged it each had to write their own.
+The first run in the steady state hit on all four packaging jobs.
+
+At that hit, `npm run package` came in at 19 s and 15 s on the two macOS jobs
+against pre-change medians of 30 s and 22 s, and at 42 s and 35 s on the two
+Windows jobs against 38 s and 39 s. Two down, one flat, one up, on one run each,
+against a step whose spread over five pre-change runs is ten seconds wide. The
+restore itself costs three to four seconds per job.
+
+**So the saving is inside the noise on the evidence there is.** The arrangement
+is correct and cheap, and that is not the same as it paying. Re-measure over a
+week of runs, and take it out if the four jobs still do not separate. Issue #129
+carries the run ids.
+
+### Why there is a check on it
+
+A cache is exactly the shape of defect this page is about. Put it in a job that
+never resolves Electron and the root stays empty, `actions/cache` saves an empty
+directory, and every later run restores it and reports a hit while nothing is
+cached. Nothing in the log says so.
+
+So every job that uses the action runs `npm run verify:electron-cache`, **after
+`npm run package`** rather than after `npm ci`, because packaging is the step
+that fills the cache. It counts the files under the root, fails on zero, and
+asserts that the download for this runner's platform and architecture is there
+at the version `node_modules/electron` actually installed.
+
+It also reads the cache **key** out of the action's own YAML and asserts it
+names the runner operating system, the architecture, and the Electron version.
+That is the cause rather than the symptom: a key that stops naming the version
+restores the previous binary, and the first run that could notice is the one
+after the mistake. The contents cannot carry that assertion, because a
+developer's shared cache root legitimately holds several Electron versions and
+a CI cache holds one.
+
+It fails rather than reporting the run unverified. Every condition it asserts is
+one those four jobs always meet, so a zero there is a real defect and not a
+question the check could not answer.
 
 ## The problem this page exists for
 
@@ -41,16 +128,19 @@ a step that finds nothing fails rather than reporting success.
 ## The packaged smoke test
 
 `npm run smoke:packaged` is the newest job step and is written to that rule. It
-runs in `package (macos-latest)`, after `verify:package`, and it launches the
-application it just built. Its own floor is a second launch with `spawn-helper`
-moved aside, which has to fail: the step cannot report success without having
-started a shell inside the package. `docs/testing.md` describes it.
+runs in `package (macos-latest)` and `package (windows-latest)`, after
+`verify:package`, and it launches the application it just built — from a copy
+of the package outside this checkout, because `out/` is inside one and a
+package that resolves into the repository above it is not the package a user
+installs. Issue #149. Its own floor is a second launch with a native file moved
+aside, which has to fail: the step cannot report success without having started
+a shell inside the package. `docs/testing.md` describes it.
 
-Windows has no equivalent. The same argument would drive
-`out/Stuffbucket-win32-x64/Stuffbucket.exe` in the packaged directory, where
-`conpty.node` and `OpenConsole.exe` are the same class of resolution, and the
-command would have to be one `cmd.exe` echoes rather than `printf`. The step
-here is scoped to macOS rather than run as a job that skips.
+The file is `spawn-helper` on macOS and `conpty.node` on Windows. The vehicle
+on Windows is the packaged directory, `out/Stuffbucket-win32-x64`, rather than
+an installed tree, because the MSI is gone. The command differs too: `cmd.exe`
+has no `printf`, so the two halves of the token are joined by the caret
+`cmd.exe` strips while parsing the line.
 
 ## The four install paths
 
@@ -248,6 +338,89 @@ branch nobody touched — a required check no pull request can turn green is a
 merge freeze, not a gate.
 [`docs/admin/repository-settings.md`](admin/repository-settings.md) holds the
 floor, the three states the check reports, and what the owner has to click.
+
+## Whether the workflows themselves still run
+
+`triage.yml` fires on every issue event and failed on every one of its 77 runs.
+`watch-rulesets.yml` has never run once. Two workflows broken in opposite
+directions, and neither was noticed for months, because a workflow that gates
+nothing is red only in the Actions tab and nobody opens the Actions tab. Issue
+#153.
+
+`npm run verify:workflow-health` is the general answer. It discovers the
+workflow list from `.github/workflows/` — never from a constant, because a
+hand-list is how a new workflow escapes and three escaped one in a single day —
+reads each one's recent runs from the Actions API, and asserts two things per
+workflow: that GitHub holds runs of it, and that its recent runs are not
+uniformly failing.
+
+### What "recently" means, and when it means nothing
+
+A rule that flags `release.yml` every quiet week is a rule somebody deletes, so
+the window comes out of the workflow's own triggers rather than out of a table.
+
+| Trigger | Window | Why |
+| --- | --- | --- |
+| `schedule` | twice the cron interval | GitHub delays a scheduled run under load, so one missed interval is not evidence and two is |
+| `push`, `pull_request`, `merge_group`, `issues` and the rest of repository activity | a fortnight | These fire here several times a day. A fortnight of silence means the trigger stopped matching |
+| A tag push, a dispatch, or a call from another repository | none | There is no cadence to be late against |
+
+The third row is the point. `release.yml` runs on `v*.*.*` and on a dispatch,
+and a month with no release is a month with no release. The check **declines**
+the recency assertion there rather than passing it, and prints how many it
+declined. `verify:docs` reported a true count of what it examined while saying
+nothing about what it dropped (#152); an answer nobody computed must not read
+as one that was.
+
+The same applies to the failure rate. Fewer than three conclusive runs supports
+no verdict — one red run is a flake — so the check says so and counts it.
+Uniform failure means zero successes, not a percentage: `ci.yml`,
+`release.yml` and `merge-preview.yml` all mix red and green today, and a
+threshold tight enough to catch a bad week would be red on all three.
+
+### The states, which are four and not two
+
+Exit 0 healthy, 1 a finding, 2 the check could not run, 3 unverified. A
+workflow with no runs is `never-run`, not a failure rate of zero: it has been
+observed neither to work nor to break, and the reader's next move differs. When
+GitHub has no record of the file at all — which is what a 404 on the runs
+endpoint means — the finding says so, because that is the whole diagnosis for
+`watch-rulesets.yml`. **GitHub registers a workflow from the default branch**,
+so a file that lives only on a release branch is unreachable by `schedule` and
+by `workflow_dispatch` until the release folds into `main`.
+
+### Where it runs, and what it gates
+
+Nothing about run history gates a pull request. A pull request cannot fix a
+hundred-percent failure rate in a workflow it does not touch, and a workflow a
+pull request adds has no runs at all until it merges, so a required check here
+would be a merge freeze whose only remedy is deleting the check. That is #139's
+rule: gate what a pull request can enforce, report what it cannot.
+
+The objection to that is the one this page opened with — a non-gating check is
+exactly what nobody looked at for seventy-five runs. The answer is that the
+output is not a red tick in a tab. `workflow-health.yml` files **one issue**,
+refreshes it while the gap persists, and closes it on the next clean run, the
+way `watch-rulesets.yml` already does. Seventy-five red runs produced no
+issues.
+
+The half a pull request does own is gated, and fails everywhere including on a
+pull request: exit 2, which is the check itself being blind. Its rules stopped
+detecting a dead workflow, or the directory scan found no workflows, or the API
+answered nothing. A watcher that cannot see is the defect this exists to end,
+so it is not allowed to be quiet about itself.
+
+It runs on `pull_request` as well as daily, with no `paths` filter. That is not
+only for coverage: a schedule fires only from the default branch, so a workflow
+added on a release branch cannot run until the release folds — which is the
+`watch-rulesets.yml` defect exactly. The pull request trigger fires where the
+file actually lives, so the job had run before it merged. Shipping an unrun job
+to solve the unrun-job problem would be its own joke.
+
+**What it does not close.** A watcher cannot report its own silence. If
+`workflow-health.yml` is deleted or disabled, nothing files the issue saying
+so. The `pull_request` trigger narrows the hole — the job runs on every pull
+request, so a break is visible within one — and does not shut it.
 
 ## The merge race
 

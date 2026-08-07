@@ -10,6 +10,8 @@ export declare const DEFERRED: ReadonlyMap<string, number>;
 
 export declare function valueImports(source: string, fileName: string): string[];
 
+export declare function usesParentPort(source: string, fileName: string): boolean;
+
 export interface MutationScope {
   scanned: string[];
   eligible: string[];

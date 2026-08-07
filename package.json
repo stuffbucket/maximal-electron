@@ -1,7 +1,7 @@
 {
   "name": "@stuffbucket/maximal-electron",
   "productName": "Stuffbucket",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "Reference Electron application with cross-platform build and release mechanics",
   "license": "MIT",
   "author": "stuffbucket",
@@ -14,6 +14,10 @@
     "./host": {
       "types": "./dist/host/host-window.d.ts",
       "default": "./dist/host/host-window.js"
+    },
+    "./preload": {
+      "types": "./dist/preload/bridge.d.ts",
+      "default": "./dist/preload/bridge.js"
     },
     "./renderer": {
       "types": "./dist/renderer/index.d.ts",
@@ -60,12 +64,15 @@
     "package": "electron-forge package",
     "icons": "node scripts/gen-icons.mjs",
     "verify:package": "node scripts/verify-package.mjs",
+    "verify:crash-artifact": "node scripts/verify-crash-artifact.mjs",
+    "verify:electron-cache": "node scripts/verify-electron-cache.mjs",
     "smoke:packaged": "node scripts/smoke-packaged.mjs",
     "verify:exports": "npm run build:package && node scripts/verify-exports.mjs",
     "verify:publish": "node scripts/verify-publish.mjs",
     "publish:package": "node scripts/publish-package.mjs",
     "verify:neutral": "node scripts/verify-neutral.mjs",
     "verify:rulesets": "node scripts/verify-rulesets.mjs",
+    "verify:workflow-health": "node scripts/verify-workflow-health.mjs",
     "verify:tag": "node scripts/verify-tag.mjs",
     "verify:git-install": "node scripts/verify-git-install.mjs",
     "lint": "eslint .",
@@ -139,6 +146,7 @@
     "@vitejs/plugin-react": "^5.2.0",
     "electron": "43.2.0",
     "eslint": "^9.39.0",
+    "fast-check": "4.9.0",
     "ghostty-web": "0.4.0",
     "lucide-react": "1.27.0",
     "node-llama-cpp": "3.19.1",

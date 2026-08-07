@@ -14,6 +14,8 @@ export declare const PACKAGE_FUSES: Readonly<Record<string, boolean>>;
 
 export declare const RUNTIME_ICONS: readonly string[];
 
+export declare function bundleIcon(platform: string): string;
+
 export declare const OPTIONAL_LLAMA_BACKENDS: readonly string[];
 
 export declare const LLAMA_BACKENDS_VARIABLE: string;
@@ -38,3 +40,14 @@ export declare function llamaPackagePlan(
   arch: string,
   backends: readonly string[],
 ): LlamaPackageDecision[];
+
+export interface PackageContractIo {
+  readPackageJson: (dir: string) => { dependencies?: Record<string, string> } | undefined;
+  join: (...parts: string[]) => string;
+}
+
+export declare function hoistedDependencies(
+  io: PackageContractIo,
+  nodeModules: string,
+  roots: readonly string[],
+): string[];

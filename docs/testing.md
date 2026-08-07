@@ -79,7 +79,8 @@ timeout. `IGNORED_CEILING` holds the suppression count, so a fourth
 `// Stryker disable` has to be added on purpose.
 
 Raise `MUTANT_FLOOR` when the count rises. A fall is the defect it exists to
-catch.
+catch, and the one exception is code deleted on purpose: say which deletion
+paid for the new number, in the constant's comment and in the pull request.
 
 ### Reaching 100 after you add code
 
@@ -107,6 +108,36 @@ it better than anything written here before.
 
 Never lower the threshold to make a change fit.
 
+## Property testing, over one module
+
+`fast-check` runs over the numeric core of `src/renderer/lib/contrast.ts`, and
+nowhere else. It answers the question mutation testing cannot: Stryker mutates
+the code that exists, so it proves every syntactic variant is caught by some
+test, and it can never find an input nobody wrote a test for. `parseHex`,
+`luminance`, `contrastRatio` and `meets` all run over a domain far larger than
+the points `tests/contrast.test.ts` pins by hand.
+
+Three rules come with it.
+
+- **The seed is fixed, and `FAST_CHECK_SEED` moves it.** Stryker maps tests to
+  mutants from a dry run and reruns the covering tests once per mutant. A suite
+  that draws different inputs on the second run can report a mutant as
+  surviving for a reason that has nothing to do with the mutant, and
+  `npm run mutate` breaks below 100. Exploration is something a person does by
+  moving the seed, not something a gate does by accident.
+- **A property over an empty set asserts nothing.** The same rule as a check
+  with no scope. A property whose body returns early for most inputs counts the
+  runs that reached the assertions and fails when that count is zero;
+  `checkPalette`'s accounting property counts the pairs it saw checked and the
+  pairs it saw skipped, because a generator that only ever produced unreadable
+  colours would leave half of it unexercised.
+- **A property that has never shrunk to a failure is a declaration.** Break the
+  implementation, record the counterexample fast-check prints, and put it in
+  the pull request. #132 carries two.
+
+Do not extend it to a domain the tests already enumerate. The rejection below
+holds, and it is the reason this section names one module.
+
 ## The packaged application answers for itself
 
 `npm run test:e2e` drives the unpackaged build, because
@@ -116,35 +147,91 @@ installs, and two defects shipped inside it: #86 and #88. `verify-package.mjs`
 reads the archive listing, which finds a file that is absent and not one that
 is present where the loader cannot reach it.
 
-`npm run package && npm run smoke:packaged` closes the macOS half.
-`scripts/smoke-packaged.mjs` launches
-`Stuffbucket.app/Contents/MacOS/Stuffbucket` with `--self-check=terminal` and a
-token. The application opens a shell through `TerminalHost`, the same class the
-terminal uses, makes it print the token, writes one line, and exits with a
-code. `src/main/native/self-check.ts` holds the argument protocol, and
-`tests/self-check.test.ts` pairs it with the driver's copy of the strings.
+`npm run package && npm run smoke:packaged` closes it, on macOS and on Windows.
+`scripts/smoke-packaged.mjs` copies the package out of this checkout —
+`scripts/packaged-app.mjs` does that, and issue #149 is why — then launches
+`Stuffbucket.app/Contents/MacOS/Stuffbucket`, or `Stuffbucket.exe`, with
+`--self-check=terminal` and a token. The application opens a shell through
+`TerminalHost`, the same class the terminal uses, makes it print the token,
+writes one line, and exits with a code. `src/main/native/self-check.ts` holds
+the argument protocol, and `tests/self-check.test.ts` pairs it with the
+driver's copy of the strings.
 
 Three properties are what stop it passing for nothing:
 
 - **The token is random per run.** It reaches the driver only through a shell
-  that ran `printf`, so a launch that opens no shell cannot produce one.
+  that ran a command, so a launch that opens no shell cannot produce one.
 - **The command carries the token in two halves.** A pty echoes what is written
   to it, so a command containing the whole token would satisfy the assertion
-  from that echo, with nothing having run.
-- **Every run reproduces #88.** The driver moves `spawn-helper` out of
-  `app.asar.unpacked` and launches again. That run has to fail, and it has to
-  fail by reporting the shell rather than by dying before the check. Then the
-  file goes back.
+  from that echo, with nothing having run. `printf '%s%s\n' 01234567 89abcdef`
+  joins them under a POSIX shell. `cmd.exe` has no `printf` and its `echo` puts
+  a space between two arguments, so the caret does the joining instead:
+  `echo 01234567^89abcdef`. `cmd.exe` strips the caret while parsing the line,
+  which leaves the halves apart in the command text and joined in the output.
+- **Every run reproduces #88.** The driver moves the one native file the
+  terminal cannot resolve without out of `app.asar.unpacked` and launches
+  again. That run has to fail, and it has to fail by reporting the shell rather
+  than by dying before the check. Then the file goes back.
+
+The file is `spawn-helper` on macOS and `conpty.node` on Windows.
+`conpty.dll` and `OpenConsole.exe` sit beside `conpty.node` in the same
+prebuild directory and are **not** on this path: `node-pty` leaves
+`useConptyDll` off, so `conpty.cc` takes `CreatePseudoConsole` out of
+`kernel32` and never opens the DLL. Moving either of them aside on a Windows
+runner leaves the check green, which is what established that rather than the
+issue text, which named `OpenConsole.exe`.
 
 The check runs before `whenReady` and opens no window, so it needs no window
-server and no signed binary. `package (macos-latest)` runs it.
+server and no signed binary. `package (macos-latest)` and
+`package (windows-latest)` both run it.
 
-What it leaves uncovered: no window, no renderer, and no IPC. It says nothing
-about the Windows or linux packages, and nothing about a signed or notarised
-bundle. Run it on the package Forge produces, which carries an ad-hoc signature
-that `codesign --verify` already rejects because packager rewrites `Info.plist`
-afterwards. Signing happens later, in stuffbucket/macos-runner, and moving a
-file inside a bundle that has been signed properly would break its seal.
+### The second self check: llama.cpp out of process
+
+`--self-check=llama` launches the same binary again. It forks the engine as a
+`utilityProcess`, makes it load `node-llama-cpp` out of `app.asar.unpacked`,
+and then makes it fault in native code. A pass needs both halves: the library
+resolved from the child, and the main process outlived the fault well enough to
+print a line. `src/main/native/llama-protocol.ts` holds the strings and
+`tests/llama-protocol.test.ts` pairs them with the driver's copy, as the
+terminal half does. Issue #133.
+
+**Unlike the terminal check, this one waits for `whenReady`**, because
+`utilityProcess.fork` throws before the app is ready. It still takes no single
+instance lock, so the wait costs only the ready event.
+
+Its negative control moves the `@node-llama-cpp` scope aside and requires the
+same launch to fail. Failing is not enough on its own: the control asserts the
+failure names `did not load llama.cpp`, which is the branch reached only after
+the engine started. Without that, an engine that never forked at all produced
+the same two green lines — the "failed for the wrong reason" case at the end of
+`.claude/skills/write-a-check/SKILL.md`, caught by re-running the break rather
+than by reading the code.
+
+The fault name is pinned per platform, and both have now been seen. `SIGSEGV`
+is asserted by name on macOS, against the bare signal number Electron reports;
+`access violation` is asserted on Windows, against the status code. What is
+asserted on both is that the supervisor recognised a fault at all: a code
+`llama-protocol.ts` cannot name reads as "exited with code N" and fails the
+check with the number in the log.
+
+The engine faults with Electron's `process.crash()` rather than with
+`process.abort()`. Node defines `ABORT_NO_BACKTRACE()` as `_exit(134)` on
+Windows, so an abort there is a clean exit that no crash handler sees, and the
+Windows half of `verify:crash-artifact` was measuring a process that had not
+crashed. Issue #156.
+
+This is the first thing in the repository ever to load the packaged llama.cpp.
+It failed on its first run, and `docs/architecture.md` records what it found.
+
+What it leaves uncovered: no window, no renderer, and no IPC. It proves a shell
+spawns inside the package, not that anything renders. It says nothing about the
+linux package, nothing about a signed or notarised bundle, and on Windows
+nothing about an installed tree, because this repository ships no installer.
+Run it on the package Forge produces, which on macOS carries an ad-hoc
+signature that `codesign --verify` already rejects because packager rewrites
+`Info.plist` afterwards. Signing happens later, in stuffbucket/macos-runner,
+and moving a file inside a bundle that has been signed properly would break its
+seal.
 
 ## User interface changes
 
@@ -159,6 +246,61 @@ Use `capture` from `e2e/harness.ts` rather than `page.screenshot`. macOS stops
 giving an occluded window frames. The plain call then hangs until its timeout.
 That reproduced against the overlay under seed 587000642. `capture` reads the
 renderer through the debugger, which does not care what is in front.
+
+### A declared focus trap is not a walked one
+
+`role="dialog"`, `aria-modal`, and an inert background declare a modal to
+assistive technology. None of them enforces one, and axe reports no violation
+against a dialog focus escapes from on the third Tab press, because it reads
+the declaration. A `.click()` proves less again: `inert` blocks a real pointer
+and a real key without blocking a programmatic call.
+
+So the overlay has two scenarios rather than one. The first reads the
+attributes. The second presses Tab past the end of the card, then Shift+Tab,
+and reads `document.activeElement` after every press — not a `focusin`
+listener, because focus leaving an untrapped dialog lands on `document.body`
+and that fires no `focusin` at all. It counts what Tab can reach before it
+walks, and fails on zero: a trap over an empty card is an empty scope. See
+#131.
+
+### The agent scenarios script the model
+
+Four scenarios drive the overlay's agent: the theme concierge in
+`e2e/concierge.spec.ts`, and the answer, the approval gate, and Escape's
+ordering in `e2e/shell.spec.ts`. All four needed a model, so all four skipped in
+CI, which has none. Every green run in this repository's history was green
+without the approval gate having been exercised once. That is #25, and it is the
+same defect as an empty scope: a suite that reads as broader than it is.
+
+`e2e/model-server.ts` supplies the model. It is an HTTP server on a loopback
+port that speaks the two endpoints discovery uses for Ollama, and the spec
+points the application at it with `STUFFBUCKET_PROVIDER=ollama` and
+`STUFFBUCKET_PROVIDER_URL`. `docs/agent.md` holds what those two can and cannot
+do; the short version is that neither goes near the gate.
+
+Everything downstream of the token stream is real: pi-ai's HTTP client and SSE
+parsing, pi-agent-core's tool loop, `beforeToolCall`, the risk classification in
+`approval.ts`, the IPC events, and the card. Only the generator is scripted.
+
+Three rules come with it.
+
+- **A scripted reply cannot prove a tool ran.** The server chooses what comes
+  back, so an assertion that the answer contains a marker passes with the shell
+  never touched. Both bash scenarios write a file in a temporary directory
+  through `tee` and assert against the filesystem: present after an allow,
+  absent after a deny, and absent while the question is still on screen. That
+  last one is what fails if a gate ever shows its card after starting the
+  command.
+- **Assert which backend answered.** `requireScriptedBackend` compares the full
+  `ProviderStatus` against the scripted model's distinctive name, so a real
+  Ollama on a developer's machine cannot satisfy the scenario by accident, and a
+  run that reached no backend fails rather than passing over nothing.
+- **The script matches the prompt with a regular expression.** It covers the
+  plumbing and the gate. It says nothing about whether a real model picks the
+  right tool out of a natural request, and nothing automated covers that on a
+  runner with no model. `e2e/embedded.spec.ts` is the one scenario that asks a
+  real model to choose, and it needs weights, so it stays out of the default
+  suite.
 
 ### A still is not an oracle
 
@@ -300,7 +442,8 @@ here. That is worse than not having it, because a green run reads as verified.
   `escapeAction` takes two booleans and its whole input domain is four values.
   Generating inputs for that is exhaustive testing done slower, with a
   dependency to show for it. The numeric core of `src/renderer/lib/contrast.ts`
-  is the one place a continuous domain makes it pay.
+  is the one place a continuous domain makes it pay, and it is the only place
+  the dependency is used. See "Property testing, over one module" above.
 
 ### Infrastructure rejected for the same question
 

@@ -40,6 +40,16 @@ export interface RunMainOptions {
   /** Take the single instance lock. Default true. */
   singleInstance?: boolean;
   /**
+   * Write a local crash minidump for every process this shell owns. Default
+   * false, and `MainRuntime.crashReporter` must be supplied with it.
+   *
+   * Off by default because a crash reporter is process-wide. Starting one
+   * inside somebody else's application is their decision, and a consumer that
+   * already runs one would get a second. Nothing is uploaded either way: there
+   * is no `submitURL`, no endpoint, and no credential. Issue #134.
+   */
+  collectCrashDumps?: boolean;
+  /**
    * Keep the process alive after the last window closes, on every platform.
    * Consulted at the moment the last window closes, not once at startup, so a
    * preference the user changes takes effect. Default false.

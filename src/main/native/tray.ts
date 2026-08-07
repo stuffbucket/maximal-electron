@@ -1,7 +1,7 @@
 import { Tray } from 'electron';
 
 import { trayIcon } from './app-icon.js';
-import { TRAY_ICON, TRAY_TEMPLATE_ICON } from './icons.js';
+import { trayIconChoice } from './icons.js';
 
 /**
  * The menu bar (macOS) or tray (Windows and Linux) icon.
@@ -21,19 +21,23 @@ import { TRAY_ICON, TRAY_TEMPLATE_ICON } from './icons.js';
 
 let tray: Tray | undefined;
 
-export function setTrayEnabled(enabled: boolean, onActivate: () => void): void {
+export function setTrayEnabled(
+  enabled: boolean,
+  platform: NodeJS.Platform,
+  onActivate: () => void,
+): void {
   if (!enabled) {
     destroyTray();
     return;
   }
   if (tray) return;
 
-  const isMac = process.platform === 'darwin';
-  const image = trayIcon(isMac ? TRAY_TEMPLATE_ICON : TRAY_ICON);
+  const choice = trayIconChoice(platform);
+  const image = trayIcon(choice.name);
   // An icon directory without a tray image gets no tray. An empty click target
   // carrying only a tooltip is worse than none. `trayIcon` says which file.
   if (!image) return;
-  if (isMac) image.setTemplateImage(true);
+  if (choice.template) image.setTemplateImage(true);
 
   tray = new Tray(image);
   tray.setToolTip('Stuffbucket');

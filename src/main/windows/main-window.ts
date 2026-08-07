@@ -22,6 +22,10 @@ import { isDemo } from '../native/preferences.js';
 export function mainWindowOptions(): HostWindowOptions {
   return {
     preloadPath: path.join(__dirname, 'preload.js'),
+    // `checkForUpdate` is deliberately absent. This build has no update
+    // channel, so `update:check` only ever answers `unsupported`, and a
+    // capability that is present and useless is what feature detection is for.
+    bridge: { capabilities: ['openExternal', 'versions'] },
     title: 'Stuffbucket',
     width: 1280,
     height: 820,
@@ -30,7 +34,7 @@ export function mainWindowOptions(): HostWindowOptions {
     backgroundColor: '#16181d',
     // Windows and Linux draw the taskbar and window icon from the window.
     // macOS uses the bundle, so `windowIcon` returns nothing there.
-    icon: windowIcon(),
+    icon: windowIcon(process.platform),
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
     // Windows and Linux draw the system controls over our toolbar.
     ...(process.platform === 'darwin'
