@@ -32,7 +32,10 @@
     "scripts/terminal-package.mjs",
     "scripts/shell-variables.mjs",
     "scripts/electron-cache.mjs",
-    "scripts/docs-claims.mjs"
+    "scripts/check-scope.mjs",
+    "scripts/docs-claims.mjs",
+    "scripts/peer-table.mjs",
+    "scripts/publish-decision.mjs"
   ],
   "reporters": [
     "progress",

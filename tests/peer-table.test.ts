@@ -74,6 +74,21 @@ describe('reading the peer table out of README.md', () => {
     expect(row?.detail).toContain('code:  electron');
   });
 
+  it('separates the names on each side, so two read as two', () => {
+    // One name per side reads the same however the list is joined, and a
+    // detail line that runs `electronnode-pty` together is what a reader is
+    // sent to when the row fails.
+    const [row] = peerTableChecks({
+      table: new Map([['./main', ['electron', 'ghostty-web']]]),
+      reached: new Map([['./main', ['electron', 'node-pty']]]),
+      peers: ['electron', 'ghostty-web', 'node-pty'],
+      exceptions: [],
+    }).filter((check) => check.name.startsWith('the ./main row'));
+
+    expect(row?.detail).toContain('table: electron, ghostty-web');
+    expect(row?.detail).toContain('code:  electron, node-pty');
+  });
+
   it('carries no detail on a check that names its own subject', () => {
     const [floor] = peerTableChecks({
       table: new Map(),
@@ -111,6 +126,37 @@ describe('reading the peer table out of README.md', () => {
     ].join('\n');
 
     expect([...peerTable(readme, NAME).keys()]).toEqual(['./main']);
+  });
+
+  it('reads no row out of a table that carries a third cell', () => {
+    // The peer table is two cells. A third one is a different table, and the
+    // floor on the row count is what reports a peer table that grew a column
+    // rather than a peer table that lost its rows.
+    const readme = table(`| \`${NAME}/main\` | \`electron\` | since v0.0.1 |`);
+
+    expect(peerTable(readme, NAME).size).toBe(0);
+  });
+
+  it('reads no row out of a line that starts with prose', () => {
+    // A row begins the line. Without that, a sentence writing a pipe before a
+    // backticked name reads as a row of a table nobody wrote.
+    const readme = table(`Install | \`${NAME}/main\` | \`electron\` |`);
+
+    expect(peerTable(readme, NAME).size).toBe(0);
+  });
+
+  it('reads a row written without the padding around its cells', () => {
+    // Markdown does not require it, and a rule demanding exactly one space
+    // reads no row out of a table that is perfectly valid.
+    const readme = table(`|\`${NAME}/main\`| \`electron\` |`);
+
+    expect(peerTable(readme, NAME).get('./main')).toEqual(['electron']);
+  });
+
+  it('reads a row that trails whitespace after its last cell', () => {
+    const readme = table(`| \`${NAME}/main\` | \`electron\` |` + '  ');
+
+    expect(peerTable(readme, NAME).get('./main')).toEqual(['electron']);
   });
 
   it('reads no row when the package is renamed and the prose is not', () => {

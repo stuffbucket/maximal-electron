@@ -1,15 +1,50 @@
-# Tag-triggered release, and a dry run of the same jobs from any branch.
+# Release, as an operation you invoke against a tag rather than a consequence
+# of pushing one.
 #
 #   git tag -a v0.1.0 -m "Release 0.1.0"
-#   git push origin v0.1.0
+#   git push origin v0.1.0                         # publishes
+#   gh workflow run release.yml --ref v0.1.0 -f publish=true   # publishes again
 #
-# ## The dry run
+# ## Why a dispatch can publish now
 #
-# A dispatch run is always a dry run. There is no input that makes one publish,
-# so the only way to touch a release is to push a tag. The tarball is packed,
-# installed by git ref, and checked, `npm publish` runs with `--dry-run` and no
-# token, and `dry-run-artifacts` asserts the file exists rather than letting an
-# empty run look green. See `docs/ci.md`.
+# A tag push used to be the only way, and a tag is a one-shot fuse: it is
+# immutable, so a run that never starts spends the version. On 2026-07-29 an
+# Actions outage held `tag-check` in the queue for fifteen minutes and
+# cancelled it with no runner ever assigned. The sibling `stuffbucket/maximal-core`
+# lost `v0.4.4` the same hour: the tag is correct, and nothing was ever built
+# or published against it. The documented remedy was to bump the patch and
+# burn another version on an outage nobody caused.
+#
+# So every job here is re-runnable against a tag that already exists. The draft
+# is created or reused, the tarball is attached or found already attached, the
+# draft is flipped or found already published, and the registry publish is
+# `scripts/publish-package.mjs`, which reports `ALREADY PUBLISHED` rather than
+# a 409. Retry until it is green; a cancelled run costs a re-invocation.
+#
+# ## The rail this replaced, and the rail that replaced it
+#
+# The old rail was "a dispatch run is always a dry run", which held because no
+# input existed to make one publish. That is gone, and a weaker rail would be
+# worse than none.
+#
+# The one that replaces it is a conjunction, and both halves are required:
+#
+#     github.ref_type == 'tag' && (github.event_name == 'push' || inputs.publish == true)
+#
+# The ref must be a **tag**, and the run must be a tag push or a dispatch that
+# **asked**, through an input that defaults to false. A dispatch against a
+# branch fails the first half whatever it passes, so no input makes a branch
+# publishable — the old rail's property, kept, in the half that carried it.
+#
+# It is stronger than a comment in three ways the old one was not:
+#
+#   - `tests/workflows.test.ts` asserts the exact string on every step that
+#     creates, moves, or publishes anything, so a step added without it fails.
+#   - `scripts/publish-decision.mjs` refuses `--mode publish` on a non-tag ref
+#     independently of this file, and `tests/publish-decision.test.ts` walks a
+#     table over it. The rail is executable, not only readable.
+#   - `--ref-type` comes from `GITHUB_REF_TYPE`, which the runner sets and a
+#     workflow input cannot reach.
 #
 # ## Why every asset lands on a DRAFT
 #
@@ -30,17 +65,28 @@ on:
   push:
     tags: ['v*.*.*']
   workflow_dispatch:
+    inputs:
+      publish:
+        description: >-
+          Really publish. Off rehearses everything and uploads nothing. A
+          branch cannot publish however this is set; the ref must be a tag.
+        type: boolean
+        default: false
 
-# A dry run must never queue behind a release, or hold one up.
+# One group per ref, so a retry of a tag queues behind the run it is retrying
+# and a rehearsal on a branch queues behind neither.
 concurrency:
-  group: ${{ github.event_name == 'workflow_dispatch' && format('release-dry-{0}', github.ref) || 'release' }}
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
   contents: read
 
 env:
-  DRY_RUN: ${{ github.event_name == 'workflow_dispatch' }}
+  # The negation of the rail in the header. `env` is not available to a
+  # job-level condition, so the conditions below spell the rail out instead of
+  # reading this, and `tests/workflows.test.ts` pairs the two.
+  DRY_RUN: ${{ !(github.ref_type == 'tag' && (github.event_name == 'push' || inputs.publish == true)) }}
 
 jobs:
   # Fail before the matrix spends any minutes. Mirrors codex's `tag-check`.
@@ -85,6 +131,10 @@ jobs:
       # deleted and re-pushed onto another commit eight minutes later, and both
       # runs are still listed on the ref. This refuses the second one. A dry
       # run has no tag, so it checks the ordering alone and says so.
+      #
+      # A retry of the same tag is not a re-cut: every run on the ref built the
+      # same commit, so `elsewhere` is empty and this passes. That is what
+      # makes the retry path below possible at all.
       - name: Refuse a tag that has already been cut
         env:
           GH_TOKEN: ${{ github.token }}
@@ -110,14 +160,14 @@ jobs:
         with:
           fetch-depth: 0
       - name: Create the draft release
-        if: github.event_name != 'workflow_dispatch'
+        if: ${{ github.ref_type == 'tag' && (github.event_name == 'push' || inputs.publish == true) }}
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Release $TAG already exists — reusing it."
+            echo "REUSED $TAG. It already exists, so this run created nothing."
             exit 0
           fi
           gh release create "$TAG" \
@@ -125,10 +175,11 @@ jobs:
             --title "$TAG" \
             --draft \
             --generate-notes
-      - name: Dry run, so no release is created
-        if: github.event_name == 'workflow_dispatch'
+          echo "CREATED the draft $TAG."
+      - name: Rehearsal, so no release is created
+        if: ${{ !(github.ref_type == 'tag' && (github.event_name == 'push' || inputs.publish == true)) }}
         shell: bash
-        run: echo "Dry run for ${TAG}. Nothing is created, attached, or published."
+        run: echo "Rehearsal for ${TAG}. Nothing is created, attached, or published."
 
   # What a consumer installs, and the only artifact a release carries.
   # `stuffbucket/maximal` depends on this shell as a library and packages and
@@ -182,19 +233,36 @@ jobs:
           REF: ${{ github.sha }}
         run: npm run verify:git-install -- --repository "$REPOSITORY" --ref "$REF"
 
+      # Re-runnable. A draft takes the upload again under `--clobber`; a
+      # release that is already published takes nothing at all, so the asset
+      # being there is the success and its absence is the one state no retry
+      # can repair.
       - name: Attach the tarball to the draft
-        if: github.event_name != 'workflow_dispatch'
+        if: ${{ github.ref_type == 'tag' && (github.event_name == 'push' || inputs.publish == true) }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           shopt -s nullglob
           files=(dist-release/*.tgz)
-          gh release upload "$TAG" "${files[0]}" --repo "$GITHUB_REPOSITORY" --clobber
-          echo "Attached $(basename "${files[0]}")"
+          asset="$(basename "${files[0]}")"
+
+          draft="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft')"
+          present="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets \
+            --jq "[.assets[] | select(.name == \"${asset}\")] | length")"
+
+          if [[ "$draft" == "true" ]]; then
+            gh release upload "$TAG" "${files[0]}" --repo "$GITHUB_REPOSITORY" --clobber
+            echo "ATTACHED ${asset} to the draft ${TAG}."
+          elif [[ "$present" != "0" ]]; then
+            echo "ALREADY ATTACHED ${asset} is on the published ${TAG}. This run uploaded nothing."
+          else
+            echo "::error::${TAG} is published and carries no ${asset}. GitHub rejects an asset added after publish with HTTP 422, so no retry can fix this. Cut the next patch."
+            exit 1
+          fi
 
   publish:
-    if: github.event_name != 'workflow_dispatch'
+    if: ${{ github.ref_type == 'tag' && (github.event_name == 'push' || inputs.publish == true) }}
     needs: package-tarball
     runs-on: ubuntu-latest
     permissions:
@@ -202,14 +270,22 @@ jobs:
     env:
       TAG: ${{ github.ref_name }}
     steps:
+      # Re-runnable. `gh release edit --draft=false` on a published release is
+      # accepted and changes nothing, which is exactly the outcome that must
+      # not read like a publish.
       - name: Flip the draft to published
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
-          echo "Published ${TAG}"
+          draft="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft')"
+          if [[ "$draft" == "true" ]]; then
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+            echo "PUBLISHED ${TAG}. This run flipped the draft."
+          else
+            echo "ALREADY PUBLISHED ${TAG}. This run changed nothing."
+          fi
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name'
 
   # The npm registry publish, to GitHub Packages. No secret is added for it:
@@ -222,8 +298,10 @@ jobs:
   #
   # `publish` does not gate on this, for the reason it does not gate on the
   # installers: a registry failure must not strand a draft nobody can publish.
-  # A version cannot be republished, so a failure here is fixed by cutting the
-  # next patch, the same way a bad tag is.
+  # A version that is already in the registry is no longer a dead end, though:
+  # `scripts/publish-package.mjs` reports it as `ALREADY PUBLISHED` and exits
+  # 0, so re-invoking this against the tag is safe however far the last attempt
+  # got.
   publish-package:
     needs: [tag-check, package-tarball]
     runs-on: ubuntu-latest
@@ -248,39 +326,27 @@ jobs:
         shell: bash
         run: node scripts/verify-publish.mjs dist-release --version "$TAG"
 
-      # No token, deliberately. The condition above is the guard; an invalid
-      # `NODE_AUTH_TOKEN` is the second one, so a dispatch that somehow reached
-      # the registry authenticates as nobody.
-      #
-      # `./` is load-bearing. Without it npm reads `dist-release/name.tgz` as
-      # an `owner/repo` git shorthand and clones over SSH. The first dry run
-      # found that, which is what the dry run is for.
-      - name: Dry run, so nothing is published
-        if: github.event_name == 'workflow_dispatch'
+      # No token, deliberately. The conditions are the guard; an invalid
+      # `NODE_AUTH_TOKEN` is the last one, so a rehearsal that somehow reached
+      # the registry authenticates as nobody. The cost is that the registry
+      # probe reads `unreadable` here and the already-published arm is not
+      # rehearsed; `tests/publish-decision.test.ts` covers that arm instead.
+      - name: Rehearse the publish
+        if: ${{ !(github.ref_type == 'tag' && (github.event_name == 'push' || inputs.publish == true)) }}
         env:
           NODE_AUTH_TOKEN: dry-run-carries-no-token
         shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          files=(dist-release/*.tgz)
-          npm publish "./${files[0]}" --dry-run
-          echo "Dry run for ${TAG}. Nothing was uploaded to any registry."
+        run: node scripts/publish-package.mjs --dir dist-release --tag "$TAG" --mode rehearse
 
       - name: Publish to GitHub Packages
-        if: github.event_name != 'workflow_dispatch'
+        if: ${{ github.ref_type == 'tag' && (github.event_name == 'push' || inputs.publish == true) }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          files=(dist-release/*.tgz)
-          npm publish "./${files[0]}"
-          echo "Published $(basename "${files[0]}") to https://npm.pkg.github.com"
+        run: node scripts/publish-package.mjs --dir dist-release --tag "$TAG" --mode publish
 
-  # The dry run's terminal job. Every attach step above is skipped on a
-  # dispatch, so without this a run that produced nothing would end green.
+  # The rehearsal's terminal job. Every attach step above is skipped, so
+  # without this a run that produced nothing would end green.
   #
   # It outlived the installers rather than going with them. One artifact is not
   # zero artifacts, and `if-no-files-found: error` is not this check: that
@@ -288,7 +354,7 @@ jobs:
   # nothing about whether the name resolves on the download side, which is what
   # #81 was, or whether the file that crossed has any bytes.
   dry-run-artifacts:
-    if: github.event_name == 'workflow_dispatch'
+    if: ${{ !(github.ref_type == 'tag' && (github.event_name == 'push' || inputs.publish == true)) }}
     needs: [package-tarball, publish-package]
     runs-on: ubuntu-latest
     steps:

@@ -28,9 +28,9 @@ describe('withoutFences', () => {
     const text = ['before', '```bash', 'npm run imaginary', '```', 'after'].join(
       '\n',
     );
-    expect(withoutFences(text)).toContain('before');
-    expect(withoutFences(text)).toContain('after');
-    expect(withoutFences(text)).not.toContain('imaginary');
+    // The whole result, not two substrings. A rule that replaced a block with
+    // anything at all satisfied `not.toContain`.
+    expect(withoutFences(text)).toBe('before\n\nafter');
   });
 
   it('drops several blocks, not just the first', () => {
@@ -47,14 +47,17 @@ describe('withoutFences', () => {
   });
 
   it('opens a block only at the start of a line', () => {
-    // Three backticks inside a sentence are a span, not a fence.
-    const text = ['inline ```code``` here', '```', 'fenced', '```'].join('\n');
-    expect(withoutFences(text)).toBe('inline ```code``` here\n');
+    // Triple backticks inside a sentence are an inline span. A rule that let
+    // one open a block swallowed the prose up to the next real fence.
+    const text = ['a ```inline``` b', '```', 'inside', '```'].join('\n');
+    expect(withoutFences(text)).toBe('a ```inline``` b\n');
   });
 
   it('closes a block only at the start of a line', () => {
-    // A block showing markdown holds its own backticks mid-line.
-    expect(withoutFences(['```', 'a ``` b', '```'].join('\n'))).toBe('');
+    // The mirror. A closing fence found mid-line ends the block early and
+    // leaves the rest of the example on the page as a claim.
+    const text = ['```', 'text with ``` inline', 'real', '```'].join('\n');
+    expect(withoutFences(text)).toBe('');
   });
 });
 
@@ -116,6 +119,13 @@ describe('npmScriptsOutOfScope', () => {
   it('counts a one-letter script name, which is still a name', () => {
     expect(npmScriptsOutOfScope('You can npm run x today.')).toBe(1);
   });
+
+  it('counts a mention by the same rule that reads one', () => {
+    // The two rules share one pattern. While they were separate literals the
+    // second was a length rather than a list of names, so nothing it matched
+    // was ever read and every mutant of it survived.
+    expect(npmScriptsOutOfScope('npm run test:e2e and npm run lint:fix')).toBe(2);
+  });
 });
 
 describe('codeSpans', () => {
@@ -149,9 +159,12 @@ describe('pathClaims', () => {
       ]);
     });
 
-    it('keeps a colon inside a path, which is part of the name', () => {
-      // Only a trailing `:142` is a line reference.
-      expect(pathClaims('`src/x:1/y.ts`', scope).repo).toEqual(['src/x:1/y.ts']);
+    it('trims a line and column reference too', () => {
+      // A colon cannot appear in a path this repository carries, so everything
+      // from the first one is a location.
+      expect(pathClaims('`src/main/index.ts:42:7`', scope).repo).toEqual([
+        'src/main/index.ts',
+      ]);
     });
 
     it('trims the padding a code span may carry', () => {
@@ -374,7 +387,7 @@ describe('links', () => {
   });
 
   it('ignores a link over plain http as well as https', () => {
-    expect(links('[a](http://example.com/a)')).toEqual([]);
+    expect(links('[docs](http://example.com/a)')).toEqual([]);
   });
 
   it('ignores a bare anchor', () => {

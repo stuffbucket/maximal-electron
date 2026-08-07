@@ -48,7 +48,6 @@ const RUNTIME_ONLY = [
 export const DEFERRED = new Map([
   ['scripts/check-contrast.mjs', 125],
   ['scripts/check-install.mjs', 125],
-  ['scripts/check-scope.mjs', 125],
   ['scripts/compose.mjs', 125],
   ['scripts/copy-renderer-css.mjs', 125],
   ['scripts/css-selectors.mjs', 125],
@@ -59,7 +58,7 @@ export const DEFERRED = new Map([
   ['scripts/neutrality.mjs', 125],
   ['scripts/package-contract.mjs', 125],
   ['scripts/packaged-app.mjs', 125],
-  ['scripts/peer-table.mjs', 125],
+  ['scripts/publish-package.mjs', 125],
   ['scripts/record.mjs', 125],
   ['scripts/resolve-exports.mjs', 125],
   ['scripts/rulesets.mjs', 125],
