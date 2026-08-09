@@ -10,7 +10,7 @@ still run at all. Each is described in its own header.
 
 | Workflow | Trigger | What it is for |
 | --- | --- | --- |
-| `ci.yml` | pull request, push to `main` and `release/**` | Lint, types, unit and mutation tests, a git-ref install, packaging, the packaged smoke test and the end-to-end suite on macOS and Windows |
+| `ci.yml` | pull request, push to `main` and `release/**`, or a dispatch | Lint, types, unit and mutation tests, a git-ref install, packaging, the packaged smoke test and the end-to-end suite on macOS and Windows |
 | `merge-preview.yml` | push to `main` and `release/**` | Replays every open pull request against the new tip |
 | `release.yml` | tag `v*.*.*`, or a dispatch to rehearse or to retry | The draft release, the tarball, the registry publish, publish |
 | `watch-rulesets.yml` | daily, or a dispatch | Reads the live repository rulesets and files one issue when a protection drops below its floor |

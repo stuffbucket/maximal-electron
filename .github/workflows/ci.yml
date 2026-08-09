@@ -14,6 +14,19 @@
 # settings, which is the owner's call. `docs/ci.md` states what enabling it
 # would do and what it costs. Until then `merge-preview.yml` is what tests the
 # state a merge produces.
+#
+# `workflow_dispatch` is the manual lever. The other three triggers are all
+# webhook-driven, so when GitHub throttles the conversion of an event into a
+# run — as it did for nine hours on 2026-08-06 — there was no way to get checks
+# onto a commit at all: `gh workflow run` returns 422 on a workflow that does
+# not declare it, and `gh run rerun` re-runs an existing run at its original
+# head, which cannot produce a check for a commit that never had one. Every
+# other workflow here already has this escape. The gate that blocks every pull
+# request did not. Issue #164.
+#
+# GitHub registers `workflow_dispatch` from the default branch only, so this is
+# inert until it reaches `main` and the pull request that adds it cannot
+# demonstrate it working. See `docs/ci.md`.
 
 name: ci
 
@@ -22,6 +35,7 @@ on:
   merge_group:
   push:
     branches: [main, 'release/**']
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}

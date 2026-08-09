@@ -101,6 +101,19 @@ describe('the workflow files', () => {
       expect(jobs(workflow).length).toBeGreaterThan(0);
     });
 
+    /**
+     * Every trigger except this one is a webhook, and a webhook is something
+     * GitHub can decline to convert into a run. It declined for nine hours on
+     * 2026-08-06, and `ci.yml` was the one workflow with no way to ask: a
+     * dispatch is an API call rather than an event, so it is the only trigger
+     * an event backlog cannot reach. `gh run rerun` is not a substitute, since
+     * it re-runs at the original head and cannot put a check on a commit that
+     * never had one. Issue #164.
+     */
+    it(`${name} can be dispatched, so a throttled webhook is not the only way in`, () => {
+      expect(Object.keys(workflow.on ?? {})).toContain('workflow_dispatch');
+    });
+
     it(`${name} names only jobs that exist in needs`, () => {
       const declared = new Set(jobs(workflow).map(([id]) => id));
       const missing = jobs(workflow).flatMap(([id, job]) =>
