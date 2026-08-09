@@ -1,7 +1,7 @@
 {
   "name": "@stuffbucket/maximal-electron",
   "productName": "Stuffbucket",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "Reference Electron application with cross-platform build and release mechanics",
   "license": "MIT",
   "author": "stuffbucket",
