@@ -45,6 +45,27 @@ Bump the patch version in `package.json` on the release branch when the train
 reaches a stable state, not on `main`, so that `main` never claims a version
 that has not shipped.
 
+Bump it by replacing the exact line and asserting how many lines you replaced:
+one in `package.json`, and two in `package-lock.json` — the top-level `version`
+and `packages[""].version`.
+
+Three ways of doing this are wrong, and all three were measured rather than
+reasoned about:
+
+- **Reading the manifest into a JSON library and writing it back.** It
+  reformats key order, escaping, wrapping and the trailing newline, so a
+  one-line bump lands as a 46-line diff that hides what changed. This happened
+  on the v0.0.6 cut.
+- **`npm version <version> --no-git-tag-version`.** It updates both files
+  correctly, and it also expands this repository's compact
+  `peerDependenciesMeta` entries from one line each to three — eleven of them,
+  thirty-three lines. Same defect, different place.
+- **A global find and replace of the version string.** `package-lock.json`
+  holds `node_modules/tunnel` pinned at `0.0.6`, unrelated to this package and
+  identical as text. A global replace repins a dependency silently.
+
+Issue #167.
+
 ## Cutting one
 
 1. Fold the release branch into `main`.

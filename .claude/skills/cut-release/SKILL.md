@@ -25,8 +25,23 @@ nothing for. It runs against the local clone, so it needs no network and no
 pushed tag. The tarball and the git ref are different lifecycle scripts, and a
 tag has shipped with only one of them wired.
 
-Set the version in `package.json`. The tag must match it exactly, or the
-`tag-check` job fails before anything builds.
+Set the version by replacing the exact line and asserting the replacement
+count: one line in `package.json`, and two in `package-lock.json` (the
+top-level `version` and `packages[""].version`). The tag must match the version
+exactly, or the `tag-check` job fails before anything builds.
+
+**Three shortcuts are wrong here, all three measured:**
+
+- Loading the manifest into a JSON library and writing it back reformats the
+  whole file, so a one-line bump arrives as a 46-line diff. This happened on
+  the v0.0.6 cut.
+- `npm version <v> --no-git-tag-version` updates both files, and also expands
+  eleven compact `peerDependenciesMeta` entries into thirty-three lines.
+- A global replace of the version string repins `node_modules/tunnel`, which
+  sits in `package-lock.json` at `0.0.6` and has nothing to do with this
+  package.
+
+Issue #167.
 
 Then dispatch `release.yml` from the branch. With the `publish` input left at
 its default it rehearses: it packs the tarball, installs the commit by git ref,
