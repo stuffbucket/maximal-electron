@@ -70,6 +70,20 @@ Each of these is load-bearing. Do not relax one to make a change fit.
   through an argument the application answers itself.
 - **Never add an asset to a published release.** GitHub rejects it with HTTP
   422. Everything attaches to the draft.
+- **Never round-trip a manifest through a serializer to edit one field.**
+  `json.load` then `json.dumps` on `package.json` rewrites key order, escaping,
+  wrapping and the trailing newline, so a one-line version bump arrives as a
+  46-line diff and the real change is invisible in review. It happened on the
+  v0.0.6 cut.
+- **Never bump the version with a global find and replace either, and not with
+  `npm version`.** Both were measured and both are wrong here.
+  `npm version <v> --no-git-tag-version` expands this repository's compact
+  `peerDependenciesMeta` entries from one line each to three, which is the same
+  reformatting in a different place. A global replace of the version string
+  corrupts `package-lock.json`, which carries an unrelated `node_modules/tunnel`
+  pinned at `0.0.6`. Replace the exact line — one in `package.json`, two in
+  `package-lock.json` (top level and `packages[""]`) — and assert the
+  replacement count. Issue #167.
 
 ## Report what you verified
 

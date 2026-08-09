@@ -1,17 +1,16 @@
 # Continuous integration
 
 Three workflows build. `ci.yml` is the blocking gate, `release.yml` builds and
-ships a tag, and `merge-preview.yml` tests what a merge would produce. Three
-more build nothing: `triage.yml` labels issues, `watch-rulesets.yml` reads the
-repository settings that no pull request can see change, and
-`workflow-health.yml` reads whether the others still run at all. Each is
-described in its own header.
+ships a tag, and `merge-preview.yml` tests what a merge would produce. Two
+more build nothing: `watch-rulesets.yml` reads the repository settings that no
+pull request can see change, and `workflow-health.yml` reads whether the others
+still run at all. Each is described in its own header.
 
 ## What each one runs
 
 | Workflow | Trigger | What it is for |
 | --- | --- | --- |
-| `ci.yml` | pull request, push to `main` and `release/**` | Lint, types, unit and mutation tests, a git-ref install, packaging, the packaged smoke test and the end-to-end suite on macOS and Windows |
+| `ci.yml` | pull request, push to `main` and `release/**`, or a dispatch | Lint, types, unit and mutation tests, a git-ref install, packaging, the packaged smoke test and the end-to-end suite on macOS and Windows |
 | `merge-preview.yml` | push to `main` and `release/**` | Replays every open pull request against the new tip |
 | `release.yml` | tag `v*.*.*`, or a dispatch to rehearse or to retry | The draft release, the tarball, the registry publish, publish |
 | `watch-rulesets.yml` | daily, or a dispatch | Reads the live repository rulesets and files one issue when a protection drops below its floor |
@@ -341,11 +340,18 @@ floor, the three states the check reports, and what the owner has to click.
 
 ## Whether the workflows themselves still run
 
-`triage.yml` fires on every issue event and failed on every one of its 77 runs.
-`watch-rulesets.yml` has never run once. Two workflows broken in opposite
+`triage.yml` fired on every issue event and failed on every one of its 88 runs.
+`watch-rulesets.yml` had never run once. Two workflows broken in opposite
 directions, and neither was noticed for months, because a workflow that gates
 nothing is red only in the Actions tab and nobody opens the Actions tab. Issue
 #153.
+
+`triage.yml` is gone. It called a reusable workflow in `stuffbucket/repoman`,
+which is private and owned by a user account rather than an organization, and
+Actions can only share a private reusable workflow within an organization. So
+the call could not resolve and the run died before it created a job — which is
+why all 88 failures carry no log. No setting on either repository would have
+fixed it.
 
 `npm run verify:workflow-health` is the general answer. It discovers the
 workflow list from `.github/workflows/` — never from a constant, because a
