@@ -51,7 +51,7 @@ already existed did not count.
 | `tests-off-the-desktop.md` | 265 | **Deleted.** Its recommendation shipped in #63, and `docs/testing.md` now carries the finding and the rejected infrastructure |
 | `velocity-build.md` | 272 | **Deleted.** Two findings shipped as `STUFFBUCKET_SKIP_FIXTURE` and `verify:exports` in CI. The rest is #129 and #130 |
 | `velocity-verification.md` | 264 | **Deleted.** Filed as #131 and #132; its work on #24 and #25 is a comment on each; its five rejections are in `docs/testing.md` |
-| `electron-field-guide.md` | 410 | **Deleted.** Its top recommendation shipped as `.github/workflows/triage.yml`, four rows served issues since closed, and the remainder is #133 and #134 |
+| `electron-field-guide.md` | 410 | **Deleted.** Its top recommendation shipped as `.github/workflows/triage.yml`, four rows served issues since closed, and the remainder is #133 and #134. That workflow has since been removed in turn: it called a reusable workflow in a private user-owned repository, which Actions cannot resolve, so it failed on all 88 of its runs without ever creating a job. See #153 |
 
 Nothing was deleted without its content going somewhere first. If a finding is
 missing from an issue or a document, that is a defect in #101's resolution, not
