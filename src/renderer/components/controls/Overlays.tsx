@@ -81,6 +81,17 @@ export function useShellPortalContainer(): HTMLElement | undefined {
   return typeof document === 'undefined' ? undefined : shellPortalRoot(document);
 }
 
+/**
+ * A modal dialog.
+ *
+ * `title` and `description` are the accessible name and description, and both
+ * are always hidden visually — draw the heading you want inside `children`.
+ *
+ * It portals, so it mounts outside whatever element carries `.sb-shell` unless
+ * a root is in scope. `ShellLayout` provides one; without it the component
+ * makes its own under `body`, which inherits from `body` rather than from your
+ * container. Define the `--shell-*` properties on `:root` or `body`.
+ */
 export function Dialog({
   open,
   onOpenChange,

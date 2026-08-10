@@ -69,6 +69,19 @@ const LEFT: PanelSize = {
 const RIGHT: PanelSize = { default: '22', min: '16', max: '36', collapsed: '0' };
 const BOTTOM: PanelSize = { default: '30', min: '10', max: '70', collapsed: '0' };
 
+/**
+ * The three-panel frame, with the tab strip in the title bar.
+ *
+ * It takes no children: every region is a named prop, and `left` is a function
+ * receiving the collapsed state, because the rail's collapse is the frame's to
+ * own and the content inside it is the caller's. `layoutId` is the key the
+ * panel sizes persist under. `status` has no default; pass `null` for no
+ * status bar.
+ *
+ * It applies `.sb-shell`, supplies the tooltip provider the icon buttons need,
+ * and is the portal root the overlays mount into. Composing the smaller
+ * exports without it means supplying all three yourself.
+ */
 export function ShellLayout<T extends Tab>({
   layoutId,
   tabs,
