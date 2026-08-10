@@ -94,6 +94,12 @@ data, or the capture fixture. `docs/embedding.md` groups the whole surface, and
 `RENDERER_SURFACE` in `scripts/export-checks.mjs` is the list
 `npm run verify:exports` holds the built entry to.
 
+The tarball also carries `.vite/build/main.js`, because npm packs whatever
+`main` names and Electron needs that path to run this repository as an
+application. It is not an export: `exports` declares no `.`, so importing the
+package by its bare name fails, and the file loads a chunk the tarball does not
+carry.
+
 `runMain(runtime, options)` runs a main process on this shell's lifecycle: the
 profile directory, the single instance lock, the window, the quit policy, and a
 deferred shutdown. Every application-specific value is a callback in `options`,
