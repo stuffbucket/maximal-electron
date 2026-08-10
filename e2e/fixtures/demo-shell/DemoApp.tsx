@@ -29,10 +29,10 @@ import { RunInspector } from './RunInspector.js';
 /**
  * The demo shell: the same three panels, orchestrating a fleet of agents.
  *
- * `src/renderer/main.tsx` mounts this instead of `App` when the window was
- * loaded with `?demo=1`. It is a separate tree on purpose. The production
- * `App` keeps its own data path untouched, and this one is free to be a
- * screenshot fixture.
+ * `STUFFBUCKET_DEMO=1` makes the main process load this fixture's own renderer
+ * bundle instead of the product's. It is a separate tree on purpose. The
+ * production `App` keeps its own data path untouched, and this one is free to
+ * be a screenshot fixture.
  *
  * The chrome is shared, and shared the way a dependent project shares it:
  * every import resolves through `@stuffbucket/maximal-electron`'s own
