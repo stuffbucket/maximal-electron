@@ -100,6 +100,7 @@ export function Dialog({
   onOpenChange?: (open: boolean) => void;
   /** The accessible name. Always hidden visually; draw your own heading. */
   title: string;
+  /** The accessible description. Hidden visually on the same terms. */
   description?: string;
   children: ReactNode;
   /** Overridable so a document with its own card styles can keep them. */
