@@ -192,6 +192,20 @@ match either way — but that element inherits from `body`, and a property
 defined only on your container never reaches it. `docs/embedding.md` has the
 measurements.
 
+Status colour is yours to map. `StatusChip`, the status dot, `NavRail` items and
+`Banner` all put their state on `data-status`, and the shipped stylesheet maps
+no value of it, because a status vocabulary belongs to the application. Pass a
+status and every state draws the same neutral fill until you write the rules:
+
+```css
+.sb-shell .chip[data-status='failed'] { --shell-status: #f87171 }
+.sb-shell .chip[data-status='done']   { --shell-status: #4ade80 }
+```
+
+`--shell-status` is the label colour, `--shell-status-muted` the fill. Three
+consumers in a row passed a status, saw a grey pill, and reported that the
+colour worked, so this is stated rather than left to be discovered.
+
 `IconButton` renders a tooltip, so it needs a `Tooltip.Provider` from
 `@radix-ui/react-tooltip` above it. `ShellLayout` supplies one. Compose
 `IconButton` outside it — or `Banner` with `onDismiss`, which draws one — and
