@@ -12,7 +12,28 @@
   box-sizing: border-box;
 }
 
+/*
+ * Icon weight, once. Lucide writes `stroke-width` as an attribute at 2, which
+ * reads heavy beside text at these sizes, and every exported component draws a
+ * Lucide glyph. `.lucide` is the class Lucide puts on the element itself, so a
+ * consumer's own artwork and any other icon set keep the weight they were
+ * drawn at.
+ */
+.sb-shell svg.lucide {
+  stroke-width: var(--shell-icon-stroke, 1.5);
+}
+
+/*
+ * The window, filled without a rule the consumer has to write. `height: 100%`
+ * measures against ancestors this file does not own, so the whole palette
+ * still drew a shell an inch tall. Fixed to the viewport needs neither that
+ * frame nor `body { margin: 0 }`, and `--shell-position: static` gives the
+ * percentage back to a consumer laying the shell out inside a container of
+ * their own.
+ */
 .sb-shell.app {
+  position: var(--shell-position, fixed);
+  inset: 0;
   display: grid;
   grid-template-rows: var(--shell-titlebar-height, 40px) 1fr;
   height: 100%;
@@ -259,9 +280,13 @@
   background: var(--shell-hover);
 }
 
+/* The selected tab's own fill, which is the canvas it opens onto until a host
+   names something else. `tokens.css` keeps a dedicated `--tab-active` because
+   a tab sits on the title bar rather than inside a panel, and the step it
+   needs is not the canvas in either scheme. */
 .sb-shell .tab[data-state='active'] {
   color: var(--shell-text);
-  background: var(--shell-canvas);
+  background: var(--shell-tab-active, var(--shell-canvas));
   font-weight: 500;
 }
 

@@ -58,7 +58,7 @@ description of what each one draws.
 ## Fallback
 
 Each of these has a value in the CSS. Set one when the design system differs
-from it. Thirteen fall back to another `--shell-*` rather than to a literal,
+from it. Fourteen fall back to another `--shell-*` rather than to a literal,
 which is where legibility survives an unset value but meaning does not:
 `--shell-danger` resolving to `--shell-hover` draws a destructive control that
 looks exactly like an ordinary hovered one.
@@ -76,10 +76,12 @@ looks exactly like an ordinary hovered one.
 | `--shell-focus` | `--shell-accent` | focus ring on every control |
 | `--shell-font` | `400 14px/1.5 system-ui, sans-serif` | the shell's whole type |
 | `--shell-font-mono` | `ui-monospace, SFMono-Regular, Menlo, monospace` | the value half of a `Field` |
+| `--shell-icon-stroke` | `1.5` | the stroke weight of every Lucide glyph inside the shell |
 | `--shell-input-background` | `--shell-canvas` | the surface of a text field, textarea, select and radio |
 | `--shell-input-border` | `--shell-border-strong` | the outline of one of those at rest |
 | `--shell-invalid` | `--shell-danger` | the outline and the message of a field that failed validation |
 | `--shell-nav-heading-height` | `24px` | the space a collapsed `NavRail` keeps for a section heading |
+| `--shell-position` | `fixed` | how the `ShellLayout` root meets the window; `static` lays it out inside the consumer's own container instead |
 | `--shell-radius` | `6px` | buttons, tabs, nav items, list rows, fields, menu popup |
 | `--shell-radius-dialog` | `14px` | the modal card, which is a panel rather than a control |
 | `--shell-radius-large` | `8px` | the `Card` tile, for the same reason |
@@ -92,6 +94,7 @@ looks exactly like an ordinary hovered one.
 | `--shell-space-5` | `24px` | the padding an `EmptyState` keeps around its message |
 | `--shell-status` | `--shell-text-subtle` | the status dot, the `StatusChip` label, the `Banner` text |
 | `--shell-status-muted` | `--shell-active` | the `StatusChip` and `Banner` fills |
+| `--shell-tab-active` | `--shell-canvas` | the fill behind the selected tab |
 | `--shell-terminal-background` | `--shell-canvas` | the terminal's own surface |
 | `--shell-titlebar-height` | `40px` | the title bar row of the application grid |
 | `--shell-warning` | `--shell-accent` | the attention marker on a tab |
@@ -121,27 +124,27 @@ CSS kind.
 ## What the variables do not cover
 
 Every rule in the shipped stylesheet is scoped under `.sb-shell`, so the
-document around it is the consumer's. Defining all eleven required variables
-still renders a shell that does not fill the window, because
-`.sb-shell.app { height: 100% }` measures against an ancestor that has no
-height.
+document around it stays the consumer's. The package asks nothing of it.
+`.sb-shell.app` is fixed to the viewport, so a shell drawn by `ShellLayout`
+fills the window with no `html, body, #root { height: 100% }` and no
+`body { margin: 0 }` underneath it. That reset used to be the price of a
+correct shell, and the symptom of leaving it out — a correct palette on a shell
+an inch tall — read as a defect in the package. The capture fixture hit it while
+consuming the package the way this document prescribes, and dropped the reset
+again once `--shell-position` landed.
 
-A consumer supplies the frame themselves:
+Two things stay outside the contract.
 
-```css
-html, body, #root { height: 100%; margin: 0 }
-```
+**A layout composed without `ShellLayout`.** `TitleBar`, `NavRail` and `Canvas`
+style themselves and not the element that holds them, because that element is
+the consumer's. A consumer arranging the parts owns the frame around them, and
+no variable can reach a container the package does not render.
 
-This is not a variable and no variable can carry it. It is stated here because
-the symptom — a correct palette on a shell an inch tall — reads as a defect in
-the package rather than as a missing rule in the application, and the capture
-fixture hit it while consuming the package the way this document prescribes.
-
-Two more things the exported components draw that no variable names.
-`structural.css` does not set `svg { stroke-width }`, so Lucide glyphs render at
-their default of 2 against the 1.5 this application uses, and `.dot` ships
-without the halo `shell.css` gives it. Both are the consumer's to add, and
-both are candidates for a variable rather than settled design.
+**Artwork that is not a Lucide glyph.** `--shell-icon-stroke` applies through
+`svg.lucide`, which is the class Lucide writes on the element. A blanket
+`.sb-shell svg` would restyle a consumer's logo and any other icon set they put
+inside the shell. That is their drawing rather than the shell's furniture, so
+the weight the package sets stops at the glyphs the package draws.
 
 ## Assert against it from a consuming application
 

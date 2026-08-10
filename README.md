@@ -158,12 +158,17 @@ these semantic variables on `:root` or `body`:
 | `--shell-accent` | Selection, focus, and resize feedback. |
 | `--shell-accent-muted` | Selected-control background. |
 
-Thirty more variables have structural fallbacks in the CSS, and two are read
-by JavaScript rather than by any rule. `docs/shell-variables.md` holds the whole
-contract, derived from the stylesheet and checked against it in both directions.
-Set the ones your design system disagrees with.
+Thirty-three more variables have structural fallbacks in the CSS, and two are
+read by JavaScript rather than by any rule. `docs/shell-variables.md` holds the
+whole contract, derived from the stylesheet and checked against it in both
+directions. Set the ones your design system disagrees with.
 `@stuffbucket/maximal-electron/verify/shell-variables` exports the derivation so an
 application can assert its own adapter against the stylesheet it installed.
+
+Those eleven are the whole of what the shell needs from you. `ShellLayout`'s
+root is fixed to the viewport, so it fills the window with no document reset of
+your own; set `--shell-position: static` to lay the shell out inside a container
+you have given a height to instead.
 
 `:root` or `body` rather than your own container, because `Dialog`, `Menu` and
 `IconButton`'s tooltip do not render where they are written. Each portals above

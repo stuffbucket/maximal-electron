@@ -168,43 +168,21 @@
   color: var(--shell-status);
 }
 
-/* A halo, so a 7px dot still reads as "live" against a dark panel. The package
-   draws the dot; how loud it is, is a palette decision and so is the host's. */
-.sb-shell .dot {
-  box-shadow: 0 0 0 3px var(--shell-status-muted, transparent);
-}
-
 /* ------------------------------------------------------------ the document */
 
 /*
- * The page around the shell.
+ * The page behind the shell.
  *
- * `structural.css` styles `.sb-shell` and nothing outside it — a package
- * stylesheet that restyled `body` would be editing its host's document. So a
- * consumer supplies the frame the shell fills, and this is it.
+ * There is no frame to supply. `.sb-shell.app` is fixed to the viewport, so
+ * this fixture sizes neither `html` nor `body` nor `#root` and still fills the
+ * window. What is left is the document's own colour, which shows for the frame
+ * or two before React mounts.
  */
-html,
-body,
-#root {
-  height: 100%;
-  margin: 0;
-  overflow: hidden;
-}
-
 body {
   background: var(--shell-background);
   color: var(--shell-text);
   font: var(--shell-font);
   -webkit-font-smoothing: antialiased;
-}
-
-/*
- * Lucide draws at stroke-width 2, which reads as heavy beside text at these
- * sizes. The package cannot set this: it would be a bare `svg` rule in a
- * consumer's document.
- */
-.sb-shell svg {
-  stroke-width: 1.5;
 }
 
 /* ------------------------------------------------------------- the fleet */
