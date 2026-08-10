@@ -221,7 +221,13 @@ export function readTerminalTheme(
   return theme;
 }
 
-/** The properties a consumer of this package supplies. */
+/**
+ * The properties a consumer of this package supplies.
+ *
+ * Three, not a palette. The sixteen ANSI colours stay at the emulator's own
+ * default, because a shell's own colours are not the host application's to
+ * restyle. Defining more `--shell-terminal-*` names changes nothing.
+ */
 export const SHELL_TERMINAL_PROPERTIES = {
   background: '--shell-terminal-background',
   foreground: '--shell-terminal-foreground',
