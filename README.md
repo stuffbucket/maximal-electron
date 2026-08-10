@@ -60,6 +60,13 @@ A dock badge tracks real application state.
 
 ## Consume the shell frame
 
+This file is the only prose the tarball carries. Every path below under the docs
+directory names a file in the repository rather than in your `node_modules`, and
+each one is readable at
+<https://github.com/stuffbucket/maximal-electron/tree/main/docs>. The types are
+the other half: every export ships a `.d.ts` whose comments say what a prop is
+for and why it exists.
+
 The package is `@stuffbucket/maximal-electron`, on the GitHub Packages npm
 registry:
 
@@ -184,6 +191,12 @@ it mounts into a `div.sb-shell` the package appends to `body`, so the rules
 match either way — but that element inherits from `body`, and a property
 defined only on your container never reaches it. `docs/embedding.md` has the
 measurements.
+
+`ShellLayout` takes no children. `left`, `main`, `right` and `status` are named
+props, plus an optional `top` and `bottom`, and `left` is a function of the
+collapsed state because `ShellLayout` owns that state and `NavRail` needs it.
+[docs/embedding.md](./docs/embedding.md) assembles a whole three-panel
+application — nav rail, canvas, inspector, tabs, status bar — in one snippet.
 
 `TitleBar` accepts caller-owned `leading` and `actions` nodes. Direct `TitleBar`
 and `TabBar` consumers provide `tabIdBase` and use `getTabTriggerId` and

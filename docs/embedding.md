@@ -371,6 +371,191 @@ import '@stuffbucket/maximal-electron/renderer/styles.css';
 Every rule is scoped under `.sb-shell`. `ShellLayout` applies that root class;
 a consumer composing the smaller exports directly applies it themselves.
 
+### A worked composition
+
+The `.d.ts` comments describe one component each. This is the assembly: a nav
+rail on the left, a canvas of selectable runs in the middle, an inspector on
+the right, document tabs, and a status bar.
+
+It is `e2e/fixtures/demo-shell/DemoApp.tsx` with the fleet data and the
+terminal taken out. That fixture reaches this package through the same
+`exports` map a registry install resolves, and `npm run verify:fixture-imports`
+fails if it ever reaches into `src/` instead, so an example derived from it
+cannot be wrong about the API.
+
+```tsx
+import {
+  Canvas,
+  Card,
+  EmptyState,
+  Field,
+  FormField,
+  InspectorPanel,
+  NavRail,
+  Row,
+  ShellLayout,
+  StatusChip,
+  TextInput,
+  Toolbar,
+  useShellTabs,
+  type Tab,
+  type ViewMode,
+} from '@stuffbucket/maximal-electron/renderer';
+import '@stuffbucket/maximal-electron/renderer/styles.css';
+import './shell-variables.css';
+import { Bot, FolderGit2 } from 'lucide-react';
+import { useState } from 'react';
+
+interface Run {
+  id: string;
+  task: string;
+  project: string;
+  status: 'running' | 'blocked' | 'done';
+}
+
+const RUNS: Run[] = [
+  { id: 'run-101', task: 'refactor auth', project: 'api', status: 'running' },
+  { id: 'run-102', task: 'flaky test triage', project: 'web', status: 'blocked' },
+];
+
+const SECTIONS = [
+  {
+    id: 'agents',
+    label: 'Agents',
+    items: [
+      { id: 'all', label: 'All runs', count: RUNS.length },
+      { id: 'api', label: 'api', count: 1 },
+    ],
+  },
+];
+
+const INITIAL_TABS: Tab[] = [
+  { id: 'run-101', title: 'refactor auth', status: 'running' },
+];
+
+export function App() {
+  const [view, setView] = useState('all');
+  const [mode, setMode] = useState<ViewMode>('grid');
+  const [selectedId, setSelectedId] = useState<string>();
+  const [filter, setFilter] = useState('');
+
+  const { tabs, activeTab, setActiveTab, openTab, closeTab } = useShellTabs(
+    INITIAL_TABS,
+    (existing) => ({
+      id: `tab-${String(existing.length + 1)}`,
+      title: 'New run',
+    }),
+  );
+
+  const runs = RUNS.filter(
+    (run) =>
+      (view === 'all' || run.project === view) && run.task.includes(filter),
+  );
+  const current = RUNS.find((run) => run.id === selectedId);
+
+  return (
+    <ShellLayout
+      layoutId="fleet"
+      tabs={tabs}
+      activeTab={activeTab}
+      onSelectTab={setActiveTab}
+      onCloseTab={closeTab}
+      onNewTab={openTab}
+      left={(collapsed) => (
+        <NavRail
+          sections={SECTIONS}
+          current={view}
+          onSelect={setView}
+          collapsed={collapsed}
+          icon={(entry) => (entry.id === 'all' ? Bot : FolderGit2)}
+        />
+      )}
+      main={
+        <>
+          <Toolbar title="All runs" mode={mode} onModeChange={setMode} />
+          <Canvas
+            items={runs}
+            mode={mode}
+            selectedId={selectedId}
+            empty={<EmptyState icon={Bot} message="No runs in this view." />}
+            renderCard={(run, selected) => (
+              <Card
+                modifier="run-card"
+                status={run.status}
+                selected={selected}
+                onSelect={() => setSelectedId(run.id)}
+              >
+                <StatusChip status={run.status} label={run.status} />
+                <span className="card__name">{run.task}</span>
+                <span className="card__sub">{run.project}</span>
+              </Card>
+            )}
+            renderRow={(run, selected) => (
+              <Row
+                modifier="run-row"
+                selected={selected}
+                onSelect={() => setSelectedId(run.id)}
+              >
+                <span className="row__name">{run.task}</span>
+                <span className="row__sub">{run.project}</span>
+              </Row>
+            )}
+          />
+        </>
+      }
+      right={
+        <InspectorPanel title={current ? 'Run' : 'Fleet'}>
+          {current ? (
+            <>
+              <Field label="Project" value={current.project} />
+              <Field label="Status" value={current.status} />
+            </>
+          ) : (
+            <FormField label="Filter" hint="Matches the task name.">
+              {(field) => (
+                <TextInput {...field} value={filter} onChange={setFilter} />
+              )}
+            </FormField>
+          )}
+        </InspectorPanel>
+      }
+      status={<span>{current ? current.task : 'No run selected'}</span>}
+    />
+  );
+}
+```
+
+Four of those shapes are worth a sentence, because the snippet says what to
+write and not why.
+
+- **`ShellLayout` takes no children.** Every region is a named prop, so the
+  layout owns where a region goes and the caller owns what is in it. `left` is
+  a function rather than a node because `ShellLayout` owns whether the left
+  panel is collapsed, and `NavRail` needs that answer.
+- **`layoutId` is the persistence key.** `ShellLayout` namespaces the panel
+  sizes it writes to `localStorage` under it, so two shells in one application
+  must not share one.
+- **`Card` and `Row` are one component under two names**, and that component is
+  a selectable option rather than a container. Both require `selected` and
+  `onSelect`, and neither lays its children out: pass `modifier` and style that
+  class yourself.
+- **`FormField` takes a function, not a node.** It owns `id`,
+  `aria-describedby` and `aria-invalid`, and hands them to the control it
+  wraps, which is the whole reason to reach for it rather than a label of your
+  own.
+
+`main` takes any node, so a terminal goes there on the same footing as the
+canvas. The fixture swaps `TerminalTabs` in when the active tab is a terminal;
+"Wiring a terminal" below is the transport that feeds it.
+
+Two things the example cannot supply for a consumer. The specifier is
+`@stuffbucket/maximal-electron/renderer`, because the package declares no `.`
+export and an import of the bare name does not resolve. And
+`shell-variables.css` is the consumer's own file: `docs/shell-variables.md`
+lists the eleven properties that carry no fallback, and the shell draws nothing
+until they exist. Define them on `:root` or `body`, for the reason the next
+section measures.
+
 ### The surfaces that portal
 
 `Dialog`, `Menu` and the tooltip inside `IconButton` do not render where they

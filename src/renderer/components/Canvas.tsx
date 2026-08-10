@@ -1,6 +1,12 @@
 import { Fragment, type ReactNode } from 'react';
 
-export type CanvasViewMode = 'grid' | 'list';
+import type { ViewMode } from './controls/Layout.js';
+
+/**
+ * The same union `ViewModeSwitch` sets, under the name the canvas reads it by.
+ * One declaration, so the switch and the canvas cannot drift apart.
+ */
+export type CanvasViewMode = ViewMode;
 
 /**
  * A grid of cards or a dense list, over anything with an id.

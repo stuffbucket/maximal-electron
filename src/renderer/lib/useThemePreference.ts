@@ -14,9 +14,11 @@ export interface ThemePreference {
 /**
  * Applies the theme preference to the document.
  *
- * `system` removes the attribute rather than setting a third value, so the
- * stylesheet's own `prefers-color-scheme` query decides. Any shell that reads
- * preferences needs this, and there is exactly one correct way to write it.
+ * It writes `data-theme` on `document.documentElement`, so a consumer's own
+ * palette selects on `[data-theme='light']`. `system` removes the attribute
+ * rather than setting a third value, so the stylesheet's own
+ * `prefers-color-scheme` query decides. Any shell that reads preferences needs
+ * this, and there is exactly one correct way to write it.
  *
  * It observes nothing. The value is the caller's to keep current, so a hook
  * that expects the operating system's theme to arrive here waits forever.
