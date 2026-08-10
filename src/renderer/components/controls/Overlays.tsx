@@ -98,7 +98,7 @@ export function Dialog({
 }: {
   open: boolean;
   onOpenChange?: (open: boolean) => void;
-  /** The accessible name. Hidden visually when `hideTitle` is not wanted. */
+  /** The accessible name. Always hidden visually; draw your own heading. */
   title: string;
   description?: string;
   children: ReactNode;

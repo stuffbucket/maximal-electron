@@ -96,7 +96,7 @@ looks exactly like an ordinary hovered one.
 | `--shell-status-muted` | `--shell-active` | the `StatusChip` and `Banner` fills |
 | `--shell-tab-active` | `--shell-canvas` | the fill behind the selected tab |
 | `--shell-terminal-background` | `--shell-canvas` | the terminal's own surface |
-| `--shell-titlebar-height` | `40px` | the title bar row of the application grid |
+| `--shell-titlebar-height` | `40px` | the height of the title bar strip |
 | `--shell-warning` | `--shell-accent` | the attention marker on a tab |
 
 `--shell-status` and `--shell-status-muted` are the pair a host maps its own

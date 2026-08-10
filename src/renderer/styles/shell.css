@@ -24,9 +24,15 @@ body {
 
 /* -------------------------------------------------------------- app shell */
 
+/*
+ * A column rather than a grid. `ShellLayout`'s `top` slot renders no element
+ * when it is empty and any number of them when it is not, and a track list has
+ * to know that count. `structural.css` carries the same rule and the same
+ * reason.
+ */
 .app {
-  display: grid;
-  grid-template-rows: var(--size-titlebar) 1fr;
+  display: flex;
+  flex-direction: column;
   height: 100%;
 }
 
@@ -36,7 +42,9 @@ body {
   display: flex;
   align-items: stretch;
   gap: var(--space-2);
+  height: var(--size-titlebar);
   padding: 0 var(--space-3) 0 var(--space-2);
+  flex: none;
   background: var(--bg-app);
   border-bottom: 1px solid var(--border-subtle);
   /* The whole strip drags the window; interactive children opt back out. */
@@ -104,6 +112,7 @@ body {
 /* ------------------------------------------------------------------ panels */
 
 .panels {
+  flex: 1;
   min-height: 0;
 }
 
