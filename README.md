@@ -85,10 +85,14 @@ migration from the old unscoped name.
 Every supported form exposes the main-process lifecycle at
 `@stuffbucket/maximal-electron/main`, the secured host window at
 `@stuffbucket/maximal-electron/host`, and the generic renderer frame at
-`@stuffbucket/maximal-electron/renderer`. The renderer entry exports
-`ShellLayout`, `TitleBar`, `TabBar`, `NavRail`, `Canvas`, and `IconButton`. It
-does not export the reference application, terminal, agent, sample data, or
-fixtures.
+`@stuffbucket/maximal-electron/renderer`. The renderer entry exports the layout
+— `ShellLayout`, `TitleBar`, `TabBar`, `NavRail`, `Canvas` — a control
+vocabulary from `Button` and `Card` through `Dialog`, `Menu` and the form
+fields, the terminal components with the transport that wires them, and two
+hooks. It does not export the reference application, the agent, the sample
+data, or the capture fixture. `docs/embedding.md` groups the whole surface, and
+`RENDERER_SURFACE` in `scripts/export-checks.mjs` is the list
+`npm run verify:exports` holds the built entry to.
 
 `runMain(runtime, options)` runs a main process on this shell's lifecycle: the
 profile directory, the single instance lock, the window, the quit policy, and a
@@ -107,7 +111,7 @@ you use:
 | `@stuffbucket/maximal-electron/host` | `electron` |
 | `@stuffbucket/maximal-electron/preload` | `electron` |
 | `@stuffbucket/maximal-electron/host/terminal` | `node-pty` |
-| `@stuffbucket/maximal-electron/renderer` | `react`, `react-dom`, `ghostty-web`, `lucide-react`, `react-resizable-panels`, `@radix-ui/react-collapsible`, `@radix-ui/react-tabs`, `@radix-ui/react-tooltip`, `@radix-ui/react-visually-hidden` |
+| `@stuffbucket/maximal-electron/renderer` | `react`, `react-dom`, `ghostty-web`, `lucide-react`, `react-resizable-panels`, `@radix-ui/react-collapsible`, `@radix-ui/react-dialog`, `@radix-ui/react-dropdown-menu`, `@radix-ui/react-radio-group`, `@radix-ui/react-tabs`, `@radix-ui/react-tooltip`, `@radix-ui/react-visually-hidden` |
 | `@stuffbucket/maximal-electron/verify` | none |
 | `@stuffbucket/maximal-electron/verify/shell-variables` | none |
 
@@ -136,8 +140,9 @@ import '@stuffbucket/maximal-electron/renderer/styles.css';
 
 The stylesheet ships no palette and scopes every rule under `.sb-shell`.
 `ShellLayout` applies that root class. Apply it yourself when composing the
-smaller exports directly. Define these semantic variables on that container or
-an ancestor:
+smaller exports directly. Import the components without it and the markup is
+unstyled; import it and define nothing and the surfaces draw nothing. Define
+these semantic variables on `:root` or `body`:
 
 | Variable | Contract |
 | --- | --- |
@@ -153,12 +158,21 @@ an ancestor:
 | `--shell-accent` | Selection, focus, and resize feedback. |
 | `--shell-accent-muted` | Selected-control background. |
 
-Sixteen more variables have structural fallbacks in the CSS, and two are read
+Thirty more variables have structural fallbacks in the CSS, and two are read
 by JavaScript rather than by any rule. `docs/shell-variables.md` holds the whole
 contract, derived from the stylesheet and checked against it in both directions.
 Set the ones your design system disagrees with.
 `@stuffbucket/maximal-electron/verify/shell-variables` exports the derivation so an
 application can assert its own adapter against the stylesheet it installed.
+
+`:root` or `body` rather than your own container, because `Dialog`, `Menu` and
+`IconButton`'s tooltip do not render where they are written. Each portals above
+the page, so it lands outside whatever element you put `.sb-shell` on. The
+components handle the class themselves — a surface with no `ShellLayout` above
+it mounts into a `div.sb-shell` the package appends to `body`, so the rules
+match either way — but that element inherits from `body`, and a property
+defined only on your container never reaches it. `docs/embedding.md` has the
+measurements.
 
 `TitleBar` accepts caller-owned `leading` and `actions` nodes. Direct `TitleBar`
 and `TabBar` consumers provide `tabIdBase` and use `getTabTriggerId` and
@@ -184,6 +198,11 @@ packaging traps behind.
   prebuild directory rather than only `*.node`. On macOS the shell is started by
   `spawn-helper`, which has no extension and is executed from outside the
   archive.
+
+The wire between the two halves is exported rather than hand-written.
+`createTerminalTransport` builds the renderer transport from your own `invoke`,
+`on` and channel names, and `registerTerminalChannels` answers those channels
+from a `TerminalHost`. Neither picks a name. `docs/embedding.md` has both calls.
 
 `@stuffbucket/maximal-electron/verify` exports those assertions as a function
 to run against a built application. `docs/architecture.md` has the call.

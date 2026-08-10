@@ -1,7 +1,7 @@
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
-import type { ComponentType, ReactNode } from 'react';
+import { createContext, useContext, type ComponentType, type ReactNode } from 'react';
 
 /**
  * Things that sit above the page.
@@ -12,6 +12,74 @@ import type { ComponentType, ReactNode } from 'react';
  * roving focus and typeahead. The overlay's hand-rolled modal had none of the
  * first four.
  */
+
+/**
+ * The shell root, or `null` for the one render before `ShellLayout`'s root
+ * element attaches. `undefined` means no shell above this component at all,
+ * which is the case the fallback below is for.
+ */
+const ShellRoot = createContext<HTMLElement | null | undefined>(undefined);
+
+/** The class every rule in the shipped stylesheet is scoped under. */
+const SHELL_ROOT_CLASS = 'sb-shell';
+
+/** Marks the element `shellPortalRoot` creates, so a second call finds it. */
+const STANDALONE_ATTRIBUTE = 'data-sb-shell-portal-root';
+
+/**
+ * Publishes the element a portalled surface mounts into.
+ *
+ * Every rule in the shipped `structural.css` is scoped under `.sb-shell`, and
+ * a Radix portal defaults to `document.body`, which is outside it. `ShellLayout`
+ * owns that class, so it supplies the element here.
+ */
+export function ShellPortalRoot({
+  element,
+  children,
+}: {
+  element: HTMLElement | null;
+  children: ReactNode;
+}) {
+  return <ShellRoot.Provider value={element}>{children}</ShellRoot.Provider>;
+}
+
+/**
+ * A shell root for a surface with no `ShellLayout` above it.
+ *
+ * The Radix default of `document.body` is not merely unstyled. A standalone
+ * `Dialog` there keeps the focus trap and the `aria-hidden` on the rest of the
+ * document, and computes `position: static` with no scrim: modal behaviour
+ * wearing the appearance of a paragraph. Measured; `docs/embedding.md` has the
+ * numbers.
+ *
+ * Keyed on an attribute rather than a module variable, so a document served by
+ * two copies of this module still gets one element.
+ */
+export function shellPortalRoot(target: Document): HTMLElement {
+  const found = target.querySelector<HTMLElement>(`[${STANDALONE_ATTRIBUTE}]`);
+  if (found !== null) return found;
+
+  const created = target.createElement('div');
+  created.className = SHELL_ROOT_CLASS;
+  created.setAttribute(STANDALONE_ATTRIBUTE, '');
+  target.body.append(created);
+  return created;
+}
+
+/**
+ * The element to portal into.
+ *
+ * `undefined` only where there is nothing to portal into: a server render, or
+ * the single render before `ShellLayout`'s root attaches, and neither has an
+ * open surface. Resolved during render rather than in an effect, because an
+ * effect lands one commit later and a `Dialog` mounted already open would paint
+ * once on `document.body` — the defect this exists to remove.
+ */
+export function useShellPortalContainer(): HTMLElement | undefined {
+  const provided = useContext(ShellRoot);
+  if (provided !== undefined) return provided ?? undefined;
+  return typeof document === 'undefined' ? undefined : shellPortalRoot(document);
+}
 
 export function Dialog({
   open,
@@ -45,9 +113,11 @@ export function Dialog({
   onOpenAutoFocus?: (event: Event) => void;
   testId?: string;
 }) {
+  const container = useShellPortalContainer();
+
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange} modal={modal}>
-      <DialogPrimitive.Portal>
+      <DialogPrimitive.Portal container={container}>
         <DialogPrimitive.Overlay className={overlayClassName} />
         <DialogPrimitive.Content
           className={className}
@@ -103,10 +173,12 @@ export function Menu({
   align?: 'start' | 'center' | 'end';
   testId?: string;
 }) {
+  const container = useShellPortalContainer();
+
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>{trigger}</DropdownMenu.Trigger>
-      <DropdownMenu.Portal>
+      <DropdownMenu.Portal container={container}>
         <DropdownMenu.Content className="menu" align={align} sideOffset={6} data-testid={testId}>
           {header !== undefined && (
             <DropdownMenu.Label className="menu__header">{header}</DropdownMenu.Label>

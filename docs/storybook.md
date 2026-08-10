@@ -35,12 +35,30 @@ These are the ones in Storybook's own documentation.
   failures, and axe. Also a developer tool, also not in CI — but a `play`
   function nobody runs is the same problem as an end-to-end test that needs a
   model, so there is one command for it.
+- **An axe violation fails that run.** It did not until the story set reached
+  zero. A tolerated count of one is a number nobody reads, and the regression
+  after it arrives as a two. The exit code reaches only the developer who typed
+  the command, because nothing in CI builds Storybook.
+- A violation is as often the story's fault as the product's. Leaving a menu or
+  a dialog open at the end of a `play` function leaves the trigger focusable
+  behind an `aria-hidden` popup, which axe reports as `aria-hidden-focus`. Close
+  what you opened.
 - Page-level axe rules are off for stories (`landmark-one-main`,
   `page-has-heading-one`, `region`). A story is a component, not a page, and a
   panel that is never green is a panel nobody reads.
 - Render a component inside the context it requires. A `Card` outside a listbox
   reports `aria-required-parent`, which is the story's fault and not the
   product's.
+
+## Every exported component has a story
+
+`tests/component-stories.test.ts` walks the relative imports out of
+`src/renderer/index.ts` and requires each component module to have a sibling
+`*.stories.tsx` that imports it. The public surface went from about nineteen
+names to forty-three without Storybook changing, and nothing said so.
+
+The components that crossed over without one are named in `PENDING` there with
+the issue that will close them. That list may only shrink.
 
 ## Two files that look like configuration and are not
 

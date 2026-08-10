@@ -17,9 +17,9 @@ repository is a defect, not a convenience.
 | `./main` | `runMain`, the main-process lifecycle |
 | `./host` | `createHostWindow`, one secured window |
 | `./preload` | `exposeBridge`, the generic renderer bridge |
-| `./host/terminal` | The terminal host |
-| `./renderer` | The React control surface |
-| `./renderer/styles.css` | The structural stylesheet |
+| `./host/terminal` | `TerminalHost` and `registerTerminalChannels`, the pty manager and its wiring |
+| `./renderer` | The React control surface: layout, controls, the terminal, and the hooks under them |
+| `./renderer/styles.css` | The structural stylesheet. It ships no palette |
 | `./verify` | Packaging checks a consumer runs against its own build |
 
 All of it is a `tsc` emit, not a bundle: `npm run build:package` runs `tsc`
@@ -308,3 +308,234 @@ repository runs: it is the one this repository runs.
 `extend` exists because `contextBridge.exposeInMainWorld` allows one call per
 key. A consumer wanting only the generic surface omits it.
 
+## The renderer surface
+
+`./renderer` is the largest export, and the only one a consumer composes rather
+than calls once. Four groups.
+
+| Group | What is in it |
+| --- | --- |
+| Layout | `ShellLayout`, `TitleBar`, `TabBar`, `NavRail`, `Canvas`, and the tab helpers beside them |
+| Controls | `Button`, `IconButton`, `Card`, `Row`, `Toolbar`, `ViewModeSwitch`, `StatusChip`, `EmptyState`, `InspectorPanel`, `Banner`, `Dialog`, `Menu`, `TextInput`, `Textarea`, `Select`, `Switch`, `Checkbox`, `RadioGroup`, `Field`, `FormField` |
+| Terminal | `TerminalView`, `TerminalTabs`, `createTerminalTransport`, `detachedSessions`, `readTerminalTheme`, `SHELL_TERMINAL_PROPERTIES` |
+| Hooks | `useShellTabs` for a tab strip's state, `useThemePreference` for the `data-theme` attribute |
+
+That table is prose and can drift. `RENDERER_SURFACE` in
+`scripts/export-checks.mjs` is the list nothing may drift from:
+`npm run verify:exports` compares it against the built entry in both
+directions, so a name added to `src/renderer/index.ts` and left off the list
+fails, and so does a name on the list that the entry does not export.
+
+The export does **not** carry the reference application. `App.tsx`, the sample
+data, the settings surfaces and the capture fixture are this repository's own,
+and `npm run verify:neutral` fails when one of them reaches the export graph.
+
+`readTerminalTheme` takes the custom properties to resolve as an argument, and
+`SHELL_TERMINAL_PROPERTIES` names the three in the `--shell-*` namespace that
+`docs/shell-variables.md` documents. `terminalTheme` and `TERMINAL_TOKENS` in
+`src/renderer/lib/theme.ts` are this application's own pair and read
+`--bg-canvas`, `--text-primary` and `--accent`. They are deliberately not
+exported: a consumer resolving them against a `--shell-*` adapter would get an
+empty theme and the emulator's defaults, with nothing raised.
+
+### The stylesheet ships no palette, and the components have none either
+
+This is the part a consumer discovers late, so it is stated first.
+`./renderer/styles.css` is structural. It sets layout, spacing, state and
+shape, and it declares no colour, no type and no size of its own. Every one of
+those reads a `--shell-*` custom property that the host defines.
+`tests/package-styles.test.ts` asserts the file declares no token, so this is a
+property of the build rather than a convention.
+
+Two failures follow, and neither one throws.
+
+- **A consumer who imports the components and not the stylesheet gets
+  unstyled markup.** The components carry class names and no rules of their
+  own. Nothing warns: React renders, and the result is a stack of undecorated
+  elements.
+- **A consumer who imports both and defines nothing gets a transparent
+  shell.** The eleven `required` properties have no fallback in any rule, so a
+  surface draws nothing and text inherits whatever sits behind it. It renders,
+  and it renders wrong, which is the failure mode `docs/shell-variables.md`
+  exists to surface.
+
+```ts
+import {
+  Canvas,
+  NavRail,
+  ShellLayout,
+} from '@stuffbucket/maximal-electron/renderer';
+import '@stuffbucket/maximal-electron/renderer/styles.css';
+```
+
+Every rule is scoped under `.sb-shell`. `ShellLayout` applies that root class;
+a consumer composing the smaller exports directly applies it themselves.
+
+### The surfaces that portal
+
+`Dialog`, `Menu` and the tooltip inside `IconButton` do not render where they
+are written. Each one is a Radix portal, and a Radix portal with no `container`
+mounts on `document.body`, which is outside `.sb-shell` wherever the consumer
+put it. Applying the class by hand does not reach them: the portalled subtree is
+a sibling of the container, not a descendant.
+
+That is not a cosmetic failure. Measured in a browser, on a page carrying only
+`@stuffbucket/maximal-electron/renderer/styles.css` and the eleven required
+properties, a standalone `Dialog` on `document.body` computed
+`position: static`, `width: 1280px`, `background-color: rgba(0, 0, 0, 0)` and
+`border-radius: 0`, over a scrim that computed `position: static` and painted
+nothing — an ordinary block in the page flow. Radix meanwhile applied everything
+a modal does: twelve tab presses never left the dialog, and
+`aria-hidden="true"` was set on the element holding the rest of the application.
+The behaviour was modal and the appearance was not, and a keyboard user was
+trapped in something that looked like a paragraph.
+
+So the components do not take the Radix default. `ShellLayout` publishes its own
+root element through a context, and a component that finds no shell above it
+builds one: a `div.sb-shell[data-sb-shell-portal-root]` appended to
+`document.body`, created once per document and reused. Composed or standalone,
+a portalled surface is inside an element the stylesheet is scoped to. Neither
+half is a public export — there is nothing for a consumer to wire.
+
+One consequence a consumer has to know. **Define the `--shell-*` properties on
+`:root` or `body`, not only on the element you put `.sb-shell` on.** The portal
+root is a child of `body`, so it inherits from `body` and not from your
+container. With the properties on `:root` a standalone dialog computed
+`position: fixed`, `width: 520px`, the declared `--shell-raised` and
+`border-radius: 14px` over a scrim at `rgba(0, 0, 0, 0.34)`. With them on the
+container only, the same dialog was still fixed, centred, sized and scrimmed,
+and drew `background-color: rgba(0, 0, 0, 0)`, because `--shell-raised` is one
+of the eleven that carry no fallback. That is the transparent-shell failure
+`docs/shell-variables.md` describes, not a new one, but a portal is where it
+appears first.
+
+`tests/portal-container.test.ts` holds the check, and `ShellLayout.stories.tsx`
+holds the browser half of it under `npm run storybook:check`.
+
+`docs/shell-variables.md` holds the whole contract, and this document does not
+restate it. It says which properties are required, which carry a fallback in
+the rule that reads them, which two JavaScript resolves rather than any rule,
+and why there is no defaults layer.
+`@stuffbucket/maximal-electron/verify/shell-variables` derives that contract
+from the stylesheet a consumer installed, so an application asserts its own
+adapter against the file it has rather than against a table somebody copied.
+
+### The peers
+
+Every package `./renderer` imports is an optional peer, and npm says nothing
+about a missing one at install time. `Dialog`, `Menu` and `RadioGroup` reach
+Radix packages the layout components do not, so a consumer who was already
+importing `ShellLayout` gains three. README.md carries the whole row, and
+`npm run verify:exports` compares it against the import graph the built entry
+reaches, so the table cannot invent a peer or omit one.
+
+## Wiring a terminal
+
+`TerminalView` takes its transport as a value, so it knows nothing about an IPC
+contract and a consumer supplies their own. Writing that transport was the
+consumer's job until now: five request methods, two event subscriptions, and
+the id filtering between them. Every consumer writes it the same way, and one
+of them writes it wrong.
+
+Two exports do it instead. `createTerminalTransport` from `./renderer` is the
+renderer half. `registerTerminalChannels` from `./host/terminal` answers it
+from a `TerminalHost`. Neither picks a channel name, for the reason
+`exposeBridge` takes its `namespace` from the caller: a name this package chose
+is a name every consumer with a contract of their own has to work around. Issue
+#22.
+
+```ts
+// the consumer's renderer, over the preload they exposed themselves
+import {
+  createTerminalTransport,
+  TerminalView,
+} from '@stuffbucket/maximal-electron/renderer';
+
+const transport = createTerminalTransport({
+  invoke: (channel, request) => window.myApp.invoke(channel, request),
+  on: (event, listener) => window.myApp.on(event, listener),
+  channels: {
+    spawn: 'term:spawn',
+    write: 'term:write',
+    resize: 'term:resize',
+    terminate: 'term:kill',
+    list: 'term:list',
+    data: 'term:data',
+    exit: 'term:exit',
+  },
+});
+
+<TerminalView id="one" transport={transport} disposition="detach" />;
+```
+
+`invoke` and `on` are the consumer's own. `exposeBridge` does not supply them:
+its capabilities are three named native powers, and a request channel is not
+one of them. A consumer exposes their own pair through `extend`, or through a
+preload of their own, and passes it here. This shell does the first, in
+`src/preload/index.ts`.
+
+```ts
+// the consumer's main process
+import { app, ipcMain } from 'electron';
+import {
+  registerTerminalChannels,
+  TerminalHost,
+} from '@stuffbucket/maximal-electron/host/terminal';
+
+const host = new TerminalHost({
+  homeDirectory: app.getPath('home'),
+  defaultShell: process.env['SHELL'] ?? '/bin/zsh',
+  env: { TERM_PROGRAM: 'Consumer' },
+  emit: (id, chunk) => mainWindow.webContents.send('term:data', { id, data: chunk }),
+  onExit: (id, exitCode) =>
+    mainWindow.webContents.send('term:exit', { id, exitCode }),
+});
+
+registerTerminalChannels(ipcMain, host, {
+  channels: {
+    spawn: 'term:spawn',
+    write: 'term:write',
+    resize: 'term:resize',
+    terminate: 'term:kill',
+    list: 'term:list',
+  },
+});
+```
+
+Four things about that pair are worth stating rather than discovering.
+
+**The two halves name a different number of channels.** The transport takes
+seven and the registration takes five. `data` and `exit` are pushed by the
+host, so a `TerminalHost` reports them through `emit` and `onExit`, which the
+consumer sends on whatever the host's own window send looks like. Nothing here
+sends for them: `./host/terminal` imports no `electron` and has no
+`webContents` to reach.
+
+**The names are typed against the caller's own contract.**
+`TerminalChannels<C, E>` takes the caller's channel union and event union, so
+`TerminalChannels<IpcChannel, IpcEvent>` makes a channel that contract does not
+declare a compile error rather than a silent no-op. `TerminalRequestChannels<C>`
+is the five-name half `registerTerminalChannels` takes.
+
+**`registerTerminalChannels` takes a resolver as well as a host.** Its `host`
+parameter accepts a `TerminalHost` or a function of the invoke event. A
+consumer with one manager passes the manager. A consumer that keys one per
+window passes the function, which is what this repository does: a session
+belongs to a window, and `src/main/ipc.ts` resolves the manager from
+`event.sender`. A request that resolves to no manager is dropped, and `list`
+answers with no sessions.
+
+**Its `ipcMain` parameter is structural, not an `electron` import.**
+`TerminalIpcMain<E>` names the one method the registration calls, so
+`./host/terminal` still loads no `electron`. That is what keeps the module
+inside the unit suite, and inside the criterion `scripts/mutation-scope.mjs`
+applies; it is deferred there rather than mutated, under #125. Passing
+Electron's own `ipcMain` satisfies the parameter, and `E` is inferred from it.
+
+The rule `exposeBridge` states holds here too. `src/renderer/lib/bridge-terminal.ts`
+calls `createTerminalTransport` and `src/main/ipc.ts` calls
+`registerTerminalChannels`, so the export is not a second implementation that
+can drift from the one this repository runs: it is the one this repository
+runs. Neither half imports the other, and neither may, so
+`tests/terminal-channels.test.ts` is the check that duplication owes: it drives
+both halves and asserts they name the same set.

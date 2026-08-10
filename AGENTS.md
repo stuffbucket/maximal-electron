@@ -26,10 +26,12 @@ linked document.
 | Check the palette | `npm run check:contrast` |
 | Package | `npm run package` |
 | Verify a package | `npm run verify:package` |
+| Verify a crash writes a minidump | `npm run verify:crash-artifact` |
 | Verify the Electron download cache | `npm run verify:electron-cache` |
 | Verify a publish | `npm run verify:publish` |
 | Launch a package | `npm run smoke:packaged` |
 | Verify the exports | `npm run verify:exports` |
+| Verify the fixture consumes the package | `npm run verify:fixture-imports` |
 | Verify an install by specifier | `npm run verify:git-install` |
 | Verify the shell stays agnostic | `npm run verify:neutral` |
 | Verify the docs | `npm run verify:docs` |

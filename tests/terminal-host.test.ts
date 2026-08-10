@@ -3,6 +3,11 @@ import { homedir } from 'node:os';
 import { describe, expect, it } from 'vitest';
 
 import { TerminalHost } from '../src/host/terminal-host.js';
+import {
+  registerTerminalChannels,
+  type TerminalChannelHost,
+  type TerminalRequestChannels,
+} from '../src/host/terminal-host.js';
 
 /**
  * Owner-scoped reaping, against real shells.
@@ -134,5 +139,122 @@ describe.skipIf(!POSIX)('TerminalHost, per owner', () => {
     host.terminateAll();
     expect(await until(() => !alive(pid))).toBe(true);
     expect(host.list()).toEqual([]);
+  });
+});
+
+/**
+ * The registration a consumer wires onto their own `ipcMain`.
+ *
+ * Nothing here names a channel of this repository's: the names are the
+ * caller's argument, so these use names no contract holds and a hard-coded one
+ * would fail. `tests/terminal-channels.test.ts` is what pairs the names this
+ * shell passes with the ones its renderer calls.
+ */
+
+const CHANNELS: TerminalRequestChannels = {
+  spawn: 'consumer/open',
+  write: 'consumer/write',
+  resize: 'consumer/resize',
+  terminate: 'consumer/close',
+  list: 'consumer/list',
+};
+
+/** An `ipcMain` that records rather than registers. */
+function fakeIpcMain() {
+  const handlers = new Map<string, (event: string, request: unknown) => unknown>();
+  return {
+    ipcMain: {
+      handle(channel: string, listener: (event: string, request: unknown) => unknown) {
+        handlers.set(channel, listener);
+      },
+    },
+    handlers,
+    invoke: (channel: string, event: string, request?: unknown) =>
+      handlers.get(channel)?.(event, request),
+  };
+}
+
+/** A manager that records rather than spawning. */
+function fakeHost() {
+  const calls: string[] = [];
+  const host: TerminalChannelHost = {
+    spawn: (request) => calls.push(`spawn ${request.id} ${String(request.cols)}x${String(request.rows)}`),
+    write: (id, data) => calls.push(`write ${id} ${data}`),
+    resize: (id, cols, rows) => calls.push(`resize ${id} ${String(cols)}x${String(rows)}`),
+    terminate: (id) => calls.push(`terminate ${id}`),
+    list: () => [{ id: 'kept', cwd: '/tmp', shell: '/bin/sh', startedAt: 17 }],
+  };
+  return { host, calls };
+}
+
+describe('registerTerminalChannels', () => {
+  it('answers each of the five names it was given, and nothing else', () => {
+    const wire = fakeIpcMain();
+    registerTerminalChannels(wire.ipcMain, fakeHost().host, { channels: CHANNELS });
+
+    // The floor. A registration that answered nothing would satisfy every
+    // assertion below by holding an empty map.
+    expect(wire.handlers.size).toBe(Object.keys(CHANNELS).length);
+    expect([...wire.handlers.keys()].sort()).toEqual([...Object.values(CHANNELS)].sort());
+  });
+
+  it('drives the manager from the request each channel carries', () => {
+    const wire = fakeIpcMain();
+    const { host, calls } = fakeHost();
+    registerTerminalChannels(wire.ipcMain, host, { channels: CHANNELS });
+
+    wire.invoke(CHANNELS.spawn, 'window', { id: 'one', cols: 80, rows: 24 });
+    wire.invoke(CHANNELS.write, 'window', { id: 'one', data: 'ls\r' });
+    wire.invoke(CHANNELS.resize, 'window', { id: 'one', cols: 100, rows: 40 });
+    wire.invoke(CHANNELS.terminate, 'window', { id: 'one' });
+
+    expect(calls).toEqual([
+      'spawn one 80x24',
+      'write one ls\r',
+      'resize one 100x40',
+      'terminate one',
+    ]);
+    expect(wire.invoke(CHANNELS.list, 'window')).toEqual([
+      { id: 'kept', cwd: '/tmp', shell: '/bin/sh', startedAt: 17 },
+    ]);
+  });
+
+  it('asks the caller which manager a request belongs to', () => {
+    // One manager per window is what stops a window reaching another's
+    // shells, so the registration resolves the manager per request.
+    const wire = fakeIpcMain();
+    const first = fakeHost();
+    const second = fakeHost();
+    const asked: string[] = [];
+
+    registerTerminalChannels(
+      wire.ipcMain,
+      (event: string) => {
+        asked.push(event);
+        return event === 'first' ? first.host : second.host;
+      },
+      { channels: CHANNELS },
+    );
+
+    wire.invoke(CHANNELS.write, 'first', { id: 'one', data: 'a' });
+    wire.invoke(CHANNELS.write, 'second', { id: 'one', data: 'b' });
+
+    expect(asked).toEqual(['first', 'second']);
+    expect(first.calls).toEqual(['write one a']);
+    expect(second.calls).toEqual(['write one b']);
+  });
+
+  it('drops a request that reaches no manager, and lists no sessions', () => {
+    // Nothing would reap a session opened for an owner that has gone.
+    const wire = fakeIpcMain();
+    const { calls } = fakeHost();
+    registerTerminalChannels(wire.ipcMain, () => undefined, { channels: CHANNELS });
+
+    for (const channel of Object.values(CHANNELS)) {
+      expect(() => wire.invoke(channel, 'gone', { id: 'one', data: 'a' })).not.toThrow();
+    }
+
+    expect(calls).toEqual([]);
+    expect(wire.invoke(CHANNELS.list, 'gone')).toEqual([]);
   });
 });

@@ -3,11 +3,14 @@
 /*
  * Controls, shared across every document.
  *
- * There are three renderer documents in this repository — the shell, the
- * overlay panel, and the capture fixture — and until now they shared only
+ * There are two renderer documents in this repository — the shell and the
+ * overlay panel — and until now they shared only
  * `tokens.css`. `overlay.css` had no `button` reset and no `:focus-visible`
  * rule, so a control authored for the shell and rendered in the overlay got
  * the user-agent's chrome and no focus ring at all.
+ *
+ * The capture fixture is not one of them. It consumes the package, so it reads
+ * `dist/renderer/styles.css` and defines the `--shell-*` contract itself.
  *
  * What belongs here is anything that has to look the same wherever it lands.
  * What belongs in `shell.css` is the shell's own furniture: panels, the title

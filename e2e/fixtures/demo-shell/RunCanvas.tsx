@@ -1,14 +1,14 @@
-import { Bot, GitBranch } from 'lucide-react';
-
-import { STATUS_LABELS, type AgentRun } from './runs.js';
-import { Canvas } from '../../../src/renderer/components/Canvas.js';
 import {
+  Canvas,
   Card,
   EmptyState,
   Row,
   StatusChip,
   type ViewMode,
-} from '../../../src/renderer/components/Controls.js';
+} from '@stuffbucket/maximal-electron/renderer';
+import { Bot, GitBranch } from 'lucide-react';
+
+import { STATUS_LABELS, type AgentRun } from './runs.js';
 
 /**
  * The fleet canvas.

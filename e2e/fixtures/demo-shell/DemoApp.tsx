@@ -1,14 +1,14 @@
+import {
+  ShellLayout,
+  TerminalTabs,
+  Toolbar,
+  useShellTabs,
+  useThemePreference,
+  type Tab,
+  type ViewMode,
+} from '@stuffbucket/maximal-electron/renderer';
 import { useCallback, useState, useMemo } from 'react';
 
-import { Toolbar, type ViewMode } from '../../../src/renderer/components/Controls.js';
-import { ShellLayout } from '../../../src/renderer/components/ShellLayout.js';
-import { type Tab } from '../../../src/renderer/components/TabBar.js';
-import { TerminalTabs } from '../../../src/renderer/components/TerminalTabs.js';
-import {
-  bridgeTerminalTransport,
-  currentTerminalTheme,
-} from '../../../src/renderer/lib/bridge-terminal.js';
-import { usePreferences } from '../../../src/renderer/lib/bridge.js';
 import {
   DEFAULT_VIEW,
   runsFor,
@@ -16,10 +16,13 @@ import {
   type DemoViewId,
 } from './views.js';
 import { RUNS } from './runs.js';
-import { useShellTabs } from '../../../src/renderer/lib/useShellTabs.js';
-import { useThemePreference } from '../../../src/renderer/lib/useThemePreference.js';
 
 import { AgentNav } from './AgentNav.js';
+import {
+  demoTerminalTheme,
+  demoTerminalTransport,
+  useHostTheme,
+} from './host.js';
 import { RunCanvas } from './RunCanvas.js';
 import { RunInspector } from './RunInspector.js';
 
@@ -31,11 +34,12 @@ import { RunInspector } from './RunInspector.js';
  * `App` keeps its own data path untouched, and this one is free to be a
  * screenshot fixture.
  *
- * The chrome is shared, and shared by import rather than by copy: `ShellLayout`
- * is the same three-panel frame the application uses, and `TitleBar`,
- * `TerminalTabs`, `NavRail`, `Controls`, and every class name in `shell.css`
- * come from the real shell. That makes this the first consumer of those
- * primitives, which is the same relationship a dependent project will have.
+ * The chrome is shared, and shared the way a dependent project shares it:
+ * every import resolves through `@stuffbucket/maximal-electron`'s own
+ * `exports` map, which is the map a registry install resolves through. Nothing
+ * here reaches into `src/`, and `npm run verify:fixture-imports` fails if it
+ * ever does again. So this really is the first consumer of those primitives,
+ * and it defines the `--shell-*` contract itself in `demo.css`.
  */
 
 /** A tab in the fleet: a run, or a terminal somebody opened. */
@@ -82,7 +86,7 @@ export function DemoApp() {
    */
   const [mode, setMode] = useState<ViewMode>('list');
   const [selectedId, setSelectedId] = useState<string>();
-  const [prefs] = usePreferences();
+  const theme = useHostTheme();
 
   const { tabs, activeTab, setActiveTab, openTab, closeTab } = useShellTabs(
     SESSION_TABS,
@@ -93,7 +97,7 @@ export function DemoApp() {
   const selected = RUNS.find((run) => run.id === selectedId);
   const current = tabs.find((tab) => tab.id === activeTab);
 
-  useThemePreference(prefs);
+  useThemePreference(theme);
 
   /** Activating a session tab selects the run it is following. */
   const selectTab = useCallback(
@@ -123,8 +127,8 @@ export function DemoApp() {
             ids={tabs.filter((tab) => tab.kind === 'terminal').map((tab) => tab.id)}
             activeId={activeTab}
             shell={DEMO_SHELL}
-            transport={bridgeTerminalTransport}
-            theme={currentTerminalTheme()}
+            transport={demoTerminalTransport}
+            theme={demoTerminalTheme()}
           />
         ) : (
           <>

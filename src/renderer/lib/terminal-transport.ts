@@ -81,6 +81,117 @@ export interface DetachableTerminalTransport extends TerminalTransport {
 }
 
 /**
+ * What a host calls each terminal channel.
+ *
+ * No defaults. A name this package picked would be one every consumer with an
+ * IPC contract of their own has to work around, which is the rule
+ * `docs/embedding.md` states for `exposeBridge`'s namespace and issue #22 asks
+ * for. `spawn` through `list` are requests the renderer makes; `data` and
+ * `exit` are events the host pushes.
+ *
+ * The two parameters let a caller pin the names to its own contract:
+ * `TerminalChannels<IpcChannel, IpcEvent>` makes a channel this shell does not
+ * declare a compile error rather than a silent no-op.
+ */
+export interface TerminalChannels<
+  C extends string = string,
+  E extends string = string,
+> {
+  spawn: C;
+  write: C;
+  resize: C;
+  terminate: C;
+  list: C;
+  data: E;
+  exit: E;
+}
+
+/** What a host sends on the `data` channel. */
+export interface TerminalDataMessage {
+  id: string;
+  data: string;
+}
+
+/** What a host sends on the `exit` channel. */
+export interface TerminalExitMessage {
+  id: string;
+  exitCode: number;
+}
+
+export interface TerminalTransportOptions<
+  C extends string = string,
+  E extends string = string,
+> {
+  /** The caller's own request call. Its contract types the request; this does not. */
+  invoke: (channel: C, request?: unknown) => Promise<unknown>;
+  /** The caller's own subscription. It returns its own unsubscribe. */
+  on: (event: E, listener: (payload: unknown) => void) => () => void;
+  channels: TerminalChannels<C, E>;
+}
+
+/**
+ * A transport over a caller's own IPC, given the names it uses.
+ *
+ * `TerminalView` takes a transport as a value, and writing one is five
+ * one-line calls plus the id filtering, which every consumer would write the
+ * same way and one of them would get wrong. This is that wiring, with nothing
+ * of this repository's contract in it.
+ *
+ * The two events are per host, not per session, so a host that owns several
+ * sessions sends every view every event and each subscription filters by id.
+ *
+ * Each payload is asserted rather than parsed. The caller's contract already
+ * types what its own channels carry, and a validator here would be a second
+ * shape to keep in step with the first.
+ */
+export function createTerminalTransport<C extends string, E extends string>({
+  invoke,
+  on,
+  channels,
+}: TerminalTransportOptions<C, E>): DetachableTerminalTransport {
+  return {
+    async spawn({ id, cwd, shell, cols, rows }) {
+      await invoke(channels.spawn, { id, cols, rows, shell, cwd });
+    },
+
+    async write(id, data) {
+      await invoke(channels.write, { id, data });
+    },
+
+    async resize(id, cols, rows) {
+      await invoke(channels.resize, { id, cols, rows });
+    },
+
+    async terminate(id) {
+      await invoke(channels.terminate, { id });
+    },
+
+    async list() {
+      return (await invoke(channels.list)) as TerminalSession[];
+    },
+
+    subscribe(id, listener) {
+      const onData = on(channels.data, (payload) => {
+        const message = payload as TerminalDataMessage;
+        if (message.id === id) listener({ type: 'data', data: message.data });
+      });
+
+      const onExit = on(channels.exit, (payload) => {
+        const message = payload as TerminalExitMessage;
+        if (message.id === id) {
+          listener({ type: 'exit', exitCode: message.exitCode });
+        }
+      });
+
+      return () => {
+        onData();
+        onExit();
+      };
+    },
+  };
+}
+
+/**
  * The colours the emulator needs, resolved from custom properties.
  *
  * `ghostty-web` renders to a canvas, so it inherits nothing from CSS and takes

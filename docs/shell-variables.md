@@ -58,30 +58,48 @@ description of what each one draws.
 ## Fallback
 
 Each of these has a value in the CSS. Set one when the design system differs
-from it. Three fall back to another `--shell-*` rather than to a literal, which
-is where legibility survives an unset value but meaning does not:
+from it. Thirteen fall back to another `--shell-*` rather than to a literal,
+which is where legibility survives an unset value but meaning does not:
 `--shell-danger` resolving to `--shell-hover` draws a destructive control that
 looks exactly like an ordinary hovered one.
 
 | Variable | Fallback | Drawn by |
 | --- | --- | --- |
-| `--shell-border-strong` | `--shell-border` | tooltip outline |
-| `--shell-control-height` | `28px` | icon button box |
-| `--shell-danger` | `--shell-hover` | destructive icon button, hovered |
-| `--shell-danger-contrast` | `--shell-text` | destructive icon button glyph |
+| `--shell-accent-contrast` | `--shell-text` | the `Switch` thumb, and the label on a primary `Button` |
+| `--shell-border-hover` | `--shell-accent` | the outline of a hovered button or field |
+| `--shell-border-strong` | `--shell-border` | tooltip, dialog and menu outlines, hovered card border, scrollbar thumb |
+| `--shell-control-height` | `28px` | icon button box, field height |
+| `--shell-danger` | `--shell-hover` | destructive icon button, destructive `Button` fill, highlighted destructive menu item |
+| `--shell-danger-contrast` | `--shell-text` | the glyph or label on any of those |
+| `--shell-disabled-opacity` | `0.5` | a disabled button, field, switch or choice |
+| `--shell-elevation` | `none` | the shadow under a tooltip, a dialog and a menu popup |
 | `--shell-focus` | `--shell-accent` | focus ring on every control |
 | `--shell-font` | `400 14px/1.5 system-ui, sans-serif` | the shell's whole type |
+| `--shell-font-mono` | `ui-monospace, SFMono-Regular, Menlo, monospace` | the value half of a `Field` |
+| `--shell-input-background` | `--shell-canvas` | the surface of a text field, textarea, select and radio |
+| `--shell-input-border` | `--shell-border-strong` | the outline of one of those at rest |
+| `--shell-invalid` | `--shell-danger` | the outline and the message of a field that failed validation |
 | `--shell-nav-heading-height` | `24px` | the space a collapsed `NavRail` keeps for a section heading |
-| `--shell-radius` | `6px` | buttons, tabs, nav items |
-| `--shell-radius-small` | `4px` | tab close affordance, tooltip |
+| `--shell-radius` | `6px` | buttons, tabs, nav items, list rows, fields, menu popup |
+| `--shell-radius-dialog` | `14px` | the modal card, which is a panel rather than a control |
+| `--shell-radius-large` | `8px` | the `Card` tile, for the same reason |
+| `--shell-radius-small` | `4px` | tab close affordance, tooltip, segmented control, menu item |
+| `--shell-scrim` | `rgb(0 0 0 / 0.34)` | the layer a modal dims the window with |
 | `--shell-space-1` | `4px` | nav section gaps |
 | `--shell-space-2` | `8px` | control gaps, terminal padding |
 | `--shell-space-3` | `12px` | title bar and status bar padding, grid gaps |
-| `--shell-space-4` | `16px` | canvas padding, nav section spacing |
-| `--shell-status` | `--shell-text-subtle` | the status dot |
+| `--shell-space-4` | `16px` | canvas padding, nav section spacing, dialog padding |
+| `--shell-space-5` | `24px` | the padding an `EmptyState` keeps around its message |
+| `--shell-status` | `--shell-text-subtle` | the status dot, the `StatusChip` label, the `Banner` text |
+| `--shell-status-muted` | `--shell-active` | the `StatusChip` and `Banner` fills |
 | `--shell-terminal-background` | `--shell-canvas` | the terminal's own surface |
 | `--shell-titlebar-height` | `40px` | the title bar row of the application grid |
 | `--shell-warning` | `--shell-accent` | the attention marker on a tab |
+
+`--shell-status` and `--shell-status-muted` are the pair a host maps its own
+states onto. Nothing here maps them: a `[data-status]` vocabulary is the
+application's, and `StatusChip` passes the raw state straight through to the
+attribute. A host that sets neither gets a legible chip in a neutral fill.
 
 ## Runtime
 
@@ -99,6 +117,31 @@ black.
 
 `--shell-terminal-background` is read both ways and is listed above, under its
 CSS kind.
+
+## What the variables do not cover
+
+Every rule in the shipped stylesheet is scoped under `.sb-shell`, so the
+document around it is the consumer's. Defining all eleven required variables
+still renders a shell that does not fill the window, because
+`.sb-shell.app { height: 100% }` measures against an ancestor that has no
+height.
+
+A consumer supplies the frame themselves:
+
+```css
+html, body, #root { height: 100%; margin: 0 }
+```
+
+This is not a variable and no variable can carry it. It is stated here because
+the symptom — a correct palette on a shell an inch tall — reads as a defect in
+the package rather than as a missing rule in the application, and the capture
+fixture hit it while consuming the package the way this document prescribes.
+
+Two more things the exported components draw that no variable names.
+`structural.css` does not set `svg { stroke-width }`, so Lucide glyphs render at
+their default of 2 against the 1.5 this application uses, and `.dot` ships
+without the halo `shell.css` gives it. Both are the consumer's to add, and
+both are candidates for a variable rather than settled design.
 
 ## Assert against it from a consuming application
 
@@ -156,7 +199,7 @@ failure mode of the last two years of this seam: never an error, only a slightly
 wrong picture. Defaults and a drift check pull in opposite directions, and the
 check is the thing a consumer cannot write for themselves.
 
-**The variables where a default would help already have one.** All sixteen
+**The variables where a default would help already have one.** All thirty
 `fallback` entries above carry their value in the rule that reads them, next to
 the property it sets, where it is visible to anyone reading that rule. A
 separate layer would restate them, and the two would drift. The eleven

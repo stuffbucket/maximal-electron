@@ -2,6 +2,9 @@ import * as Tooltip from '@radix-ui/react-tooltip';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
+import { RENDERER_SURFACE } from '../scripts/export-checks.mjs';
+import * as controls from '../src/renderer/components/controls/index.js';
+import * as surface from '../src/renderer/index.js';
 import {
   getTabPanelId,
   getTabTriggerId,
@@ -10,6 +13,53 @@ import {
 import { TitleBar } from '../src/renderer/components/TitleBar.js';
 
 const tabs = [{ id: 'one', title: 'First document' }];
+
+/**
+ * The demo fixture is the first consumer of `./renderer`, and it reached into
+ * `src/` for names the entry point did not export. A control the barrel gains
+ * and the entry point does not re-export puts that gap back.
+ */
+describe('the renderer entry point', () => {
+  it('publishes a control only when RENDERER_SURFACE names it', () => {
+    /*
+     * Adding a primitive to the barrel is an internal decision. Publishing one
+     * is a permanent commitment to a consumer. Requiring the entry point to
+     * re-export the whole barrel collapses the two, so a primitive added for
+     * one call site inside this repository becomes public API with nothing
+     * asked. `RENDERER_SURFACE` is the deliberate list `verify:exports` holds
+     * the built entry to, and this keeps the barrel from writing to it.
+     */
+    const barrel = Object.keys(controls);
+    const undeclared = barrel.filter(
+      (name) => name in surface && !RENDERER_SURFACE.includes(name),
+    );
+
+    expect(barrel.length).toBeGreaterThan(10);
+    expect(undeclared).toEqual([]);
+  });
+
+  it('exports the hooks and the terminal theme pair a consumer composes with', () => {
+    expect(typeof surface.useThemePreference).toBe('function');
+    expect(typeof surface.useShellTabs).toBe('function');
+    expect(typeof surface.readTerminalTheme).toBe('function');
+  });
+
+  it('resolves the terminal theme through the --shell-* namespace only', () => {
+    /*
+     * `terminalTheme` and `TERMINAL_TOKENS` in `lib/theme.ts` read
+     * `--bg-canvas`, `--text-primary` and `--accent`, which are this
+     * application's names and appear in no shipped stylesheet. Both were
+     * exported once. A consumer resolving them against a `--shell-*` adapter
+     * gets an empty theme and the emulator's defaults, and nothing raises.
+     */
+    const properties = Object.values(surface.SHELL_TERMINAL_PROPERTIES);
+
+    expect(properties.length).toBeGreaterThan(0);
+    expect(properties.filter((name) => !name.startsWith('--shell-'))).toEqual([]);
+    expect('terminalTheme' in surface).toBe(false);
+    expect('TERMINAL_TOKENS' in surface).toBe(false);
+  });
+});
 
 describe('packaged renderer components', () => {
   it('renders injected titlebar regions with their accessible labels', () => {

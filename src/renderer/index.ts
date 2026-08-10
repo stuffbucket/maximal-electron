@@ -41,13 +41,51 @@ export {
 export { TitleBar } from './components/TitleBar.js';
 export { detachedSessions } from './lib/terminal-sessions.js';
 export {
+  createTerminalTransport,
   readTerminalTheme,
   SHELL_TERMINAL_PROPERTIES,
   type DetachableTerminalTransport,
+  type TerminalChannels,
+  type TerminalDataMessage,
   type TerminalDescriptor,
   type TerminalDisposition,
   type TerminalEvent,
+  type TerminalExitMessage,
   type TerminalSession,
   type TerminalTransport,
+  type TerminalTransportOptions,
 } from './lib/terminal-transport.js';
-export { IconButton } from './components/controls/Button.js';
+export {
+  Banner,
+  Button,
+  Card,
+  Checkbox,
+  Dialog,
+  EmptyState,
+  Field,
+  FormField,
+  IconButton,
+  InspectorPanel,
+  Menu,
+  RadioGroup,
+  Row,
+  Select,
+  StatusChip,
+  Switch,
+  TextInput,
+  Textarea,
+  Toolbar,
+  ViewModeSwitch,
+  type ButtonSize,
+  type ButtonVariant,
+  type FieldControl,
+  type MenuItem,
+  type Option,
+  type TileProps,
+  type ViewMode,
+} from './components/controls/index.js';
+export { useShellTabs } from './lib/useShellTabs.js';
+export {
+  useThemePreference,
+  type ThemePreference,
+} from './lib/useThemePreference.js';
