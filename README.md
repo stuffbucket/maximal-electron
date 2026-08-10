@@ -192,6 +192,11 @@ match either way — but that element inherits from `body`, and a property
 defined only on your container never reaches it. `docs/embedding.md` has the
 measurements.
 
+`IconButton` renders a tooltip, so it needs a `Tooltip.Provider` from
+`@radix-ui/react-tooltip` above it. `ShellLayout` supplies one. Compose
+`IconButton` outside it — or `Banner` with `onDismiss`, which draws one — and
+the button is absent rather than broken.
+
 `ShellLayout` takes no children. `left`, `main`, `right` and `status` are named
 props, plus an optional `top` and `bottom`, and `left` is a function of the
 collapsed state because `ShellLayout` owns that state and `NavRail` needs it.
