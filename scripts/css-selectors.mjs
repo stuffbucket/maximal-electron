@@ -113,25 +113,97 @@ function splitSelectorList(prelude) {
   return parts.map((part) => part.replace(/\s+/g, ' ').trim()).filter(Boolean);
 }
 
+/** A property name: a custom property, or an identifier a vendor may prefix. */
+const PROPERTY = /^(--[a-z0-9_-]+|-?[a-z][a-z0-9-]*)$/i;
+
 /**
- * Every individual selector in a stylesheet, in source order, each with whether
- * a conditional at-rule encloses it.
+ * A declaration body split on its top-level semicolons.
  *
- * A style rule's own body is stepped over rather than parsed: a rule nested
- * inside `.sb-shell .tab { … }` is already confined by the selector this
- * returns, so judging it again would report a scoped rule as bare.
+ * A nested block is dropped rather than descended into. Its declarations belong
+ * to the nested selector, and that selector opens a rule of its own.
+ */
+function splitDeclarations(body) {
+  const parts = [];
+  let current = '';
+  let depth = 0;
+  let index = 0;
+
+  while (index < body.length) {
+    const char = body[index];
+    if (char === '"' || char === "'") {
+      const end = endOfString(body, index);
+      if (depth === 0) current += body.slice(index, end);
+      index = end;
+      continue;
+    }
+    if (char === '(') {
+      const end = endOfGroup(body, index);
+      if (depth === 0) current += body.slice(index, end);
+      index = end;
+      continue;
+    }
+    if (char === '{') depth += 1;
+    else if (char === '}') {
+      depth -= 1;
+      current = '';
+    } else if (char === ';' && depth === 0) {
+      parts.push(current);
+      current = '';
+    } else if (depth === 0) current += char;
+    index += 1;
+  }
+  parts.push(current);
+
+  return parts;
+}
+
+/**
+ * Every property name a declaration body sets, in source order and with
+ * repeats.
  *
- * `conditional` is what tells a rule every reader gets from one only some do.
+ * Names only. A value is deliberately not returned: `structural.css` reads the
+ * `--shell-*` namespace where the reference stylesheets carry a palette, so
+ * every shared rule differs in its values by design.
+ */
+export function declaredProperties(body) {
+  const found = [];
+  for (const part of splitDeclarations(body)) {
+    const colon = part.indexOf(':');
+    if (colon === -1) continue;
+    const name = part.slice(0, colon).trim();
+    if (PROPERTY.test(name)) found.push(name.toLowerCase());
+  }
+  return found;
+}
+
+/**
+ * Every style rule in a stylesheet, in source order: the selector, the
+ * conditional at-rules enclosing it, and the property names its body declares.
+ *
+ * A selector list opens one rule per selector, each carrying the same body, so
+ * a caller comparing two stylesheets can key on the individual selector.
+ *
+ * `conditions` is what tells a rule every reader gets from one only some do.
  * `.tab__emphasis` is laid out by a rule at the top level and has its animation
  * shortened by a second inside `@media (prefers-reduced-motion: reduce)`; a
- * reader who loses the first still sees the second. Issue #118.
+ * reader who loses the first still sees the second. Issue #118. The prelude
+ * rather than a flag, because two different media queries are two conditions.
  */
-export function selectorRules(css) {
+export function styleRules(css) {
   const found = [];
   /** What the innermost open block holds. The document holds rules. */
   const holds = [RULES];
+  /** The conditional at-rule preludes enclosing the current block. */
+  const conditions = [];
+  /** The open style rule, when the innermost block is one. */
+  let rule = null;
   let prelude = '';
   let index = 0;
+
+  const write = (text) => {
+    if (rule) rule.body += text;
+    else prelude += text;
+  };
 
   while (index < css.length) {
     const char = css[index];
@@ -144,14 +216,14 @@ export function selectorRules(css) {
 
     if (char === '"' || char === "'") {
       const end = endOfString(css, index);
-      prelude += css.slice(index, end);
+      write(css.slice(index, end));
       index = end;
       continue;
     }
 
     if (char === '(') {
       const end = endOfGroup(css, index);
-      prelude += css.slice(index, end);
+      write(css.slice(index, end));
       index = end;
       continue;
     }
@@ -162,20 +234,37 @@ export function selectorRules(css) {
       index += 1;
 
       const top = holds.at(-1);
-      if (top !== RULES && top !== CONDITIONAL_RULES) holds.push('declarations');
-      else if (head.startsWith('@')) {
+      if (top !== RULES && top !== CONDITIONAL_RULES) {
+        write('{');
+        holds.push('declarations');
+      } else if (head.startsWith('@')) {
         const name = atRuleName(head);
-        if (CONDITIONAL.has(name)) holds.push(CONDITIONAL_RULES);
-        else holds.push(NESTS_RULES.has(name) ? RULES : 'declarations');
+        if (CONDITIONAL.has(name)) {
+          conditions.push(head.replace(/\s+/g, ' '));
+          holds.push(CONDITIONAL_RULES);
+        } else holds.push(NESTS_RULES.has(name) ? RULES : 'declarations');
       } else {
-        const conditional = holds.includes(CONDITIONAL_RULES);
-        for (const selector of splitSelectorList(head)) found.push({ selector, conditional });
+        rule = {
+          selectors: splitSelectorList(head),
+          conditions: [...conditions],
+          body: '',
+          depth: holds.length,
+        };
         holds.push('declarations');
       }
       continue;
     }
 
     if (char === '}') {
+      if (rule && holds.length === rule.depth + 1) {
+        const properties = declaredProperties(rule.body);
+        for (const selector of rule.selectors) {
+          found.push({ selector, conditions: rule.conditions, properties });
+        }
+        rule = null;
+      } else if (rule) write('}');
+
+      if (holds.at(-1) === CONDITIONAL_RULES) conditions.pop();
       if (holds.length > 1) holds.pop();
       prelude = '';
       index += 1;
@@ -185,16 +274,28 @@ export function selectorRules(css) {
     // `@import url(…);` and any other statement at-rule. Its prelude opens no
     // block, and carrying it forward would prefix the next rule's selector.
     if (char === ';') {
-      prelude = '';
+      if (rule) write(';');
+      else prelude = '';
       index += 1;
       continue;
     }
 
-    prelude += char;
+    write(char);
     index += 1;
   }
 
   return found;
+}
+
+/**
+ * Every individual selector in a stylesheet, in source order, each with whether
+ * a conditional at-rule encloses it.
+ */
+export function selectorRules(css) {
+  return styleRules(css).map(({ selector, conditions }) => ({
+    selector,
+    conditional: conditions.length > 0,
+  }));
 }
 
 /** Every individual selector in a stylesheet, in source order. */

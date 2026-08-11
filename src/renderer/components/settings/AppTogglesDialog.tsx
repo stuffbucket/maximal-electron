@@ -60,9 +60,9 @@ export function AppTogglesDialog({
       ) : (
         <ul className="app-list">
           {apps.map((app) => (
-            <li className="app" key={app.id} data-testid={`app-${app.id}`}>
-              <div className="app__head">
-                <span className="app__name">{app.name}</span>
+            <li className="app-card" key={app.id} data-testid={`app-${app.id}`}>
+              <div className="app-card__head">
+                <span className="app-card__name">{app.name}</span>
 
                 {app.status === 'coming-soon' ? (
                   <span className="tag">{APP_STATUS_LABELS[app.status]}</span>
@@ -79,14 +79,14 @@ export function AppTogglesDialog({
                 )}
               </div>
 
-              <p className="app__path">{app.path ?? APP_STATUS_LABELS[app.status]}</p>
+              <p className="app-card__path">{app.path ?? APP_STATUS_LABELS[app.status]}</p>
 
               {app.installCommand !== undefined && (
-                <div className="app__install">
+                <div className="app-card__install">
                   <p className="settings__description">
                     Run this to install {app.name}, then scan again.
                   </p>
-                  <code className="app__command">{app.installCommand}</code>
+                  <code className="app-card__command">{app.installCommand}</code>
                   <div className="settings__row">
                     <CopyButton
                       text={app.installCommand}

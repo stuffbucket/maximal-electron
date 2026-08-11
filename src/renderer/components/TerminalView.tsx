@@ -52,6 +52,15 @@ export type TerminalViewProps = TerminalViewCommonProps &
     | { disposition: 'detach'; transport: DetachableTerminalTransport }
   );
 
+/**
+ * One terminal, drawn by `ghostty-web` into a canvas.
+ *
+ * It takes a transport rather than reaching for a bridge, which is what keeps
+ * this package free of any particular IPC contract: build one with
+ * `createTerminalTransport` and name your own channels. The emulator inherits
+ * nothing from CSS, so `theme` carries literal colours — `readTerminalTheme`
+ * with `SHELL_TERMINAL_PROPERTIES` resolves them from the shell contract.
+ */
 export function TerminalView({
   id,
   cwd,

@@ -14,6 +14,8 @@
 
 export { Button, IconButton, type ButtonSize, type ButtonVariant } from './Button.js';
 
+export { Callout } from './Callout.js';
+
 export {
   Checkbox,
   Field,

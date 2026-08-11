@@ -311,11 +311,16 @@ They are bistable. Running `npm run stills` three times over identical code
 produced state A once and state B twice, differing by 179,000 pixels — around
 four percent of the frame — in the canvas region of `01-projects` and
 `03-multi-agent-tabs`. A separate 5,024-pixel floor is the macOS traffic lights,
-which are coloured or grey depending on whether the window was key.
+which are coloured or grey depending on whether the window was key. A third,
+worth 938 pixels, is the focus ring on `[data-testid="mode-grid"]` in
+`test-results/shell.png`, which sits or does not depending on what the run
+touched last.
 
 This was learned the expensive way: a pixel difference was attributed to a CSS
 change, bisected to a single rule, and that rule then turned out to match zero
-elements in the fixture under a DOM probe. The instrument was the variable.
+elements in the fixture under a DOM probe. The instrument was the variable. The
+938-pixel ring cost two package builds the same way, after the paragraph above
+was already written.
 
 For a renderer change, the evidence is a computed-layout assertion in a real
 engine, and for a stylesheet change, a text diff of the built CSS in

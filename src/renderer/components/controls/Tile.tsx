@@ -17,6 +17,10 @@ import type { ReactNode } from 'react';
  * supplies. The attribute is unchanged, so `.card[aria-selected='true']` in
  * the stylesheet still does what it did.
  *
+ * There is no `tabIndex` here, and passing one is not a thing this takes.
+ * Inside `Canvas` the listbox owns the tab stop and the arrow keys, and it
+ * writes `tabIndex` on this element from the outside.
+ *
  * `modifier` adds the view's own class beside the base one. `status` sets
  * `data-status`, which the stylesheet colours from.
  */
@@ -54,12 +58,29 @@ function Selectable({
 
 export type TileProps = Omit<Parameters<typeof Selectable>[0], 'base'>;
 
-/** A tile in a grid. */
+/**
+ * A tile in a grid.
+ *
+ * A selectable option, not a container: `selected` and `onSelect` are
+ * required, and `Row` is the same component drawn for a dense list. Neither
+ * lays its children out — pass `modifier` and style that class yourself.
+ *
+ * `status` reaches the markup as `data-status` and no stylesheet here maps a
+ * value of it, on `StatusChip`'s terms: a status vocabulary is the host's. On a
+ * tile it does one thing, which is to publish `--shell-status` and
+ * `--shell-status-muted` to everything inside once the host writes the rule
+ * that sets them. The tile itself draws no colour from it, so a `modifier`
+ * class that reads the pair is how a status reaches the tile's own border.
+ */
 export function Card(props: TileProps) {
   return <Selectable base="card" {...props} />;
 }
 
-/** A tile in a dense list. */
+/**
+ * A tile in a dense list.
+ *
+ * `Card` under another name and another base class. See it for the rest.
+ */
 export function Row(props: TileProps) {
   return <Selectable base="row" {...props} />;
 }

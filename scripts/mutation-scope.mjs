@@ -70,6 +70,7 @@ export const DEFERRED = new Map([
   ['scripts/verify-docs.mjs', 125],
   ['scripts/verify-electron-cache.mjs', 125],
   ['scripts/verify-exports.mjs', 125],
+  ['scripts/verify-fixture-imports.mjs', 125],
   ['scripts/verify-git-install.mjs', 125],
   ['scripts/verify-neutral.mjs', 125],
   ['scripts/verify-package.mjs', 125],

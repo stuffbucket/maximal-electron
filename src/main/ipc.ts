@@ -1,5 +1,16 @@
-import { BrowserWindow, app, ipcMain, shell } from 'electron';
+import {
+  BrowserWindow,
+  app,
+  ipcMain,
+  shell,
+  type IpcMainInvokeEvent,
+} from 'electron';
 
+import {
+  registerTerminalChannels,
+  type TerminalChannelHost,
+  type TerminalRequestChannels,
+} from '../host/terminal-host.js';
 import {
   IPC_CHANNELS,
   type AppVersions,
@@ -39,10 +50,36 @@ type IpcHandler<C extends IpcChannel> = (
 ) => IpcResponse<C> | Promise<IpcResponse<C>>;
 
 /**
- * Every channel needs an entry. `Record` over `IpcChannel` makes a missing
- * handler a compile error, which is the guarantee this module exists to give.
+ * The channels `registerTerminalChannels` answers, in this shell's own names.
+ *
+ * The renderer half names the same five in
+ * `src/renderer/lib/bridge-terminal.ts`, and neither imports the other:
+ * `./host/terminal` is a consumer's export and knows nothing of this contract.
+ * `tests/terminal-channels.test.ts` is the check that duplication owes.
  */
-type IpcHandlers = { [C in IpcChannel]: IpcHandler<C> };
+export const TERMINAL_CHANNELS = {
+  spawn: 'pty:spawn',
+  write: 'pty:write',
+  resize: 'pty:resize',
+  terminate: 'pty:kill',
+  list: 'pty:list',
+} as const satisfies TerminalRequestChannels<IpcChannel>;
+
+type TerminalChannel = (typeof TERMINAL_CHANNELS)[keyof typeof TERMINAL_CHANNELS];
+
+const terminalChannels: ReadonlySet<string> = new Set(Object.values(TERMINAL_CHANNELS));
+
+function isTerminalChannel(channel: IpcChannel): channel is TerminalChannel {
+  return terminalChannels.has(channel);
+}
+
+/**
+ * Every remaining channel needs an entry. `Record` over `IpcChannel` makes a
+ * missing handler a compile error, which is the guarantee this module exists
+ * to give; excluding the terminal channels rather than dropping them keeps it,
+ * because a name that leaves `TERMINAL_CHANNELS` has to reappear here.
+ */
+type IpcHandlers = { [C in Exclude<IpcChannel, TerminalChannel>]: IpcHandler<C> };
 
 export function collectVersions(): AppVersions {
   return {
@@ -82,12 +119,6 @@ const handlers: IpcHandlers = {
     void shell.openExternal(request.url);
   },
 
-  'pty:spawn': (request, window) => spawnPty(window, request),
-  'pty:write': (request, window) => writePty(window, request.id, request.data),
-  'pty:resize': (request, window) =>
-    resizePty(window, request.id, request.cols, request.rows),
-  'pty:kill': (request, window) => killPty(window, request.id),
-  'pty:list': (_request, window) => listPtys(window),
   'pty:default-shell': () => defaultShell(),
 
   'overlay:toggle': () => toggleOverlay(),
@@ -123,15 +154,44 @@ const handlers: IpcHandlers = {
     ensureModel((progress) => sendEvent(window, 'model:progress', progress)),
 };
 
+/**
+ * The manager for the window a request arrived from.
+ *
+ * A session belongs to a window, so `native/pty.ts` keys one `TerminalHost`
+ * per `BrowserWindow` and this hands the registration the one that request
+ * belongs to. A request with no window reaches a manager that opens nothing.
+ */
+function terminalHostFor(event: IpcMainInvokeEvent): TerminalChannelHost {
+  const window = BrowserWindow.fromWebContents(event.sender) ?? undefined;
+  return {
+    spawn: (request) => {
+      spawnPty(window, request);
+    },
+    write: (id, data) => {
+      writePty(window, id, data);
+    },
+    resize: (id, cols, rows) => {
+      resizePty(window, id, cols, rows);
+    },
+    terminate: (id) => {
+      killPty(window, id);
+    },
+    list: () => listPtys(window),
+  };
+}
+
 /** Register every contract channel. Call once, before the first window loads. */
 export function registerIpcHandlers(): void {
   for (const channel of IPC_CHANNELS) {
+    if (isTerminalChannel(channel)) continue;
     const handler = handlers[channel] as IpcHandler<IpcChannel>;
     ipcMain.handle(channel, async (event, request: IpcRequest<IpcChannel>) => {
       const window = BrowserWindow.fromWebContents(event.sender) ?? undefined;
       return handler(request, window);
     });
   }
+
+  registerTerminalChannels(ipcMain, terminalHostFor, { channels: TERMINAL_CHANNELS });
 }
 
 /**

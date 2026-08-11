@@ -14,15 +14,18 @@
  * `/index.json`, `@playwright/test` is already here for the end-to-end suite,
  * and `axe-core` arrives with `@storybook/addon-a11y`.
  *
- * Three things are checked per story:
+ * Three things are checked per story, and all three fail the run:
  *
  *   - it renders without throwing
  *   - its `play` function, if it has one, completes without throwing
  *   - axe finds no violations
  *
- * Accessibility failures are reported but do not fail the run, because the
- * palette already has known contrast problems (issue #28) and a tool nobody
- * can get to zero is a tool nobody runs. Render and play failures do fail.
+ * Axe used to be reported and tolerated, because the palette could not reach
+ * zero and a tool nobody can get to zero is a tool nobody runs. The palette
+ * reaches zero now, so a tolerated count of one hid every regression after it:
+ * the next one arrives as "2 violations" and reads the same. Nothing in CI
+ * builds Storybook, so a non-zero exit reaches only the developer who asked
+ * for it. See `docs/storybook.md`.
  */
 
 import { spawn } from 'node:child_process';
@@ -108,6 +111,8 @@ try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 
   let violations = 0;
+  let unchecked = 0;
+  const offenders = [];
 
   for (const story of stories) {
     await page.goto(`${BASE}/iframe.html?id=${story.id}&viewMode=story`, {
@@ -147,9 +152,9 @@ try {
     // `@storybook/addon-a11y` runs axe on every render, and axe refuses to run
     // twice at once. Wait it out rather than racing it.
     await page.addScriptTag({ path: AXE });
-    const found = await page.evaluate(async () => {
+    const attempt = await page.evaluate(async () => {
       const settle = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-      for (let attempt = 0; attempt < 12; attempt += 1) {
+      for (let tries = 0; tries < 12; tries += 1) {
         try {
           const report = await window.axe.run(document, {
             resultTypes: ['violations'],
@@ -161,25 +166,43 @@ try {
               region: { enabled: false },
             },
           });
-          return report.violations.map((violation) => ({
-            id: violation.id,
-            impact: violation.impact,
-            count: violation.nodes.length,
-          }));
+          return {
+            ran: true,
+            found: report.violations.map((violation) => ({
+              id: violation.id,
+              impact: violation.impact,
+              count: violation.nodes.length,
+            })),
+          };
         } catch (error) {
           if (!/already running/i.test(String(error))) throw error;
           await settle(250);
         }
       }
-      return [];
+      return { ran: false, found: [] };
     });
 
+    // The floor. Giving up used to return an empty list, so a story that never
+    // let axe run read as a clean one.
+    if (!attempt.ran) {
+      failed = true;
+      unchecked += 1;
+      console.error(
+        ` FAIL  ${story.id}\n        a11y: axe was still running after 12 attempts, so nothing was checked`,
+      );
+      continue;
+    }
+
+    const found = attempt.found;
+
     if (found.length > 0) {
+      failed = true;
       violations += found.reduce((total, entry) => total + entry.count, 0);
       const summary = found
         .map((entry) => `${entry.id} x${String(entry.count)} (${entry.impact})`)
         .join(', ');
-      console.log(` a11y  ${story.id}\n        ${summary}`);
+      offenders.push(`${story.id}: ${summary}`);
+      console.error(` FAIL  ${story.id}\n        a11y: ${summary}`);
     } else {
       console.log(` ok    ${story.id}`);
     }
@@ -187,11 +210,15 @@ try {
 
   await browser.close();
 
-  console.log(
-    `\n${String(stories.length)} stories. ${
-      failed ? 'Some failed.' : 'All rendered and played.'
-    } ${String(violations)} accessibility violations (not fatal, see issue #28).`,
-  );
+  const rendered = failed ? 'Some failed.' : 'All rendered and played.';
+  const a11y =
+    violations === 0
+      ? 'No accessibility violations.'
+      : `${String(violations)} accessibility violation(s): ${offenders.join('; ')}.`;
+  // What the run declined to answer, stated as a number. A story axe never saw
+  // is not a clean story, and a summary that omits it reads as one.
+  const skipped = unchecked === 0 ? '' : ` Axe did not run on ${String(unchecked)}.`;
+  console.log(`\n${String(stories.length)} stories. ${rendered} ${a11y}${skipped}`);
 } catch (error) {
   console.error(` FAIL  ${error instanceof Error ? error.message : String(error)}`);
   failed = true;

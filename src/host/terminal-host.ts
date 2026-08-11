@@ -183,7 +183,6 @@ export class TerminalHost {
     return [...this.sessions.values()].map((session) => ({ ...session.summary }));
   }
 
-
   write(id: string, data: string): void {
     this.sessions.get(id)?.pty.write(data);
   }
@@ -241,4 +240,82 @@ export class TerminalHost {
       this.flush(id, session);
     }, this.options.flushMs);
   }
+}
+
+/* ------------------------------------------------------------- the wiring */
+
+/**
+ * What a caller calls each terminal request channel.
+ *
+ * No defaults, for the reason `docs/embedding.md` gives for `exposeBridge`'s
+ * namespace: a name this package picked is a name every consumer with a
+ * contract of their own has to work around. Issue #22. The parameter lets a
+ * caller pin the five to that contract.
+ */
+export interface TerminalRequestChannels<C extends string = string> {
+  spawn: C;
+  write: C;
+  resize: C;
+  terminate: C;
+  list: C;
+}
+
+/**
+ * The part of a manager these channels drive. `TerminalHost` satisfies it.
+ *
+ * A caller that keys a manager per window passes a function of the invoke
+ * event instead: `src/main/native/pty.ts` holds one per `BrowserWindow`.
+ */
+export interface TerminalChannelHost {
+  spawn(request: SpawnOptions): void;
+  write(id: string, data: string): void;
+  resize(id: string, cols: number, rows: number): void;
+  terminate(id: string): void;
+  list(): TerminalSession[];
+}
+
+/**
+ * The part of Electron's `ipcMain` this registration uses. Structural rather
+ * than imported, so this module still loads no `electron`. `E` is the invoke
+ * event, inferred from the caller's own `ipcMain`.
+ */
+export interface TerminalIpcMain<E> {
+  handle(channel: string, listener: (event: E, request: unknown) => unknown): void;
+}
+
+/**
+ * Answer a caller's terminal channels from a `TerminalHost`.
+ *
+ * The requests carry `SpawnOptions`, `{ id, data }`, `{ id, cols, rows }`,
+ * `{ id }` and nothing, which is what `createTerminalTransport` sends. A
+ * request that resolves to no manager is dropped, and `list` answers with no
+ * sessions: nothing would reap a session opened for an owner that has gone.
+ */
+export function registerTerminalChannels<E, C extends string>(
+  ipcMain: TerminalIpcMain<E>,
+  host: TerminalChannelHost | ((event: E) => TerminalChannelHost | undefined),
+  { channels }: { channels: TerminalRequestChannels<C> },
+): void {
+  const resolve = (event: E): TerminalChannelHost | undefined =>
+    typeof host === 'function' ? host(event) : host;
+
+  ipcMain.handle(channels.spawn, (event, request) => {
+    resolve(event)?.spawn(request as SpawnOptions);
+  });
+
+  ipcMain.handle(channels.write, (event, request) => {
+    const { id, data } = request as { id: string; data: string };
+    resolve(event)?.write(id, data);
+  });
+
+  ipcMain.handle(channels.resize, (event, request) => {
+    const { id, cols, rows } = request as { id: string; cols: number; rows: number };
+    resolve(event)?.resize(id, cols, rows);
+  });
+
+  ipcMain.handle(channels.terminate, (event, request) => {
+    resolve(event)?.terminate((request as { id: string }).id);
+  });
+
+  ipcMain.handle(channels.list, (event) => resolve(event)?.list() ?? []);
 }

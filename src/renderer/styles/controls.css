@@ -3,11 +3,14 @@
 /*
  * Controls, shared across every document.
  *
- * There are three renderer documents in this repository — the shell, the
- * overlay panel, and the capture fixture — and until now they shared only
+ * There are two renderer documents in this repository — the shell and the
+ * overlay panel — and until now they shared only
  * `tokens.css`. `overlay.css` had no `button` reset and no `:focus-visible`
  * rule, so a control authored for the shell and rendered in the overlay got
  * the user-agent's chrome and no focus ring at all.
+ *
+ * The capture fixture is not one of them. It consumes the package, so it reads
+ * `dist/renderer/styles.css` and defines the `--shell-*` contract itself.
  *
  * What belongs here is anything that has to look the same wherever it lands.
  * What belongs in `shell.css` is the shell's own furniture: panels, the title
@@ -77,6 +80,7 @@ svg {
 .dot[data-status='running'],
 .chip[data-status='running'],
 .nav__item[data-status='running'],
+.callout[data-status='running'],
 .banner[data-status='running'] {
   --status: var(--accent);
   --status-soft: var(--accent-soft);
@@ -85,6 +89,7 @@ svg {
 .dot[data-status='blocked'],
 .chip[data-status='blocked'],
 .nav__item[data-status='blocked'],
+.callout[data-status='blocked'],
 .banner[data-status='blocked'] {
   --status: var(--warning);
   --status-soft: var(--warning-soft);
@@ -93,6 +98,7 @@ svg {
 .dot[data-status='done'],
 .chip[data-status='done'],
 .nav__item[data-status='done'],
+.callout[data-status='done'],
 .banner[data-status='done'] {
   --status: var(--success);
   --status-soft: var(--success-soft);
@@ -101,6 +107,7 @@ svg {
 .dot[data-status='failed'],
 .chip[data-status='failed'],
 .nav__item[data-status='failed'],
+.callout[data-status='failed'],
 .banner[data-status='failed'] {
   --status: var(--danger);
   --status-soft: var(--danger-soft);
@@ -753,7 +760,17 @@ svg {
 
 /* ------------------------------------------------------------ app toggles */
 
-.app {
+/*
+ * A compound name, not `.app`.
+ *
+ * `.app` collided with the shell root, which carries the same bare class for
+ * an unrelated reason (`shell.css`'s own layout rule). Equal specificity and
+ * `controls.css` loading first through `shell.css`'s `@import` meant each side
+ * won the properties the other did not redeclare: the shell root inherited
+ * this card's `padding`, `gap`, `border` and `border-radius`, and this card
+ * inherited the shell root's `display: flex`. Issue #184.
+ */
+.app-card {
   display: grid;
   gap: var(--space-2);
   padding: var(--space-3);
@@ -761,13 +778,13 @@ svg {
   border-radius: var(--radius-card);
 }
 
-.app__head {
+.app-card__head {
   display: flex;
   align-items: center;
   gap: var(--space-2);
 }
 
-.app__name {
+.app-card__name {
   flex: 1;
   min-width: 0;
   font-size: var(--text-base);
@@ -775,12 +792,12 @@ svg {
   color: var(--text-primary);
 }
 
-.app__head .switch {
+.app-card__head .switch {
   width: auto;
   flex: none;
 }
 
-.app__path {
+.app-card__path {
   margin: 0;
   font-family: var(--font-mono);
   font-size: var(--text-xs);
@@ -788,12 +805,12 @@ svg {
   overflow-wrap: anywhere;
 }
 
-.app__install {
+.app-card__install {
   display: grid;
   gap: var(--space-2);
 }
 
-.app__command {
+.app-card__command {
   display: block;
   padding: var(--space-2);
   border-radius: var(--radius-input);
@@ -988,4 +1005,53 @@ svg {
 .table td:not(:first-child),
 .table th:not(:first-child) {
   text-align: right;
+}
+
+/* ----------------------------------------------------------------- callout */
+
+/*
+ * A titled region that asks for something.
+ *
+ * Here rather than in `shell.css` because the overlay document needs it too:
+ * the approval prompt is this shape, and it is currently hand-rolled there.
+ * The outline comes from the status pair, so a callout with no status is a
+ * plain outlined box rather than a warning nobody set.
+ */
+.callout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  color: var(--text-primary);
+  background: var(--status-soft, var(--bg-active));
+  border: 1px solid var(--status, var(--text-muted));
+  border-radius: var(--radius-card);
+}
+
+/* Primary text rather than muted when no status is mapped. An 11px uppercase
+   label in `--text-muted` fails contrast on this fill. */
+.callout__title {
+  margin: 0;
+  color: var(--status, var(--text-primary));
+  font-size: var(--text-xs);
+  font-weight: var(--weight-lg);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+
+.callout__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  font-size: var(--text-sm);
+}
+
+/* Right aligned and wrapping, because the last button is the one a pointer
+   arrives at and two of them do not always fit on one line. */
+.callout__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: flex-end;
 }

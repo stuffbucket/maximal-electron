@@ -60,6 +60,13 @@ A dock badge tracks real application state.
 
 ## Consume the shell frame
 
+This file is the only prose the tarball carries. Every path below under the docs
+directory names a file in the repository rather than in your `node_modules`, and
+each one is readable at
+<https://github.com/stuffbucket/maximal-electron/tree/main/docs>. The types are
+the other half: every export ships a `.d.ts` whose comments say what a prop is
+for and why it exists.
+
 The package is `@stuffbucket/maximal-electron`, on the GitHub Packages npm
 registry:
 
@@ -85,10 +92,20 @@ migration from the old unscoped name.
 Every supported form exposes the main-process lifecycle at
 `@stuffbucket/maximal-electron/main`, the secured host window at
 `@stuffbucket/maximal-electron/host`, and the generic renderer frame at
-`@stuffbucket/maximal-electron/renderer`. The renderer entry exports
-`ShellLayout`, `TitleBar`, `TabBar`, `NavRail`, `Canvas`, and `IconButton`. It
-does not export the reference application, terminal, agent, sample data, or
-fixtures.
+`@stuffbucket/maximal-electron/renderer`. The renderer entry exports the layout
+— `ShellLayout`, `TitleBar`, `TabBar`, `NavRail`, `Canvas` — a control
+vocabulary from `Button` and `Card` through `Dialog`, `Menu` and the form
+fields, the terminal components with the transport that wires them, and two
+hooks. It does not export the reference application, the agent, the sample
+data, or the capture fixture. `docs/embedding.md` groups the whole surface, and
+`RENDERER_SURFACE` in `scripts/export-checks.mjs` is the list
+`npm run verify:exports` holds the built entry to.
+
+The tarball also carries `.vite/build/main.js`, because npm packs whatever
+`main` names and Electron needs that path to run this repository as an
+application. It is not an export: `exports` declares no `.`, so importing the
+package by its bare name fails, and the file loads a chunk the tarball does not
+carry.
 
 `runMain(runtime, options)` runs a main process on this shell's lifecycle: the
 profile directory, the single instance lock, the window, the quit policy, and a
@@ -107,7 +124,7 @@ you use:
 | `@stuffbucket/maximal-electron/host` | `electron` |
 | `@stuffbucket/maximal-electron/preload` | `electron` |
 | `@stuffbucket/maximal-electron/host/terminal` | `node-pty` |
-| `@stuffbucket/maximal-electron/renderer` | `react`, `react-dom`, `ghostty-web`, `lucide-react`, `react-resizable-panels`, `@radix-ui/react-collapsible`, `@radix-ui/react-tabs`, `@radix-ui/react-tooltip`, `@radix-ui/react-visually-hidden` |
+| `@stuffbucket/maximal-electron/renderer` | `react`, `react-dom`, `ghostty-web`, `lucide-react`, `react-resizable-panels`, `@radix-ui/react-collapsible`, `@radix-ui/react-dialog`, `@radix-ui/react-dropdown-menu`, `@radix-ui/react-radio-group`, `@radix-ui/react-tabs`, `@radix-ui/react-tooltip`, `@radix-ui/react-visually-hidden` |
 | `@stuffbucket/maximal-electron/verify` | none |
 | `@stuffbucket/maximal-electron/verify/shell-variables` | none |
 
@@ -136,8 +153,9 @@ import '@stuffbucket/maximal-electron/renderer/styles.css';
 
 The stylesheet ships no palette and scopes every rule under `.sb-shell`.
 `ShellLayout` applies that root class. Apply it yourself when composing the
-smaller exports directly. Define these semantic variables on that container or
-an ancestor:
+smaller exports directly. Import the components without it and the markup is
+unstyled; import it and define nothing and the surfaces draw nothing. Define
+these semantic variables on `:root` or `body`:
 
 | Variable | Contract |
 | --- | --- |
@@ -153,12 +171,89 @@ an ancestor:
 | `--shell-accent` | Selection, focus, and resize feedback. |
 | `--shell-accent-muted` | Selected-control background. |
 
-Sixteen more variables have structural fallbacks in the CSS, and two are read
-by JavaScript rather than by any rule. `docs/shell-variables.md` holds the whole
-contract, derived from the stylesheet and checked against it in both directions.
-Set the ones your design system disagrees with.
+Thirty-three more variables have structural fallbacks in the CSS, and two are
+read by JavaScript rather than by any rule. `docs/shell-variables.md` holds the
+whole contract, derived from the stylesheet and checked against it in both
+directions. Set the ones your design system disagrees with.
 `@stuffbucket/maximal-electron/verify/shell-variables` exports the derivation so an
 application can assert its own adapter against the stylesheet it installed.
+
+Those eleven are the whole of what the shell needs from you. `ShellLayout`'s
+root is fixed to the viewport, so it fills the window with no document reset of
+your own; set `--shell-position: static` to lay the shell out inside a container
+you have given a height to instead.
+
+`:root` or `body` rather than your own container, because `Dialog`, `Menu` and
+`IconButton`'s tooltip do not render where they are written. Each portals above
+the page, so it lands outside whatever element you put `.sb-shell` on. The
+components handle the class themselves — a surface with no `ShellLayout` above
+it mounts into a `div.sb-shell` the package appends to `body`, so the rules
+match either way — but that element inherits from `body`, and a property
+defined only on your container never reaches it. `docs/embedding.md` has the
+measurements.
+
+Status colour is yours to map. `StatusChip`, the status dot, `NavRail` items,
+`Banner` and `Callout` all put their state on `data-status`, and the shipped
+stylesheet maps no value of it, because a status vocabulary belongs to the
+application. Pass a status and every state draws the same neutral fill until you
+write the rules:
+
+```css
+.sb-shell .chip[data-status='failed'] { --shell-status: #f87171 }
+.sb-shell .chip[data-status='done']   { --shell-status: #4ade80 }
+```
+
+`--shell-status` is the label colour, `--shell-status-muted` the fill. Three
+consumers in a row passed a status, saw a grey pill, and reported that the
+colour worked, so this is stated rather than left to be discovered.
+
+`IconButton` renders a tooltip, so it needs a `Tooltip.Provider` from
+`@radix-ui/react-tooltip` above it. `ShellLayout` supplies one. Compose
+`IconButton` outside it — or `Banner` with `onDismiss`, which draws one — and
+the button is absent rather than broken.
+
+`ShellLayout` takes no children. `left`, `main`, `right` and `status` are named
+props, plus an optional `top` and `bottom`, and `left` is a function of the
+collapsed state because `ShellLayout` owns that state and `NavRail` needs it.
+[docs/embedding.md](./docs/embedding.md) assembles a whole three-panel
+application — nav rail, canvas, inspector, tabs, status bar — in one snippet.
+
+`NavRail` is a list of labelled collapsible groups, not a flat icon strip. A
+`NavRailSection` carries a heading that collapses the entries under it, and a
+`NavRailEntry` carries an icon, a label, a count and an optional status. So a
+rail of a Projects group and an Agents group is two array entries and one
+element, with no list markup and no stylesheet of the caller's own. Three
+consumers in a row read the types, concluded the component could not do it, and
+rebuilt it by hand, so this is stated here as well as in the `.d.ts`.
+
+`Canvas` is a `role="listbox"`, so every item must render exactly one element
+carrying `role="option"` and `aria-selected`, and it must be what `renderCard`
+or `renderRow` returns rather than something inside a wrapper. `Card` and `Row`
+are that element. In return the canvas owns the keyboard: one tab stop rather
+than one per tile, arrow keys between options, Enter and Space to activate. It
+writes `tabIndex` on the elements the caller returned, so a consumer supplies
+no `tabIndex` and no key handler, and an option does not have to be a button to
+be reachable. Selection stays the consumer's, in `selectedId`, and does not
+follow focus. [docs/embedding.md](./docs/embedding.md) is the contract in full.
+
+`Callout` is the box that asks for a decision: a titled region with an outline,
+a body of your markup, and a row of actions. It is not a `Card` — `Card` and
+`Row` are one selectable option in a listbox, and take `selected` and
+`onSelect` — and it is not a `Banner`, which is a strip in `ShellLayout`'s top
+slot that reports rather than asks. Three consumers in a row built this shape
+out of raw CSS for an approval prompt, so it is named here as well.
+
+```tsx
+<Callout status="blocked" title="Approval needed" actions={
+  <>
+    <Button size="sm">Deny</Button>
+    <Button size="sm" variant="primary">Allow once</Button>
+  </>
+}>
+  <span>The agent wants to run a command outside the workspace.</span>
+  <code className="field__value">npm run package</code>
+</Callout>
+```
 
 `TitleBar` accepts caller-owned `leading` and `actions` nodes. Direct `TitleBar`
 and `TabBar` consumers provide `tabIdBase` and use `getTabTriggerId` and
@@ -184,6 +279,11 @@ packaging traps behind.
   prebuild directory rather than only `*.node`. On macOS the shell is started by
   `spawn-helper`, which has no extension and is executed from outside the
   archive.
+
+The wire between the two halves is exported rather than hand-written.
+`createTerminalTransport` builds the renderer transport from your own `invoke`,
+`on` and channel names, and `registerTerminalChannels` answers those channels
+from a `TerminalHost`. Neither picks a name. `docs/embedding.md` has both calls.
 
 `@stuffbucket/maximal-electron/verify` exports those assertions as a function
 to run against a built application. `docs/architecture.md` has the call.

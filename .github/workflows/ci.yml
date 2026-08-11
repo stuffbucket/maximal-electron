@@ -63,6 +63,11 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
 
+      # The pair to `verify:exports` below. It reads only the checkout — no
+      # build, no dist/, no Electron — so it runs before the minutes that
+      # `npm test` and `npm run mutate` cost.
+      - run: npm run verify:fixture-imports
+
       # Unit tests run in a random order. The seed is printed, and VITEST_SEED
       # replays a failure exactly.
       - run: npm test

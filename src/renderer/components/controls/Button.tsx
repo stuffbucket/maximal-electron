@@ -1,6 +1,8 @@
 import * as Tooltip from '@radix-ui/react-tooltip';
 import type { ComponentPropsWithRef, ReactNode } from 'react';
 
+import { useShellPortalContainer } from './Overlays.js';
+
 /**
  * Buttons.
  *
@@ -42,7 +44,12 @@ export function Button({
 } & Omit<ComponentPropsWithRef<'button'>, 'type'> & {
     type?: 'button' | 'submit';
   }) {
-  const classes = ['btn', `btn--${variant}`, `btn--${size}`];
+  // The default variant is the base `.btn`, and no stylesheet writes a rule
+  // for `.btn--default`. Named rather than interpolated, so the reader in
+  // `tests/class-names.ts` sees which modifiers exist.
+  const classes = ['btn', `btn--${size}`];
+  if (variant === 'primary') classes.push('btn--primary');
+  if (variant === 'danger') classes.push('btn--danger');
   if (block) classes.push('btn--block');
   if (className) classes.push(className);
 
@@ -79,6 +86,8 @@ export function IconButton({
   danger?: boolean;
   testId?: string;
 } & ComponentPropsWithRef<'button'>) {
+  const container = useShellPortalContainer();
+
   return (
     <Tooltip.Root>
       <Tooltip.Trigger asChild>
@@ -93,7 +102,7 @@ export function IconButton({
           {children}
         </button>
       </Tooltip.Trigger>
-      <Tooltip.Portal>
+      <Tooltip.Portal container={container}>
         <Tooltip.Content className="tooltip" sideOffset={6}>
           {label}
         </Tooltip.Content>

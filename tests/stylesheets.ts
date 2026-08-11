@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 
-import { baseStyledClassNames, styledClassNames } from '../scripts/css-selectors.mjs';
+import { baseStyledClassNames, isScoped, styleRules, styledClassNames } from '../scripts/css-selectors.mjs';
 
 /**
  * What the two stylesheet contracts are, and how to tell them apart.
@@ -67,6 +67,7 @@ export function packageReads(css: string): { required: Set<string>; optional: Se
  * `scripts/verify-exports.mjs` makes over the built output. Reading the source
  * rather than `dist/` keeps this a unit test: it needs no build, and it sees a
  * class name written in a template literal that the emitter has since flattened.
+ * `tests/class-names.ts` reads the classes back out of each one.
  */
 export function exportedModules(): [string, string][] {
   const found: [string, string][] = [];
@@ -99,39 +100,6 @@ export function exportedModules(): [string, string][] {
   return found;
 }
 
-/**
- * Every class name a component writes into `className`.
- *
- * Comments are stripped first. `Button.tsx` explains itself with
- * `className="row"` in its docstring, and counting that would report the
- * dense-list-row class as one the package stylesheet owes a rule.
- *
- * A template literal contributes both its literal chunks and any quoted string
- * inside an interpolation, which is where the modifier classes live:
- * `` `icon-button${danger ? ' icon-button--danger' : ''}` ``.
- */
-export function renderedClasses(source: string): string[] {
-  const text = source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ');
-  const found = new Set<string>();
-  const add = (value: string): void => {
-    for (const name of value.split(/\s+/)) if (name) found.add(name);
-  };
-
-  for (const match of text.matchAll(/className="([^"]*)"/g)) add(match[1] ?? '');
-
-  for (const match of text.matchAll(/className=\{`([^`]*)`\}/g)) {
-    const template = match[1] ?? '';
-    add(template.replace(/\$\{[^}]*\}/g, ' '));
-    for (const interpolation of template.matchAll(/\$\{[^}]*\}/g)) {
-      for (const literal of interpolation[0].matchAll(/'([^']*)'|"([^"]*)"/g)) {
-        add(literal[1] ?? literal[2] ?? '');
-      }
-    }
-  }
-
-  return [...found].sort();
-}
-
 /** Every class a stylesheet writes a rule for. */
 export function styledClasses(css: string): Set<string> {
   return new Set(styledClassNames(css));
@@ -146,4 +114,114 @@ export function styledClasses(css: string): Set<string> {
  */
 export function baseStyledClasses(css: string, root: string): Set<string> {
   return new Set(baseStyledClassNames(css, root));
+}
+
+/** A rule the package carries with fewer properties than the reference. */
+export interface RuleDrift {
+  /** The normalised selector, as the package writes it without its root. */
+  selector: string;
+  /** The property names the reference declares and the package does not. */
+  missing: string[];
+}
+
+/** What a mirror comparison examined, and where the two sides disagree. */
+export interface Mirror {
+  /** How many selectors both stylesheets write a rule for. */
+  selectors: number;
+  /** How many reference property names those rules declare between them. */
+  properties: number;
+  /** Reference selectors the package writes no rule for at all. */
+  unmatchedReference: number;
+  /** Package selectors the reference writes no rule for at all. */
+  unmatchedPackage: number;
+  /** One entry per shared selector whose package rule is short of properties. */
+  drift: RuleDrift[];
+}
+
+/**
+ * The key two stylesheets compare a rule on.
+ *
+ * Whitespace collapses, a combinator is padded to one space on each side, and
+ * a double-quoted attribute value is rewritten single-quoted, so
+ * `.tab[data-state="active"]` and `.tab[data-state='active']` are one rule and
+ * `.a>.b` and `.a > .b` are one rule.
+ *
+ * The enclosing conditional at-rules join the key rather than collapsing to a
+ * flag. `@media (prefers-reduced-motion: reduce)` and `@media (hover: hover)`
+ * reach different readers, and a rule in one is not the rule in the other.
+ */
+function ruleKey(selector: string, conditions: string[]): string {
+  const normalised = selector
+    .replace(/"/g, "'")
+    .replace(/\s*([>+~])\s*/g, ' $1 ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return [...conditions, normalised].join(' | ');
+}
+
+/**
+ * Every property name a stylesheet declares, by rule key.
+ *
+ * `root` is stripped from a selector that is confined to it, which is what puts
+ * the package's `.sb-shell .panel` and the reference's `.panel` on one key. A
+ * selector that reduces to the root alone selects the shell itself and has no
+ * counterpart, so it is dropped; one that escapes the root keeps its full text
+ * rather than being dropped, because an unscoped rule in the package is a rule
+ * the reference may still own.
+ *
+ * The properties of every rule sharing a key are unioned. The question is
+ * whether the stylesheet sets the property for that selector at all, and a
+ * stylesheet is free to split one rule into two.
+ */
+function declarationsByRule(css: string, root: string): Map<string, Set<string>> {
+  const found = new Map<string, Set<string>>();
+
+  for (const rule of styleRules(css)) {
+    const scoped = root !== '' && isScoped(rule.selector, root);
+    const selector = scoped ? rule.selector.slice(root.length).trim() : rule.selector;
+    if (selector === '') continue;
+
+    const key = ruleKey(selector, rule.conditions);
+    const properties = found.get(key) ?? new Set<string>();
+    for (const property of rule.properties) properties.add(property);
+    found.set(key, properties);
+  }
+
+  return found;
+}
+
+/**
+ * What the package stylesheet is missing from the reference, rule by rule.
+ *
+ * Property names only. The values differ on every shared rule by design: the
+ * reference carries a palette and `structural.css` reads the `--shell-*`
+ * namespace, so a comparison of values would fail everywhere and be deleted
+ * rather than fixed. A name is the part that says whether the rule does
+ * anything at all — `styledClasses` above reports a class as styled while the
+ * body that laid it out is gone, which is how 20 rules drifted unseen.
+ */
+export function mirroredRules(reference: string, css: string, root: string): Mirror {
+  const theirs = declarationsByRule(reference, '');
+  const ours = declarationsByRule(css, root);
+
+  const shared = [...theirs.keys()].filter((key) => ours.has(key)).sort();
+  const drift: RuleDrift[] = [];
+  let properties = 0;
+
+  for (const key of shared) {
+    const expected = theirs.get(key) ?? new Set<string>();
+    const carried = ours.get(key) ?? new Set<string>();
+    properties += expected.size;
+
+    const missing = [...expected].filter((property) => !carried.has(property)).sort();
+    if (missing.length > 0) drift.push({ selector: key, missing });
+  }
+
+  return {
+    selectors: shared.length,
+    properties,
+    unmatchedReference: theirs.size - shared.length,
+    unmatchedPackage: ours.size - shared.length,
+    drift,
+  };
 }

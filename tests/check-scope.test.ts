@@ -135,7 +135,7 @@ describe('the scope convention', () => {
     ['scripts/verify-publish.mjs', '#98 follow-up'],
     ['scripts/verify-neutral.mjs', '#98 follow-up'],
     ['scripts/verify-git-install.mjs', '#98 follow-up'],
-    ['scripts/storybook-check.mjs', '#98 names its axe retry loop as the third open instance'],
+    ['scripts/storybook-check.mjs', '#98 follow-up'],
   ]);
 
   const checkScripts = [
