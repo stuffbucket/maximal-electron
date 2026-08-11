@@ -14,6 +14,68 @@ earned itself immediately: `--elevation-dialog` was a single half-black shadow
 for both schemes, which reads as depth in the dark palette and as a grey smudge
 on a white page.
 
+## Two stylesheets, as a second toolbar switch
+
+`shell.css` is what this application draws with. `structural.css`, which
+`scripts/copy-renderer-css.mjs` publishes as
+`@stuffbucket/maximal-electron/renderer/styles.css`, is the only CSS a consumer
+installs. They are not
+the same file: the shipped one declares no palette and scopes every rule under
+`.sb-shell`. Storybook used to load the first and nothing loaded the second, so
+every story showed what this application draws rather than what the package
+ships. Issue #181.
+
+The **Stylesheet** switch is the answer, built like the theme switch beside it:
+a toolbar global and a decorator that reads it.
+
+| Position | Loads | Root class |
+| --- | --- | --- |
+| Application | `shell.css`, which imports `controls.css` and `tokens.css` | none |
+| Package | `tokens.css`, `.storybook/consumer.css`, `structural.css` | `.sb-shell` on the story root |
+
+Three decisions are worth the words.
+
+**The class goes on the story's own root, not on a wrapper and not on `body`.**
+A story that renders `ShellLayout` gets `.sb-shell` from the component. A story
+that composes `Button` or `Card` directly — which README.md shows — has it from
+nowhere, and every shipped rule misses. Marking `body` instead would style a
+Radix portal for free, because a portal defaults to the body, and that would
+retire the check that caught issue #185 on the day it was built.
+
+**The palette comes from `.storybook/consumer.css`, which is a consumer.** The
+shipped stylesheet declares none, so a host must. That file aliases the eleven
+`required` names to the tokens `tokens.css` already defines, rather than
+copying values, so the two modes cannot drift apart and the theme switch keeps
+working in both. It sets a `fallback` name only where this design system
+differs from the value the shipped rule already carries, and it deliberately
+does not map `--shell-status` or `--shell-status-muted`: those are a vocabulary
+rather than a value, `StatusChip` passes the state straight through, and
+inventing a mapping in Storybook would draw colours the contract cannot
+promise. `docs/shell-variables.md` is the list; the file names what it leaves
+out and why.
+
+**Switched, not side by side.** `shell.css` matches `.chip` anywhere in the
+document, including inside a `.sb-shell`, so a package pane sharing a document
+with an application pane would be drawn by both files. Storybook puts a global
+in the URL, so two documents is two windows on the same story with
+`&globals=shell:app` and `&globals=shell:package`.
+
+`npm run storybook:check` drives the preview by URL and knows nothing about a
+global, so the environment selects the mode for a whole run:
+
+```
+npm run storybook:check                          # application
+STORYBOOK_SHELL_MODE=package npm run storybook:check
+```
+
+The package run is not at zero. Every violation it reports is one cause: with
+`--shell-status` and `--shell-status-muted` unmapped, `Banner`, `StatusChip`
+and `Callout` draw `--shell-text-subtle` on `--shell-active`, which is 4.17:1
+in the dark palette against a requirement of 4.5. Issue #182 is the story half
+of that. The measurement is the instrument working, not the instrument
+failing; `docs/shell-variables.md` claims a host that maps neither "gets a
+legible chip in a neutral fill", and for this palette that claim is false.
+
 ## Conventions
 
 These are the ones in Storybook's own documentation.
@@ -57,8 +119,10 @@ These are the ones in Storybook's own documentation.
 `*.stories.tsx` that imports it. The public surface went from about nineteen
 names to forty-three without Storybook changing, and nothing said so.
 
-The components that crossed over without one are named in `PENDING` there with
-the issue that will close them. That list may only shrink.
+`PENDING` there names any component that crossed over without one, with the
+issue that will close it. That list may only shrink, and it is empty: every
+exported component has a story. An entry returning is a component that reached
+the public surface undocumented, which is the state the check exists to end.
 
 ## Two files that look like configuration and are not
 
@@ -68,7 +132,20 @@ because `src/renderer/lib/bridge.ts` reads it at module scope. A stub inside
 
 `.storybook/preview.css` undoes the part of `shell.css` that assumes an
 application window: the full-height, overflow-hidden rule on `html` and `body`
-clips a long story at the fold.
+clips a long story at the fold. It has to win, and its `body` rule and
+`shell.css`'s reset have the same specificity, so `shell-mode.ts` puts the mode
+stylesheet first in `head` rather than relying on which of a dev server's
+injected `<style>` and a build's `<link>` lands where.
+
+## A story that is not in the package
+
+The mode says nothing about whether a component ships. `SettingsPage`,
+`ModelCards`, `Usage`, `Diagnostics`, `ApiKeysDialog` and `Profile` are this
+application's, not the package's, and 61 class names they draw with exist in
+`shell.css` and `controls.css` and in no shipped rule. Under the package mode
+they render as unstyled markup, which is correct: nothing installs them either.
+Read a difference there as "this is the application", and a difference on an
+export of `src/renderer/index.ts` as something to explain.
 
 ## Stories stay out of the package
 
