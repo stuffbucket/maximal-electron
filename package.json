@@ -172,5 +172,16 @@
   },
   "engines": {
     "node": ">=22"
+  },
+  "packageManager": "pnpm@10.20.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@google/genai",
+      "electron",
+      "esbuild",
+      "node-llama-cpp",
+      "node-pty",
+      "protobufjs"
+    ]
   }
 }
