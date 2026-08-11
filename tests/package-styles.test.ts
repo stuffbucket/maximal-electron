@@ -298,13 +298,6 @@ describe('the mirror between the package stylesheet and the reference', () => {
    * one with `.sb-shell` stripped, which is the reference one.
    */
   const DELIBERATE = new Map([
-    [
-      '.app border',
-      'a name collision, not a rule: `controls.css` styles a settings-surface app card',
-    ],
-    ['.app border-radius', 'the same `controls.css` card'],
-    ['.app gap', 'the same `controls.css` card'],
-    ['.app padding', 'the same `controls.css` card'],
     ['.panel--drawer background', '`.panel` already paints it, and a drawer is always a panel'],
     ['.switch font-size', '`font: inherit` here is the shorthand that carries font-size'],
     ['.tab flex', '`flex: 0 1 auto` in the reference is the initial value, written to record it'],

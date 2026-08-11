@@ -114,11 +114,10 @@ interface Measured {
  * there was nothing to compare. So a missing element throws here, naming
  * itself, rather than turning into a comparison against `undefined`.
  *
- * The root is measured as a content box rather than a border box, and the gap
- * is read rather than assumed, because `controls.css` styles an unrelated
- * `.app` and the reference application's window root inherits `padding`,
- * `border` and `gap` from it. Writing those numbers down here would pin a
- * collision instead of the layout.
+ * The root is measured as a content box rather than a border box, so the gap
+ * is read rather than assumed. That protects against a shell root whose
+ * layout gains a gap of its own, not against a name collision: `.app` used to
+ * be shared with a settings-surface card in `controls.css`, until issue #184.
  */
 function measure(canvasElement: HTMLElement): Measured {
   const box = (element: Element | null): Box | null => {
