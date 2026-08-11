@@ -55,6 +55,12 @@ export const STATUS_LABELS: ReadonlyMap<string | undefined, string> = new Map([
   ['running', 'Running'],
 ]);
 
+/**
+ * What each emphasis is called, for a screen reader.
+ *
+ * A tab signals attention and busy visually. Neither reaches a reader, so the
+ * label joins the tab's accessible name and the signal stops being decoration.
+ */
 export const EMPHASIS_LABELS: ReadonlyMap<TabEmphasis | undefined, string> = new Map([
   ['attention', 'Needs attention'],
   ['busy', 'Working'],

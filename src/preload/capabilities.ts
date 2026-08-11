@@ -34,6 +34,15 @@ export const CAPABILITY_CHANNELS: Record<BridgeCapability, string> = {
  */
 export type BridgeFailure = 'unavailable' | 'refused' | 'failed';
 
+/**
+ * The result of every bridge call.
+ *
+ * **A `catch` on a bridge call never fires.** Nothing here rejects, so
+ * `bridge.openExternal(url).catch(report)` reports nothing and the failure is
+ * silent. Discriminate on `ok` instead. That is the cost of the design in
+ * `docs/embedding.md`, and it is the one mistake a caller ships rather than
+ * sees.
+ */
 export type Envelope<T> =
   | { ok: true; value: T }
   | { ok: false; code: BridgeFailure; message: string };

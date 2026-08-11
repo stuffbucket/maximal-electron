@@ -41,7 +41,18 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
  * here and nor is their difference: 2082 is what the merged tree measured.
  * `publish-decision.mjs`, `check-scope.mjs` and `peer-table.mjs` arrived from
  * `main`, and `icons.ts` at 22 mutants arrived from the release branch.
- */export const MUTANT_FLOOR = 2082;
+ *
+ * 2082 to 2108 is `createTerminalTransport` in `terminal-transport.ts`, which
+ * took the transport wiring out of `bridge-terminal.ts` where nothing mutates
+ * it: that file names this shell's own channels and is off the mutate list.
+ * The module went from 10 mutants to 36, and it is the only file on the list
+ * the change touched.
+ *
+ * 2108 to 2200 is `Canvas.tsx` joining the list. It gained the listbox
+ * keyboard model for issue #171 — a roving tabindex, an arrow-key
+ * destination, and the guard that ignores a key from a control inside an
+ * option — and every branch of it is reachable from the stories.
+ */export const MUTANT_FLOOR = 2200;
 
 /**
  * `// Stryker disable` suppressions, counted in mutants rather than comments

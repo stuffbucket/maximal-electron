@@ -1,12 +1,12 @@
-import { Check, X } from 'lucide-react';
-
-import { RUNS, STATUS_LABELS, type AgentRun } from './runs.js';
 import {
   Button,
   Field,
   InspectorPanel,
   StatusChip,
-} from '../../../src/renderer/components/Controls.js';
+} from '@stuffbucket/maximal-electron/renderer';
+import { Check, X } from 'lucide-react';
+
+import { RUNS, STATUS_LABELS, type AgentRun } from './runs.js';
 
 /**
  * What the inspector shows when nothing is selected.

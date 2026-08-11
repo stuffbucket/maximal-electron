@@ -32,6 +32,17 @@ const config: StorybookConfig = {
   },
   // No usage data leaves this machine.
   core: { disableTelemetry: true },
+  /*
+   * The stylesheet mode a run starts in, as a variable rather than only as a
+   * toolbar switch. `scripts/storybook-check.mjs` drives the preview by URL
+   * and knows nothing about a global, so this is how a whole check runs
+   * against the shipped stylesheet: `STORYBOOK_SHELL_MODE=package npm run
+   * storybook:check`. See `.storybook/shell-mode.ts`.
+   */
+  env: (config) => ({
+    ...config,
+    STORYBOOK_SHELL_MODE: process.env['STORYBOOK_SHELL_MODE'] ?? 'app',
+  }),
 };
 
 export default config;

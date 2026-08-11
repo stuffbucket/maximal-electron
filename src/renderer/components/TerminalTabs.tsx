@@ -30,6 +30,15 @@ export type TerminalTabsProps = TerminalTabsCommonProps &
     | { disposition: 'detach'; transport: DetachableTerminalTransport }
   );
 
+/**
+ * One mounted terminal per id, with the inactive ones hidden rather than
+ * unmounted.
+ *
+ * Unmounting would kill the emulator and lose the scrollback, so a tab a user
+ * comes back to still holds what it printed. `disposition` decides what
+ * closing does: `terminate` ends the session, `detach` leaves it running for
+ * something else to reattach, and only the detachable transport allows it.
+ */
 export function TerminalTabs(props: TerminalTabsProps) {
   const { ids, activeId, shell, theme } = props;
   const session =

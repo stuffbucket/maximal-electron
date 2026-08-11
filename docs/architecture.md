@@ -27,9 +27,13 @@ two.
 Three properties fall out, and each is enforced by the compiler rather than by
 review:
 
-1. **No missing handler.** `src/main/ipc.ts` types its handler map as
-   `Record<IpcChannel, ...>`. Declare a channel without handling it and the
-   build fails.
+1. **No missing handler.** `src/main/ipc.ts` types its handler map over every
+   channel except the terminal's, and `registerTerminalChannels` answers those
+   five. Declare a channel without handling it and the build fails; take a name
+   out of `TERMINAL_CHANNELS` without giving it a handler and the build fails
+   the same way, because the map's key type stops excluding it.
+   `tests/terminal-channels.test.ts` covers the seam the two registrations
+   leave, and asserts they cover `IPC_CHANNELS` exactly once between them.
 2. **No drift.** A handler's argument and return types come from the contract,
    so it cannot quietly return a different shape.
 3. **No stale runtime list.** `IPC_CHANNELS` and `IPC_EVENTS` are checked
@@ -106,7 +110,11 @@ process, in `src/main/native/pty.ts`, which is what lets the renderer keep
 `sandbox: true`. That file is the Electron half of the manager: which window
 owns a session, where a session starts, and where its output goes. The manager
 itself is `TerminalHost`, the class `./host/terminal` exports, so this shell
-and a consumer run the same code rather than two copies of it.
+and a consumer run the same code rather than two copies of it. The wiring
+between the two is exported as well: `src/main/ipc.ts` registers the channels
+through `registerTerminalChannels` and `src/renderer/lib/bridge-terminal.ts`
+builds its transport through `createTerminalTransport`. `docs/embedding.md`
+holds the consumer's call of both.
 
 ```
 keystroke -> term.onData -> `pty:write` channel -> shell
@@ -568,8 +576,8 @@ Four exports, and they are deliberately separate.
 
 | Export | What it is |
 | --- | --- |
-| `./renderer` | `TerminalView` and `TerminalTabs`, plus the `TerminalTransport` contract and `readTerminalTheme`. |
-| `./host/terminal` | `TerminalHost`, the pty manager, for a consumer's main process. |
+| `./renderer` | `TerminalView` and `TerminalTabs`, the `TerminalTransport` contract, `createTerminalTransport` which builds one, and `readTerminalTheme`. |
+| `./host/terminal` | `TerminalHost`, the pty manager, and `registerTerminalChannels`, which answers a consumer's channels from one. |
 | `./renderer/styles.css` | `structural.css`, which carries the terminal rules. |
 | `./verify` | The packaging assertions, as a function to run against a consumer's own build. |
 
@@ -614,12 +622,17 @@ restating it beside the call.
 
 `TerminalView` takes its transport as a value. It knows nothing about an IPC
 contract, so a consumer wires `TerminalHost` to whatever channels they already
-have and implements the five transport methods against them.
+have. Hand-writing that wiring is no longer part of it:
+`createTerminalTransport` builds the renderer half from the caller's `invoke`,
+`on` and channel names, and `registerTerminalChannels` answers the five request
+channels from a `TerminalHost`. `docs/embedding.md` has both calls.
 
-A consumer that wants `disposition="detach"` implements a sixth, `list`, and
-passes a `DetachableTerminalTransport`. The type demands it: a shell that
-outlives every view and that nothing can enumerate is a process the user cannot
-see and cannot stop, so the prop refuses the half of the pair that leaks.
+The transport `createTerminalTransport` returns is a
+`DetachableTerminalTransport`, so `disposition="detach"` works without a sixth
+method. A consumer writing the object by hand still owes `list`, because the
+type demands it: a shell that outlives every view and that nothing can
+enumerate is a process the user cannot see and cannot stop, so the prop refuses
+the half of the pair that leaks.
 
 `TerminalHost` is an instance, not module state, so a consumer with two windows
 gets two registries and closing one cannot reap the other's shells. This shell

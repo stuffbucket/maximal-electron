@@ -5,6 +5,9 @@ import type { Tab } from '../components/TabBar.js';
 /**
  * The tab strip's state.
  *
+ * "Shell" here is the window frame this package draws, not a command
+ * interpreter. The hook knows nothing about terminals and takes no transport.
+ *
  * Two operations, each with a rule that is not obvious from the call site:
  * `makeTab` sees the current tabs so it can number the new one however it
  * counts, and closing the last tab is refused rather than leaving an empty

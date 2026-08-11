@@ -84,8 +84,18 @@ export function EmptyState({
 /**
  * A filled pill carrying a state.
  *
- * `status` selects the colour through `data-status` in the stylesheet, so a
- * caller passes the raw state and the label it wants read.
+ * `status` reaches the markup as `data-status`, and the shipped stylesheet maps
+ * no value of it to a colour: a status vocabulary is the host's, so every state
+ * draws the same neutral fill until the host says otherwise. Two rules do it:
+ *
+ * ```css
+ * .sb-shell .chip[data-status='failed'] { --shell-status: #f87171 }
+ * .sb-shell .chip[data-status='done']   { --shell-status: #4ade80 }
+ * ```
+ *
+ * `--shell-status` is the label and `--shell-status-muted` the fill. Three
+ * consumers in a row read this comment, passed a status, saw a grey pill, and
+ * reported that the colour worked.
  */
 export function StatusChip({ status, label }: { status: string; label: string }) {
   return (

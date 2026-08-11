@@ -10,6 +10,7 @@ import {
 } from 'react-resizable-panels';
 
 import { IconButton } from './controls/Button.js';
+import { ShellPortalRoot } from './controls/Overlays.js';
 import { TitleBar } from './TitleBar.js';
 import {
   getTabPanelId,
@@ -68,6 +69,19 @@ const LEFT: PanelSize = {
 const RIGHT: PanelSize = { default: '22', min: '16', max: '36', collapsed: '0' };
 const BOTTOM: PanelSize = { default: '30', min: '10', max: '70', collapsed: '0' };
 
+/**
+ * The three-panel frame, with the tab strip in the title bar.
+ *
+ * It takes no children: every region is a named prop, and `left` is a function
+ * receiving the collapsed state, because the rail's collapse is the frame's to
+ * own and the content inside it is the caller's. `layoutId` is the key the
+ * panel sizes persist under. `status` has no default; pass `null` for no
+ * status bar.
+ *
+ * It applies `.sb-shell`, supplies the tooltip provider the icon buttons need,
+ * and is the portal root the overlays mount into. Composing the smaller
+ * exports without it means supplying all three yourself.
+ */
 export function ShellLayout<T extends Tab>({
   layoutId,
   tabs,
@@ -122,6 +136,9 @@ export function ShellLayout<T extends Tab>({
 } & Omit<TabStripProps<T>, 'tabIdBase'>) {
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
+  // State rather than a ref: a portal has to re-render once the element the
+  // shell class sits on exists.
+  const [root, setRoot] = useState<HTMLDivElement | null>(null);
   const tabIdBase = `${layoutId}-documents`;
 
   const leftPanel = usePanelRef();
@@ -171,124 +188,126 @@ export function ShellLayout<T extends Tab>({
 
   return (
     <Tooltip.Provider delayDuration={400}>
-      <div className="sb-shell app">
-        <TitleBar
-          tabIdBase={tabIdBase}
-          leading={
-            <>
-              {titleBarLeading}
-              <IconButton
-                label={leftCollapsed ? 'Show sidebar' : 'Hide sidebar'}
-                onClick={() => togglePanel('left')}
-                active={!leftCollapsed}
-                testId="toggle-left"
-              >
-                <PanelLeft size={15} />
-              </IconButton>
-            </>
-          }
-          actions={
-            <>
-              {titleBarActions}
-              <IconButton
-                label={rightCollapsed ? 'Show panel' : 'Hide panel'}
-                onClick={() => togglePanel('right')}
-                active={!rightCollapsed}
-                testId="toggle-right"
-              >
-                <PanelRight size={15} />
-              </IconButton>
-            </>
-          }
-          tabs={tabs}
-          activeTab={activeTab}
-          onSelectTab={onSelectTab}
-          onCloseTab={onCloseTab}
-          onNewTab={onNewTab}
-          tabsLabel={tabsLabel}
-          newTabLabel={newTabLabel}
-          tabIcon={tabIcon}
-        />
-
-        {top}
-
-        <Group
-          orientation="horizontal"
-          className="panels"
-          defaultLayout={layout.defaultLayout}
-          onLayoutChanged={layout.onLayoutChanged}
-        >
-          <Panel
-            id="left"
-            panelRef={leftPanel}
-            defaultSize={leftSize.default}
-            minSize={leftSize.min}
-            maxSize={leftSize.max}
-            collapsible
-            collapsedSize={leftSize.collapsed}
-            onResize={() =>
-              setLeftCollapsed(leftPanel.current?.isCollapsed() ?? false)
-            }
-            className="panel"
-          >
-            {left(leftCollapsed)}
-          </Panel>
-
-          <Separator className="resize-handle" />
-
-          <Panel id="main" minSize="30" className="panel panel--canvas">
-            {bottom === undefined ? (
-              documentPanel
-            ) : (
-              <Group
-                orientation="vertical"
-                className="column"
-                defaultLayout={columnLayout.defaultLayout}
-                onLayoutChanged={columnLayout.onLayoutChanged}
-              >
-                <Panel id="main" minSize="20" className="panel panel--canvas">
-                  {documentPanel}
-                </Panel>
-                <Separator className="resize-handle resize-handle--horizontal" />
-                <Panel
-                  id="bottom"
-                  panelRef={bottomPanel}
-                  defaultSize={bottomSize.default}
-                  minSize={bottomSize.min}
-                  maxSize={bottomSize.max}
-                  collapsible
-                  collapsedSize={bottomSize.collapsed}
-                  className="panel panel--drawer"
+      <ShellPortalRoot element={root}>
+        <div className="sb-shell app" ref={setRoot}>
+          <TitleBar
+            tabIdBase={tabIdBase}
+            leading={
+              <>
+                {titleBarLeading}
+                <IconButton
+                  label={leftCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+                  onClick={() => togglePanel('left')}
+                  active={!leftCollapsed}
+                  testId="toggle-left"
                 >
-                  {bottom}
-                </Panel>
-              </Group>
-            )}
-            <footer className="statusbar">
-              {status}
-              <span className="statusbar__grow" />
-            </footer>
-          </Panel>
-
-          <Separator className="resize-handle" />
-
-          <Panel
-            id="right"
-            panelRef={rightPanel}
-            defaultSize={rightSize.default}
-            minSize={rightSize.min}
-            maxSize={rightSize.max}
-            collapsible
-            collapsedSize={rightSize.collapsed}
-            onResize={() =>
-              setRightCollapsed(rightPanel.current?.isCollapsed() ?? false)
+                  <PanelLeft size={15} />
+                </IconButton>
+              </>
             }
-            className="panel"
+            actions={
+              <>
+                {titleBarActions}
+                <IconButton
+                  label={rightCollapsed ? 'Show panel' : 'Hide panel'}
+                  onClick={() => togglePanel('right')}
+                  active={!rightCollapsed}
+                  testId="toggle-right"
+                >
+                  <PanelRight size={15} />
+                </IconButton>
+              </>
+            }
+            tabs={tabs}
+            activeTab={activeTab}
+            onSelectTab={onSelectTab}
+            onCloseTab={onCloseTab}
+            onNewTab={onNewTab}
+            tabsLabel={tabsLabel}
+            newTabLabel={newTabLabel}
+            tabIcon={tabIcon}
+          />
+
+          {top}
+
+          <Group
+            orientation="horizontal"
+            className="panels"
+            defaultLayout={layout.defaultLayout}
+            onLayoutChanged={layout.onLayoutChanged}
           >
-            {right}
-          </Panel>
-        </Group>
-      </div>
+            <Panel
+              id="left"
+              panelRef={leftPanel}
+              defaultSize={leftSize.default}
+              minSize={leftSize.min}
+              maxSize={leftSize.max}
+              collapsible
+              collapsedSize={leftSize.collapsed}
+              onResize={() =>
+                setLeftCollapsed(leftPanel.current?.isCollapsed() ?? false)
+              }
+              className="panel"
+            >
+              {left(leftCollapsed)}
+            </Panel>
+
+            <Separator className="resize-handle" />
+
+            <Panel id="main" minSize="30" className="panel panel--canvas">
+              {bottom === undefined ? (
+                documentPanel
+              ) : (
+                <Group
+                  orientation="vertical"
+                  className="column"
+                  defaultLayout={columnLayout.defaultLayout}
+                  onLayoutChanged={columnLayout.onLayoutChanged}
+                >
+                  <Panel id="main" minSize="20" className="panel panel--canvas">
+                    {documentPanel}
+                  </Panel>
+                  <Separator className="resize-handle resize-handle--horizontal" />
+                  <Panel
+                    id="bottom"
+                    panelRef={bottomPanel}
+                    defaultSize={bottomSize.default}
+                    minSize={bottomSize.min}
+                    maxSize={bottomSize.max}
+                    collapsible
+                    collapsedSize={bottomSize.collapsed}
+                    className="panel panel--drawer"
+                  >
+                    {bottom}
+                  </Panel>
+                </Group>
+              )}
+              <footer className="statusbar">
+                {status}
+                <span className="statusbar__grow" />
+              </footer>
+            </Panel>
+
+            <Separator className="resize-handle" />
+
+            <Panel
+              id="right"
+              panelRef={rightPanel}
+              defaultSize={rightSize.default}
+              minSize={rightSize.min}
+              maxSize={rightSize.max}
+              collapsible
+              collapsedSize={rightSize.collapsed}
+              onResize={() =>
+                setRightCollapsed(rightPanel.current?.isCollapsed() ?? false)
+              }
+              className="panel"
+            >
+              {right}
+            </Panel>
+          </Group>
+        </div>
+      </ShellPortalRoot>
     </Tooltip.Provider>
   );
 }

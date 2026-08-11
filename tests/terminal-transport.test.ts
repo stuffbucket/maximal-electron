@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import {
   SHELL_TERMINAL_PROPERTIES,
+  createTerminalTransport,
   readTerminalTheme,
+  type TerminalChannels,
+  type TerminalEvent,
 } from '../src/renderer/lib/terminal-transport.js';
 
 /**
@@ -118,5 +121,152 @@ describe('SHELL_TERMINAL_PROPERTIES', () => {
       foreground: '--shell-terminal-foreground',
       cursor: '--shell-terminal-cursor',
     });
+  });
+});
+
+/**
+ * The transport a consumer builds from their own channels.
+ *
+ * Nothing here names a channel of this repository's. The names arrive as an
+ * argument, so the assertions use names no contract holds and a hard-coded one
+ * would fail them.
+ */
+
+const CHANNELS: TerminalChannels = {
+  spawn: 'consumer/open',
+  write: 'consumer/write',
+  resize: 'consumer/resize',
+  terminate: 'consumer/close',
+  list: 'consumer/list',
+  data: 'consumer/output',
+  exit: 'consumer/ended',
+};
+
+/** A transport over recorded calls, plus the recordings. */
+function wired(answer: unknown = []) {
+  const invoked: { channel: string; request: unknown }[] = [];
+  const listeners = new Map<string, (payload: unknown) => void>();
+  const unsubscribed: string[] = [];
+
+  const transport = createTerminalTransport({
+    invoke: (channel, request) => {
+      invoked.push({ channel, request });
+      return Promise.resolve(answer);
+    },
+    on: (event, listener) => {
+      listeners.set(event, listener);
+      return () => unsubscribed.push(event);
+    },
+    channels: CHANNELS,
+  });
+
+  const send = (event: string, payload: unknown) => {
+    listeners.get(event)?.(payload);
+  };
+
+  return { transport, invoked, listeners, unsubscribed, send };
+}
+
+describe('createTerminalTransport', () => {
+  it('opens a session on the channel it was given', async () => {
+    const { transport, invoked } = wired();
+    await transport.spawn({
+      id: 'one',
+      cwd: '/tmp/work',
+      shell: '/bin/sh',
+      cols: 80,
+      rows: 24,
+    });
+
+    expect(invoked).toEqual([
+      {
+        channel: 'consumer/open',
+        request: { id: 'one', cols: 80, rows: 24, shell: '/bin/sh', cwd: '/tmp/work' },
+      },
+    ]);
+  });
+
+  it('leaves the shell and the directory to the host when the caller names neither', async () => {
+    const { transport, invoked } = wired();
+    await transport.spawn({ id: 'one', cols: 80, rows: 24 });
+
+    expect(invoked).toEqual([
+      {
+        channel: 'consumer/open',
+        request: { id: 'one', cols: 80, rows: 24, shell: undefined, cwd: undefined },
+      },
+    ]);
+  });
+
+  it('writes, resizes and terminates by id', async () => {
+    const { transport, invoked } = wired();
+    await transport.write('one', 'ls\r');
+    await transport.resize('one', 100, 40);
+    await transport.terminate('one');
+
+    expect(invoked).toEqual([
+      { channel: 'consumer/write', request: { id: 'one', data: 'ls\r' } },
+      { channel: 'consumer/resize', request: { id: 'one', cols: 100, rows: 40 } },
+      { channel: 'consumer/close', request: { id: 'one' } },
+    ]);
+  });
+
+  it('answers list with what the host reported', async () => {
+    const sessions = [{ id: 'one', cwd: '/tmp', shell: '/bin/sh', startedAt: 17 }];
+    const { transport, invoked } = wired(sessions);
+
+    await expect(transport.list()).resolves.toEqual(sessions);
+    expect(invoked).toEqual([{ channel: 'consumer/list', request: undefined }]);
+  });
+
+  it('uses each of the seven names exactly once', () => {
+    // The floor. A transport that called nothing would satisfy every
+    // assertion above by never reaching a channel.
+    const { transport, invoked, listeners } = wired();
+    void transport.spawn({ id: 'one', cols: 1, rows: 1 });
+    void transport.write('one', 'x');
+    void transport.resize('one', 2, 2);
+    void transport.terminate('one');
+    void transport.list();
+    transport.subscribe('one', () => undefined);
+
+    const used = [...invoked.map((call) => call.channel), ...listeners.keys()];
+    expect(used).toHaveLength(Object.keys(CHANNELS).length);
+    expect(new Set(used)).toEqual(new Set(Object.values(CHANNELS)));
+  });
+
+  it('delivers this session output and no other', () => {
+    const { transport, send } = wired();
+    const received: TerminalEvent[] = [];
+    transport.subscribe('one', (event) => received.push(event));
+
+    send('consumer/output', { id: 'two', data: 'not mine' });
+    send('consumer/output', { id: 'one', data: 'mine' });
+
+    // The events are per host, not per session, so every subscription sees
+    // every payload and the filter is the whole of the routing.
+    expect(received).toEqual([{ type: 'data', data: 'mine' }]);
+  });
+
+  it('delivers this session exit and no other', () => {
+    const { transport, send } = wired();
+    const received: TerminalEvent[] = [];
+    transport.subscribe('one', (event) => received.push(event));
+
+    send('consumer/ended', { id: 'two', exitCode: 3 });
+    send('consumer/ended', { id: 'one', exitCode: 0 });
+
+    expect(received).toEqual([{ type: 'exit', exitCode: 0 }]);
+  });
+
+  it('unsubscribes from both events at once', () => {
+    // A caller never has to pair two calls, so a stop that dropped one would
+    // leave a dead view receiving output.
+    const { transport, unsubscribed } = wired();
+    const stop = transport.subscribe('one', () => undefined);
+
+    expect(unsubscribed).toEqual([]);
+    stop();
+    expect(unsubscribed).toEqual(['consumer/output', 'consumer/ended']);
   });
 });

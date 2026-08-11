@@ -130,9 +130,6 @@ dry run exists for the first half and `dry-run-artifacts` for the second.
 
 ## Still unfloored
 
-- `scripts/storybook-check.mjs:152` gives up on axe after twelve attempts and
-  carries on with an empty violation list. A story that never lets axe run
-  reads as clean.
 - The five `verify:*` scripts named in `PENDING` in `tests/check-scope.test.ts`
   print bare `ok` lines. Their scopes are unstated, so an empty one is still
   invisible.

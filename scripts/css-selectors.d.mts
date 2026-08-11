@@ -11,6 +11,19 @@ export interface SelectorRule {
   conditional: boolean;
 }
 
+/** A style rule: one selector, the at-rules around it, and what it declares. */
+export interface StyleRule {
+  selector: string;
+  /** The conditional at-rule preludes enclosing it, outermost first. */
+  conditions: string[];
+  /** The property names its body sets, in source order and with repeats. */
+  properties: string[];
+}
+
+/** Every style rule in a stylesheet, one per selector in a selector list. */
+export declare function styleRules(css: string): StyleRule[];
+/** Every property name a declaration body sets. */
+export declare function declaredProperties(body: string): string[];
 /** Every selector in a stylesheet, with the conditions around each. */
 export declare function selectorRules(css: string): SelectorRule[];
 /** Every individual selector in a stylesheet, in source order. */

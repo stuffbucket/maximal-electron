@@ -121,6 +121,17 @@ function TabLabel({ title }: { title: string }) {
   );
 }
 
+/**
+ * A document tab strip.
+ *
+ * `ShellLayout` renders one into the title bar from its own tab props, so a
+ * caller composing the frame does not reach for this directly. It is exported
+ * for a document surface that is not the shell.
+ *
+ * A tab carries an icon by name rather than by component, because a tab
+ * crosses a process boundary in this application and a component does not
+ * serialise.
+ */
 export function TabBar<T extends Tab>({
   tabIdBase,
   tabs,

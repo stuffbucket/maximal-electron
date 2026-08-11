@@ -1,3 +1,4 @@
+import { NavRail } from '@stuffbucket/maximal-electron/renderer';
 import {
   Bot,
   CheckCircle2,
@@ -8,13 +9,12 @@ import {
 } from 'lucide-react';
 import type { ComponentType } from 'react';
 
+import type { RunStatus } from './runs.js';
 import {
   NAV_SECTIONS,
   type DemoNavEntry,
   type DemoViewId,
 } from './views.js';
-import type { RunStatus } from './runs.js';
-import { NavRail } from '../../../src/renderer/components/NavRail.js';
 
 /** One icon per status bucket, so the Agents section reads at a glance. */
 const STATUS_ICONS: Record<RunStatus, ComponentType<{ size?: number }>> = {

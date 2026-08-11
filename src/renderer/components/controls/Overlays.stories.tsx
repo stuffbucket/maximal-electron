@@ -127,6 +127,10 @@ export const MenuKeyboard: StoryObj = {
     await expect(within(menu).getByText('Delete').closest('[role="menuitem"]')).toHaveAttribute(
       'data-highlighted',
     );
+
+    // Closed again, so the a11y check does not see a document behind an open
+    // popup and report the trigger as focusable inside `aria-hidden`.
+    await userEvent.keyboard('{Escape}');
   },
 };
 

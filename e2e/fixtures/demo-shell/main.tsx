@@ -1,10 +1,10 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
-// The product's stylesheet first: it carries the tokens, the panel chrome, and
-// every class the shared components use. `demo.css` adds only what the fleet
-// needs on top.
-import '../../../src/renderer/styles/shell.css';
+// The package's structural stylesheet, which ships no palette by design, and
+// then the fixture's own, which defines the `--shell-*` contract it reads.
+// A consumer imports these two in this order and nothing else.
+import '@stuffbucket/maximal-electron/renderer/styles.css';
 import './demo.css';
 
 import { DemoApp } from './DemoApp.js';
