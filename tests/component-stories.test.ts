@@ -22,12 +22,15 @@ import { exportedModules } from './stylesheets.js';
 
 const RENDERER = new URL('../src/renderer/', import.meta.url);
 
-/** Components exported without a story, and the issue that will write one. */
-const PENDING = new Map([
-  ['components/Canvas', '#180'],
-  ['components/TerminalTabs', '#180'],
-  ['components/TerminalView', '#180'],
-]);
+/**
+ * Components exported without a story, and the issue that would write one.
+ *
+ * Empty, and it stays that way: the list may only shrink. Issue #180 emptied
+ * it — `Canvas`, `ShellLayout`, `TerminalTabs` and `TerminalView` were the last
+ * four, and the terminal pair needed a fake `TerminalTransport` rather than a
+ * new exemption.
+ */
+const PENDING = new Map<string, string>();
 
 /**
  * Every component module the entry point reaches.
@@ -88,17 +91,21 @@ describe('every exported component has a story', () => {
     expect(missing).toEqual([]);
   });
 
-  it('carries no entry for a component that now has one', () => {
+  it(`carries no entry for a component that now has one [${String(
+    PENDING.size,
+  )} exempt]`, () => {
     // The list may only shrink. An entry that has stopped being true is how an
     // exemption becomes the rule, which is what `tests/check-scope.test.ts`
-    // guards its own `PENDING` against.
+    // guards its own `PENDING` against. The count is in the name because the
+    // loop below examines nothing when the list is empty, and a silent pass
+    // over an empty set reads the same as a pass over a full one.
     for (const base of PENDING.keys()) {
       expect(modules, base).toContain(base);
       expect(covered, base).not.toContain(base);
     }
   });
 
-  it('gives every entry an issue number', () => {
+  it(`gives every entry an issue number [${String(PENDING.size)} exempt]`, () => {
     for (const [base, issue] of PENDING) expect(issue, base).toMatch(/^#\d+$/);
   });
 });
