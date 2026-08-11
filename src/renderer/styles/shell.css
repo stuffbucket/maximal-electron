@@ -750,6 +750,7 @@ body {
 
 .row__name {
   flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -802,7 +803,7 @@ body {
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
-  height: var(--size-tabbar);
+  min-height: var(--size-tabbar);
   flex: none;
   border-bottom: 1px solid var(--border-subtle);
 }
