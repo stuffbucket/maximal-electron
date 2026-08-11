@@ -62,7 +62,7 @@ const FLEET_SECTIONS: NavRailSection<string, FleetStatus>[] = [
     id: 'projects',
     label: 'Projects',
     items: [
-      { id: 'project:maximal-core', label: 'maximal-core', count: 6 },
+      { id: 'project:core', label: 'core', count: 6 },
       { id: 'project:shell', label: 'shell', count: 4 },
       { id: 'project:macos-builder', label: 'macos-builder', count: 5 },
       { id: 'project:wiggle', label: 'wiggle', count: 2 },
