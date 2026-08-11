@@ -9,6 +9,7 @@ import {
   failedPeerChecks,
   missingPeerChecks,
   peerRequirements,
+  readPackageSource,
 } from '../scripts/peer-requirements.mjs';
 
 /**
@@ -54,18 +55,7 @@ beforeAll(async () => {
       "import * as Tabs from '@radix-ui/react-tabs';\n" +
       "import { useState } from 'react';\n" +
       "import path from 'node:path';\n" +
-      "import './Cycle.js';\n" +
       "export const Canvas = () => null;\n",
-  );
-
-  // A cycle. A walk that does not remember where it has been never returns.
-  await writeFile(
-    path.join(root, 'dist/renderer/components/Cycle.js'),
-    "import './Other.js';\nexport const cycle = 1;\n",
-  );
-  await writeFile(
-    path.join(root, 'dist/renderer/components/Other.js'),
-    "import './Cycle.js';\nexport const other = 1;\n",
   );
 
   await writeFile(path.join(root, 'dist/host/host-window.js'), "import 'electron';\n");
@@ -134,10 +124,36 @@ describe('peerRequirements', () => {
     ]);
   });
 
-  it('finishes on a graph that imports itself in a circle', async () => {
-    // Cycle.js and Other.js import each other. Reaching the answer at all is
-    // the assertion; a walk that forgets where it has been does not return.
-    await expect(peerRequirements(root, EXPORTS)).resolves.toBeInstanceOf(Map);
+  /*
+   * A diamond, read through a counting reader: `index` imports `left` and
+   * `right`, and both import `shared`.
+   *
+   * The assertion is the read count, not the elapsed time. A walk that does not
+   * remember where it has been reads `shared` twice here and never returns on a
+   * graph that imports itself in a circle, and only the first of those is
+   * something a test can state.
+   */
+  it('reads a module once however many modules import it', async () => {
+    const sources = new Map([
+      ['/pkg/d/index.js', "import './left.js';\nimport './right.js';\n"],
+      ['/pkg/d/left.js', "import './shared.js';\n"],
+      ['/pkg/d/right.js', "import './shared.js';\n"],
+      ['/pkg/d/shared.js', "import 'lucide-react';\n"],
+    ]);
+    const reads: string[] = [];
+
+    const requirements = await peerRequirements(
+      '/pkg',
+      { './renderer': { default: './d/index.js' } },
+      (file: string) => {
+        reads.push(file);
+        return Promise.resolve(sources.get(file) ?? '');
+      },
+    );
+
+    expect(requirements.get('./renderer')).toEqual(['lucide-react', 'react-dom']);
+    expect(reads.filter((file) => file === '/pkg/d/shared.js')).toHaveLength(1);
+    expect(reads).toHaveLength(4);
   });
 
   it('reports what it could read when a file the graph names is absent', async () => {
@@ -145,6 +161,20 @@ describe('peerRequirements', () => {
     const requirements = await peerRequirements(root, EXPORTS);
 
     expect(requirements.get('./renderer')).toContain('lucide-react');
+  });
+});
+
+describe('readPackageSource', () => {
+  it('reads a module this install carries', async () => {
+    expect(await readPackageSource(path.join(root, 'dist/host/host-window.js'))).toContain(
+      'electron',
+    );
+  });
+
+  it('reads nothing at all for a module it does not', async () => {
+    // Empty, not a message and not a throw: the walk adds whatever comes back
+    // to the import scan, and only nothing can contribute nothing.
+    expect(await readPackageSource(path.join(root, 'dist/renderer/components/Gone.js'))).toBe('');
   });
 });
 

@@ -28,10 +28,19 @@ export interface MissingPeerInput {
 
 export declare const REQUIRED_WITHOUT_IMPORT: RequiredWithoutImport[];
 
+/**
+ * A module's source, or empty for one the install does not carry. Defaults to
+ * reading from disk; the tests pass a graph held in memory.
+ */
+export type ReadSource = (file: string) => Promise<string>;
+
 export declare function peerRequirements(
   packageRoot: string,
   exports: unknown,
+  readSource?: ReadSource,
 ): Promise<Map<string, string[]>>;
+
+export declare function readPackageSource(file: string): Promise<string>;
 
 export declare function missingPeerChecks(input: MissingPeerInput): PeerCheck[];
 

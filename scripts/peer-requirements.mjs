@@ -44,37 +44,51 @@ function isModuleTarget(target) {
 }
 
 /**
+ * A module's source, or nothing for one this install does not carry.
+ *
+ * Empty rather than absent, so the walk has no case to branch on: a module that
+ * is not there imports nothing, which is what an empty source already says.
+ *
+ * Exported because it is the default `readSource` and a caller reading from
+ * somewhere else needs the same contract to write one.
+ */
+export function readPackageSource(file) {
+  return readFile(file, 'utf8').catch(() => '');
+}
+
+/**
  * Every bare specifier the graph under `entry` reaches.
  *
- * Unreadable files are skipped rather than thrown on: this runs against an
- * install the caller did not build, and a partial answer that names what it
- * could read beats no answer at all.
+ * A file is read once however many modules import it, which is what keeps a
+ * graph that imports itself in a circle from walking forever.
  */
-async function packagesReached(packageRoot, entry) {
+async function packagesReached(entry, readSource) {
   const found = new Set();
   const visited = new Set();
-  const pending = [entry];
 
-  while (pending.length > 0) {
-    // Defined because the loop guards the length, and remembered because a
-    // graph may import itself in a circle.
-    const file = /** @type {string} */ (pending.pop());
-    if (visited.has(file)) continue;
+  /*
+   * Recursive rather than a worklist loop, which is a testability choice as
+   * much as a shape one. A `while` over a pending array is one mutation away
+   * from never draining, and a mutant that hangs is killed by a timeout rather
+   * than by anything asserting: `scripts/mutation-report.mjs` refuses those.
+   * Following the edges directly leaves every mutant here observable in a
+   * returned value.
+   */
+  async function follow(file) {
+    if (visited.has(file)) return;
     visited.add(file);
 
-    let source;
-    try {
-      source = await readFile(file, 'utf8');
-    } catch {
-      continue;
-    }
-
+    const source = await readSource(file);
     for (const name of importedPackages(source)) found.add(name);
-    for (const specifier of relativeImports(source)) {
-      pending.push(path.resolve(path.dirname(file), specifier));
-    }
+
+    await Promise.all(
+      relativeImports(source).map((specifier) =>
+        follow(path.resolve(path.dirname(file), specifier)),
+      ),
+    );
   }
 
+  await follow(entry);
   return found;
 }
 
@@ -83,8 +97,11 @@ async function packagesReached(packageRoot, entry) {
  *
  * Every condition of a subpath walks to the same graph, so the first module
  * target wins and the rest are skipped.
+ *
+ * `readSource` is the seam the tests read a graph through without writing one
+ * to disk. It defaults to reading the package the caller named.
  */
-export async function peerRequirements(packageRoot, exports) {
+export async function peerRequirements(packageRoot, exports, readSource = readPackageSource) {
   /** @type {Map<string, string[]>} */
   const requirements = new Map();
 
@@ -92,7 +109,7 @@ export async function peerRequirements(packageRoot, exports) {
     if (requirements.has(subpath) || !isModuleTarget(target)) continue;
 
     const entry = path.resolve(packageRoot, target);
-    const reached = await packagesReached(packageRoot, entry);
+    const reached = await packagesReached(entry, readSource);
     for (const { subpath: where, name } of REQUIRED_WITHOUT_IMPORT) {
       if (where === subpath) reached.add(name);
     }
