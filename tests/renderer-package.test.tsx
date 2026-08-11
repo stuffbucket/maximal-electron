@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { RENDERER_SURFACE } from '../scripts/export-checks.mjs';
 import * as controls from '../src/renderer/components/controls/index.js';
 import * as surface from '../src/renderer/index.js';
+import { exportedModules } from './stylesheets.js';
 import {
   getTabPanelId,
   getTabTriggerId,
@@ -58,6 +59,38 @@ describe('the renderer entry point', () => {
     expect(properties.filter((name) => !name.startsWith('--shell-'))).toEqual([]);
     expect('terminalTheme' in surface).toBe(false);
     expect('TERMINAL_TOKENS' in surface).toBe(false);
+  });
+
+  it('names no custom property outside the --shell-* namespace', () => {
+    /*
+     * The general form of the assertion above. That one names two symbols, so
+     * it catches the mistake that was made and not the next one: any module
+     * the entry point reaches can write `--bg-canvas` into a string and hand a
+     * consumer a property their adapter never defines.
+     *
+     * The stylesheet half of this is `tests/package-styles.test.ts`, which
+     * holds `structural.css` to the same namespace. This is the JavaScript
+     * half, and nothing covered it.
+     */
+    const modules = exportedModules();
+    const named = modules.flatMap(([module, text]) =>
+      [...text.matchAll(/'(--[a-z][a-z0-9-]*)'/g)].map((match) => ({
+        module,
+        property: match[1] ?? '',
+      })),
+    );
+
+    // The floor. A walk that reached nothing would report a clean namespace
+    // over no modules at all.
+    expect(modules.length).toBeGreaterThan(10);
+    expect(named.length).toBeGreaterThan(0);
+
+    expect(
+      named
+        .filter((entry) => !entry.property.startsWith('--shell-'))
+        .map((entry) => `${entry.module}: ${entry.property}`)
+        .sort(),
+    ).toEqual([]);
   });
 });
 
