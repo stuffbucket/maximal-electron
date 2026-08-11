@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import type { Meta, StoryObj } from '@storybook/react-vite';
+import { expect } from 'storybook/test';
 
 import { NavRail, type NavRailSection } from './NavRail.js';
 
@@ -86,6 +87,14 @@ const FLEET_ICONS = {
   done: CheckCircle2,
   failed: CircleAlert,
 } as const;
+
+const LONG_LABEL_SECTIONS: NavRailSection<'aurora'>[] = [
+  {
+    id: 'projects',
+    label: 'Projects',
+    items: [{ id: 'aurora', label: 'Placeholder Project — Aurora', count: 128 }],
+  },
+];
 
 function Frame({ collapsed, children }: { collapsed: boolean; children: React.ReactNode }) {
   return (
@@ -174,4 +183,70 @@ export const AgentFleet: StoryObj<typeof meta> = {
 /** Collapsed to an icon rail. The panel width is the caller's; this is the state. */
 export const Collapsed: StoryObj<typeof meta> = {
   args: { collapsed: true },
+};
+
+function LongLabelRail() {
+  return (
+    <Frame collapsed={false}>
+      <NavRail
+        sections={LONG_LABEL_SECTIONS}
+        current="aurora"
+        onSelect={() => undefined}
+        collapsed={false}
+        icon={() => FolderOpen}
+      />
+    </Frame>
+  );
+}
+
+/**
+ * A label longer than the rail is wide.
+ *
+ * Issue #176: `.nav__label` had no rule of its own, so a long project name
+ * wrapped and overlapped the row below rather than truncating — the example
+ * in the issue, `Placeholder Project — Aurora`, is reused here. The fix
+ * replicates `.tab__label`'s reasoning: a flex item's `min-width` defaults to
+ * its content's width, so `min-width: 0` is what lets the label shrink below
+ * its own text and hand the overflow to `text-overflow: ellipsis` at all.
+ *
+ * This is the computed-layout proof: the label's own text is wider than its
+ * box (there is something to truncate), the row itself is not, and the count
+ * keeps its place at the trailing edge rather than being pushed out.
+ */
+export const LongLabel: StoryObj<typeof meta> = {
+  render: () => <LongLabelRail />,
+  play: async ({ canvasElement }) => {
+    const item = canvasElement.querySelector<HTMLElement>('[data-testid="nav-aurora"]');
+    const label = item?.querySelector<HTMLElement>('.nav__label');
+    const count = item?.querySelector<HTMLElement>('.nav__item-count');
+    if (!item || !label || !count) {
+      throw new Error('nothing to measure: the nav item, its label or its count did not render');
+    }
+
+    // The floor. A label with nothing to truncate would satisfy every
+    // comparison below by having nowhere to overflow from.
+    await expect(label.scrollWidth, 'the label text is wider than its own box').toBeGreaterThan(
+      label.clientWidth,
+    );
+
+    const itemRect = item.getBoundingClientRect();
+    const labelRect = label.getBoundingClientRect();
+    const countRect = count.getBoundingClientRect();
+
+    // Truncated inside the row, not overflowing it.
+    await expect(item.scrollWidth, 'the row itself does not overflow').toBeLessThanOrEqual(
+      item.clientWidth + 1,
+    );
+    await expect(
+      labelRect.right,
+      `label right ${String(Math.round(labelRect.right))}, count left ${String(Math.round(countRect.left))}`,
+    ).toBeLessThanOrEqual(countRect.left + 0.5);
+
+    // The count keeps its place at the trailing edge, rather than being
+    // pushed out by an unbounded label.
+    await expect(
+      countRect.right,
+      `count right ${String(Math.round(countRect.right))}, row right ${String(Math.round(itemRect.right))}`,
+    ).toBeLessThanOrEqual(itemRect.right + 0.5);
+  },
 };

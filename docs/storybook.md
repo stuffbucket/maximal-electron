@@ -19,11 +19,10 @@ on a white page.
 `shell.css` is what this application draws with. `structural.css`, which
 `scripts/copy-renderer-css.mjs` publishes as
 `@stuffbucket/maximal-electron/renderer/styles.css`, is the only CSS a consumer
-installs. They are not
-the same file: the shipped one declares no palette and scopes every rule under
-`.sb-shell`. Storybook used to load the first and nothing loaded the second, so
-every story showed what this application draws rather than what the package
-ships. Issue #181.
+installs. They are not the same file: the shipped one declares no palette and
+scopes every rule under `.sb-shell`. Storybook used to load the first and
+nothing loaded the second, so every story showed what this application draws
+rather than what the package ships. Issue #181.
 
 The **Stylesheet** switch is the answer, built like the theme switch beside it:
 a toolbar global and a decorator that reads it.
@@ -68,13 +67,20 @@ npm run storybook:check                          # application
 STORYBOOK_SHELL_MODE=package npm run storybook:check
 ```
 
-The package run is not at zero. Every violation it reports is one cause: with
+The package run is at zero, and it took one repair to get there. With
 `--shell-status` and `--shell-status-muted` unmapped, `Banner`, `StatusChip`
-and `Callout` draw `--shell-text-subtle` on `--shell-active`, which is 4.17:1
-in the dark palette against a requirement of 4.5. Issue #182 is the story half
-of that. The measurement is the instrument working, not the instrument
-failing; `docs/shell-variables.md` claims a host that maps neither "gets a
-legible chip in a neutral fill", and for this palette that claim is false.
+and `Callout` drew the pair's own fallback, which was `--shell-text-subtle` on
+`--shell-active`: 4.17:1 in the dark palette, against a requirement of 4.5.
+`docs/shell-variables.md` promises that a host mapping neither "gets a legible
+chip in a neutral fill", and for this palette the promise was false. The
+fallback is `--shell-text-muted` now, at 5.07:1. Nothing measured that pair
+before, because `CONTRAST_PAIRS` covers this application's tokens and not the
+`--shell-*` namespace; issue #65 is the hole.
+
+What the mode is for is the rest of it. A difference on an export of
+`src/renderer/index.ts` is either a variable a host chose not to set, which the
+fallback table explains, or a rule the shipped stylesheet does not have. The
+second kind is the one to open an issue about.
 
 ## Conventions
 

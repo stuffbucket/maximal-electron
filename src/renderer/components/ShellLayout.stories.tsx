@@ -87,6 +87,69 @@ export const Default: StoryObj = {
   },
 };
 
+function TallStatusShell() {
+  return (
+    <ShellLayout
+      layoutId="shell-tall-status-story"
+      tabs={[{ id: 'one', title: 'Workspace' }]}
+      activeTab="one"
+      onSelectTab={() => undefined}
+      tabsLabel="Workspace tabs"
+      left={(collapsed) => <nav className="nav">{collapsed ? null : 'Sections'}</nav>}
+      main={<div className="canvas">Canvas</div>}
+      right={<div className="inspector">Inspector</div>}
+      status={
+        // A fixed height rather than wrapped text, so the assertion below
+        // does not depend on font metrics in whatever engine runs it. Issue
+        // #176 measured 46px needed for two lines of real status text; 48px
+        // here is the same shape without the font dependency.
+        <span data-testid="tall-status" style={{ display: 'inline-block', height: 48 }}>
+          Connected · disk 92% · sync paused
+        </span>
+      }
+    />
+  );
+}
+
+/**
+ * Content taller than the compact register.
+ *
+ * Issue #176: `.statusbar` carried a fixed `height: 24px`, so a taller
+ * child — a control, a chip, a wrapped second line — overflowed it in both
+ * directions at once, over the panel above and off the window below, rather
+ * than growing the bar. `min-height` replaces it; this is the computed-layout
+ * proof that a taller child grows the bar instead of being clipped by it.
+ */
+export const TallStatus: StoryObj = {
+  render: () => <TallStatusShell />,
+  play: async ({ canvasElement }) => {
+    const shell = measure(canvasElement);
+    const content = canvasElement.querySelector('[data-testid="tall-status"]');
+    if (!content) throw new Error('nothing to measure: the tall status content did not render');
+    const contentRect = content.getBoundingClientRect();
+
+    // The floor. A collapsed child would satisfy every comparison below by
+    // measuring zero.
+    await expect(contentRect.height, 'the status content has a height').toBeGreaterThan(24);
+
+    // Grew, not clipped: the bar is at least as tall as the content it holds.
+    await expect(
+      shell.statusbar.height,
+      `statusbar ${String(Math.round(shell.statusbar.height))}px vs content ` +
+        `${String(Math.round(contentRect.height))}px`,
+    ).toBeGreaterThanOrEqual(contentRect.height - 0.5);
+
+    // The content sits inside the bar rather than past it, and the bar itself
+    // still sits inside the shell.
+    await expect(contentRect.bottom, scope(shell)).toBeLessThanOrEqual(
+      shell.statusbar.bottom + 0.5,
+    );
+    await expect(shell.statusbar.bottom, scope(shell)).toBeLessThanOrEqual(
+      shell.content.bottom + 0.5,
+    );
+  },
+};
+
 /* ------------------------------------------------------------ the top slot */
 
 interface Box {
