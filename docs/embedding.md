@@ -530,7 +530,7 @@ export function App() {
 }
 ```
 
-Four of those shapes are worth a sentence, because the snippet says what to
+Five of those shapes are worth a sentence, because the snippet says what to
 write and not why.
 
 - **`ShellLayout` takes no children.** Every region is a named prop, so the
@@ -544,6 +544,8 @@ write and not why.
   a selectable option rather than a container. Both require `selected` and
   `onSelect`, and neither lays its children out: pass `modifier` and style that
   class yourself.
+- **`Canvas` is a listbox, and what `renderCard` returns is an option.** The
+  next section is the contract, and it is short.
 - **`FormField` takes a function, not a node.** It owns `id`,
   `aria-describedby` and `aria-invalid`, and hands them to the control it
   wraps, which is the whole reason to reach for it rather than a label of your
@@ -560,6 +562,57 @@ export and an import of the bare name does not resolve. And
 lists the eleven properties that carry no fallback, and the shell draws nothing
 until they exist. Define them on `:root` or `body`, for the reason the next
 section measures.
+
+### The canvas owes a keyboard model, and asks for a role in return
+
+`Canvas` renders `role="listbox"` around whatever `renderCard` and `renderRow`
+return. That role is a promise to a screen reader user about the markup inside
+it and about which keys work, and the component used to make it while
+implementing neither half. Issue #171.
+
+**One rule for a consumer.** Each item renders exactly one element carrying
+`role="option"` and `aria-selected`, and that element is what the render
+function returns, not something inside a wrapper. `Card` and `Row` are that
+element already, so a consumer who passes them has already met it.
+
+Everything else is the canvas's, over elements it did not render. It finds the
+options in the DOM after each render and writes their `tabIndex`, so a consumer
+adds no `tabIndex` and no key handler:
+
+| Key | What the canvas does |
+| --- | --- |
+| Tab | Reaches the selected option, or the first when nothing is selected, and leaves the listbox on the next press. The other options carry `tabIndex = -1`. |
+| Arrows | Move focus one option, clamped at both ends. All four move linearly in item order, because this is a `listbox` and not a `grid`. |
+| Enter, Space | Click the focused option, after cancelling the default action so a `<button>` option does not also fire its own click. |
+
+Which option Tab reaches is read from `aria-selected` in the markup rather than
+from `selectedId`, because the attribute is what the role requires and the DOM
+is where the consumer's answer to it lands.
+
+Two consequences worth stating.
+
+**Selection does not follow focus.** `selectedId` is the consumer's state and
+the canvas has no route into it other than the option's own click handler, so
+arrowing moves focus and nothing else. Enter or Space is what selects.
+
+**The option does not have to be a button.** A `<div role="option">` is
+focusable by nothing and activated by no key on its own, and the canvas
+supplies both, so the ARIA-literal reading is now operable rather than dead.
+That failure was the reason `Card` is a `<button>` carrying `role="option"`,
+and that tile is still the one to reach for — it draws itself, and a pointer
+needs its click handler either way.
+
+A key arriving from a control *inside* an option is left alone, so a button or
+a field nested in a tile keeps every key of its own. A tile wrapped in a layout
+element is not a direct child, so it is neither a valid listbox child nor
+something the canvas will touch: it falls back to whatever tab stops the markup
+already had, and axe reports the structure.
+
+`src/renderer/components/Canvas.stories.tsx` drives all of this in a real
+browser. `Keyboard` asserts where focus lands and counts activations, between
+two other tab stops so that "one tab stop" is a claim about what Tab skips.
+`PlainOptions` is the whole grid built from `<div role="option">` with no
+button in it.
 
 ### The surfaces that portal
 

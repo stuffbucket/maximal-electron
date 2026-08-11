@@ -17,6 +17,10 @@ import type { ReactNode } from 'react';
  * supplies. The attribute is unchanged, so `.card[aria-selected='true']` in
  * the stylesheet still does what it did.
  *
+ * There is no `tabIndex` here, and passing one is not a thing this takes.
+ * Inside `Canvas` the listbox owns the tab stop and the arrow keys, and it
+ * writes `tabIndex` on this element from the outside.
+ *
  * `modifier` adds the view's own class beside the base one. `status` sets
  * `data-status`, which the stylesheet colours from.
  */

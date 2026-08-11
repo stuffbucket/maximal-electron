@@ -21,15 +21,12 @@ import { Card, Row } from './controls/Tile.js';
  * consumer owns the state and pairs it with `ViewModeSwitch`. `Switchable`
  * below is that pairing, which is the arrangement the application ships.
  *
- * **There is no keyboard story, and there cannot be one yet.** A listbox owes
- * its user one tab stop and arrow keys between options. `Canvas` implements
- * neither, and issue #171 records both that and the missing option contract: it
- * hardcodes `role="listbox"` while telling a consumer nothing about what the
- * items must be. Every tile here is a `<button>`, so the grid is operable by
- * tabbing through all of them — verbose, but reachable, and axe is satisfied
- * because the structure is valid. A `play` function asserting arrow keys would
- * be asserting a contract this component does not implement, so what is written
- * here instead is that it does not.
+ * **The keyboard model is the canvas's**, over option elements it did not
+ * render. `Keyboard` below drives it: one tab stop rather than one per tile,
+ * arrow keys between options, Enter and Space to activate. Issue #171 is what
+ * that story is the answer to, and it asserts where focus lands rather than
+ * what the markup says, because a `tabindex` that reaches an element the caller
+ * replaced on the next render is not a tab stop.
  */
 
 interface Doc {
@@ -168,11 +165,191 @@ export const Selected: Story = {
       /Onboarding flow/,
     );
 
-    // Selection is the caller's state, and clicking is the only route to it a
-    // consumer gets: see the docblock on issue #171 for the keys that are not.
+    // Selection is the caller's state. A pointer reaches it through the tile's
+    // own click handler, and so does the keyboard: see `Keyboard` below.
     await userEvent.click(canvas.getByTestId('doc-e'));
     await expect(canvas.getByRole('option', { selected: true })).toHaveAccessibleName(
       /Icon set/,
+    );
+  },
+};
+
+/**
+ * A canvas between two other tab stops, with a count of how many times a tile
+ * was activated.
+ *
+ * The buttons are the instrument: "one tab stop" is a claim about what Tab
+ * skips, and it cannot be asserted without somewhere for Tab to go. The count
+ * is the second instrument, for Space on a `<button>` option — the canvas
+ * cancels the default action and clicks the option itself, and a canvas that
+ * did not would activate twice, which no assertion on selection could see.
+ */
+function KeyboardCanvas() {
+  const [selectedId, setSelectedId] = useState<string | undefined>('b');
+  const [activations, setActivations] = useState(0);
+  const select = (id: string) => {
+    setSelectedId(id);
+    setActivations((count) => count + 1);
+  };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+      <button type="button">Before</button>
+      <Canvas
+        items={DOCS}
+        mode="grid"
+        selectedId={selectedId}
+        empty={<EmptyState icon={FileText} message="Nothing here yet." />}
+        renderCard={(doc, selected) => card(doc, selected, select)}
+        renderRow={(doc, selected) => row(doc, selected, select)}
+      />
+      <button type="button">After</button>
+      <span data-testid="activations">{activations}</span>
+    </div>
+  );
+}
+
+/**
+ * The listbox keyboard model, which is the canvas's and not the caller's.
+ *
+ * The tiles here are the same `Card` every other story passes, with no
+ * `tabIndex` and no key handler on them. Everything this asserts, the canvas
+ * does to elements it did not render.
+ *
+ * Issue #171: before this, six tiles were six tab stops, and a consumer who
+ * followed the ARIA contract literally — an option that is not a button — had
+ * items no key could reach at all.
+ */
+export const Keyboard: Story = {
+  render: () => <KeyboardCanvas />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const stops = () => canvas.getAllByRole('option').filter((tile) => tile.tabIndex === 0);
+
+    // One tab stop, and it is the selected option rather than the first.
+    await expect(stops()).toHaveLength(1);
+    canvas.getByRole('button', { name: 'Before' }).focus();
+    await userEvent.tab();
+    await expect(canvas.getByTestId('doc-b')).toHaveFocus();
+
+    // The other five are skipped, which is the whole of what a roving tabindex
+    // buys a user. Tabbing six times to leave a grid is the state this ends.
+    await userEvent.tab();
+    await expect(canvas.getByRole('button', { name: 'After' })).toHaveFocus();
+    await userEvent.tab({ shift: true });
+    await expect(canvas.getByTestId('doc-b')).toHaveFocus();
+
+    // Arrows move linearly in item order: this is a listbox, not a grid.
+    await userEvent.keyboard('{ArrowRight}');
+    await expect(canvas.getByTestId('doc-c')).toHaveFocus();
+    await userEvent.keyboard('{ArrowDown}');
+    await expect(canvas.getByTestId('doc-d')).toHaveFocus();
+    await userEvent.keyboard('{ArrowUp}');
+    await expect(canvas.getByTestId('doc-c')).toHaveFocus();
+    await userEvent.keyboard('{Home}');
+    await expect(canvas.getByTestId('doc-a')).toHaveFocus();
+
+    // Clamped at both ends rather than wrapped, which is what a native select
+    // does. Focus staying put is the assertion.
+    await userEvent.keyboard('{ArrowUp}');
+    await expect(canvas.getByTestId('doc-a')).toHaveFocus();
+    await userEvent.keyboard('{End}');
+    await userEvent.keyboard('{ArrowDown}');
+    await expect(canvas.getByTestId('doc-f')).toHaveFocus();
+
+    // Focus alone selects nothing: the canvas does not own `selectedId`.
+    await expect(canvas.getByRole('option', { selected: true })).toHaveAccessibleName(
+      /Onboarding flow/,
+    );
+
+    await userEvent.keyboard(' ');
+    await expect(canvas.getByRole('option', { selected: true })).toHaveAccessibleName(
+      /architecture.md/,
+    );
+    await expect(canvas.getByTestId('activations')).toHaveTextContent('1');
+
+    await userEvent.keyboard('{Home}');
+    await userEvent.keyboard('{Enter}');
+    await expect(canvas.getByRole('option', { selected: true })).toHaveAccessibleName(
+      /Design system/,
+    );
+    await expect(canvas.getByTestId('activations')).toHaveTextContent('2');
+
+    // The tab stop roves with the focus, so Tab returns where the user left off
+    // rather than to the selection it started on.
+    await expect(stops()).toHaveLength(1);
+    await expect(canvas.getByTestId('doc-a').tabIndex).toBe(0);
+  },
+};
+
+/** An option that is not a button: the caller's own element, and no more. */
+function PlainOption({
+  doc,
+  selected,
+  onSelect,
+}: {
+  doc: Doc;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <div
+      role="option"
+      className="card"
+      aria-selected={selected}
+      data-testid={`plain-${doc.id}`}
+      onClick={onSelect}
+    >
+      <span className="card__name">{doc.name}</span>
+    </div>
+  );
+}
+
+function PlainCanvas() {
+  const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
+  const render = (doc: Doc, selected: boolean) => (
+    <PlainOption doc={doc} selected={selected} onSelect={() => setSelectedId(doc.id)} />
+  );
+  return (
+    <Canvas
+      items={DOCS}
+      mode="grid"
+      selectedId={selectedId}
+      empty={<EmptyState icon={FileText} message="Nothing here yet." />}
+      renderCard={render}
+      renderRow={render}
+    />
+  );
+}
+
+/**
+ * The contract is the role, not the element.
+ *
+ * A consumer who reads the ARIA specification and drops button semantics gets a
+ * `<div role="option">`, which is focusable by nothing and activated by no key.
+ * That was the worse of the two failure modes in issue #171, and it is the one
+ * a consumer trying to be correct fell into: the `<button role="option">` the
+ * package ships as `Card` was the compromise around it.
+ *
+ * The canvas puts the tab stop on the element the caller returned whatever it
+ * is, and Enter and Space click it, so this grid is operable with nothing
+ * interactive in the markup. `Card` is still the tile to reach for — it draws
+ * itself and it carries a click handler a pointer can use — but the keyboard
+ * does not come from it.
+ */
+export const PlainOptions: Story = {
+  render: () => <PlainCanvas />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryAllByRole('button')).toHaveLength(0);
+
+    await userEvent.tab();
+    await expect(canvas.getByTestId('plain-a')).toHaveFocus();
+    await userEvent.keyboard('{ArrowDown}{ArrowDown}');
+    await expect(canvas.getByTestId('plain-c')).toHaveFocus();
+
+    await userEvent.keyboard('{Enter}');
+    await expect(canvas.getByRole('option', { selected: true })).toHaveAccessibleName(
+      /release-notes.md/,
     );
   },
 };

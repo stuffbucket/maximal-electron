@@ -226,6 +226,16 @@ element, with no list markup and no stylesheet of the caller's own. Three
 consumers in a row read the types, concluded the component could not do it, and
 rebuilt it by hand, so this is stated here as well as in the `.d.ts`.
 
+`Canvas` is a `role="listbox"`, so every item must render exactly one element
+carrying `role="option"` and `aria-selected`, and it must be what `renderCard`
+or `renderRow` returns rather than something inside a wrapper. `Card` and `Row`
+are that element. In return the canvas owns the keyboard: one tab stop rather
+than one per tile, arrow keys between options, Enter and Space to activate. It
+writes `tabIndex` on the elements the caller returned, so a consumer supplies
+no `tabIndex` and no key handler, and an option does not have to be a button to
+be reachable. Selection stays the consumer's, in `selectedId`, and does not
+follow focus. [docs/embedding.md](./docs/embedding.md) is the contract in full.
+
 `Callout` is the box that asks for a decision: a titled region with an outline,
 a body of your markup, and a row of actions. It is not a `Card` — `Card` and
 `Row` are one selectable option in a listbox, and take `selected` and
