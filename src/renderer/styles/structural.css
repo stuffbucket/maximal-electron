@@ -1240,3 +1240,52 @@
 .sb-shell .terminal canvas {
   display: block;
 }
+
+/*
+ * A titled region that asks for something, in the content rather than in the
+ * top slot.
+ *
+ * The outline is what separates it from a panel, and it is drawn from the
+ * status pair rather than from a colour of the package's own, on the same terms
+ * as `Banner` and `StatusChip`: the vocabulary is the host's. Unmapped it is a
+ * plain outlined box.
+ */
+.sb-shell .callout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--shell-space-2, 8px);
+  padding: var(--shell-space-3, 12px);
+  color: var(--shell-text);
+  background: var(--shell-status-muted, var(--shell-active));
+  border: 1px solid var(--shell-status, var(--shell-text-subtle));
+  border-radius: var(--shell-radius-large, 8px);
+}
+
+/* Primary text rather than subtle when no status is mapped. An 11px uppercase
+   label in `--shell-text-subtle` fails contrast on this fill, which is the one
+   surface in the package raised above the panel it sits on. */
+.sb-shell .callout__title {
+  margin: 0;
+  color: var(--shell-status, var(--shell-text));
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sb-shell .callout__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--shell-space-2, 8px);
+  min-width: 0;
+  font-size: 13px;
+}
+
+/* Right aligned and wrapping, because the last button is the one a pointer
+   arrives at and two of them do not always fit on one line. */
+.sb-shell .callout__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--shell-space-2, 8px);
+  justify-content: flex-end;
+}

@@ -192,10 +192,11 @@ match either way — but that element inherits from `body`, and a property
 defined only on your container never reaches it. `docs/embedding.md` has the
 measurements.
 
-Status colour is yours to map. `StatusChip`, the status dot, `NavRail` items and
-`Banner` all put their state on `data-status`, and the shipped stylesheet maps
-no value of it, because a status vocabulary belongs to the application. Pass a
-status and every state draws the same neutral fill until you write the rules:
+Status colour is yours to map. `StatusChip`, the status dot, `NavRail` items,
+`Banner` and `Callout` all put their state on `data-status`, and the shipped
+stylesheet maps no value of it, because a status vocabulary belongs to the
+application. Pass a status and every state draws the same neutral fill until you
+write the rules:
 
 ```css
 .sb-shell .chip[data-status='failed'] { --shell-status: #f87171 }
@@ -216,6 +217,33 @@ props, plus an optional `top` and `bottom`, and `left` is a function of the
 collapsed state because `ShellLayout` owns that state and `NavRail` needs it.
 [docs/embedding.md](./docs/embedding.md) assembles a whole three-panel
 application — nav rail, canvas, inspector, tabs, status bar — in one snippet.
+
+`NavRail` is a list of labelled collapsible groups, not a flat icon strip. A
+`NavRailSection` carries a heading that collapses the entries under it, and a
+`NavRailEntry` carries an icon, a label, a count and an optional status. So a
+rail of a Projects group and an Agents group is two array entries and one
+element, with no list markup and no stylesheet of the caller's own. Three
+consumers in a row read the types, concluded the component could not do it, and
+rebuilt it by hand, so this is stated here as well as in the `.d.ts`.
+
+`Callout` is the box that asks for a decision: a titled region with an outline,
+a body of your markup, and a row of actions. It is not a `Card` — `Card` and
+`Row` are one selectable option in a listbox, and take `selected` and
+`onSelect` — and it is not a `Banner`, which is a strip in `ShellLayout`'s top
+slot that reports rather than asks. Three consumers in a row built this shape
+out of raw CSS for an approval prompt, so it is named here as well.
+
+```tsx
+<Callout status="blocked" title="Approval needed" actions={
+  <>
+    <Button size="sm">Deny</Button>
+    <Button size="sm" variant="primary">Allow once</Button>
+  </>
+}>
+  <span>The agent wants to run a command outside the workspace.</span>
+  <code className="field__value">npm run package</code>
+</Callout>
+```
 
 `TitleBar` accepts caller-owned `leading` and `actions` nodes. Direct `TitleBar`
 and `TabBar` consumers provide `tabIdBase` and use `getTabTriggerId` and

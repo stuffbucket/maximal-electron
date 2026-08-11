@@ -60,6 +60,13 @@ export type TileProps = Omit<Parameters<typeof Selectable>[0], 'base'>;
  * A selectable option, not a container: `selected` and `onSelect` are
  * required, and `Row` is the same component drawn for a dense list. Neither
  * lays its children out — pass `modifier` and style that class yourself.
+ *
+ * `status` reaches the markup as `data-status` and no stylesheet here maps a
+ * value of it, on `StatusChip`'s terms: a status vocabulary is the host's. On a
+ * tile it does one thing, which is to publish `--shell-status` and
+ * `--shell-status-muted` to everything inside once the host writes the rule
+ * that sets them. The tile itself draws no colour from it, so a `modifier`
+ * class that reads the pair is how a status reaches the tile's own border.
  */
 export function Card(props: TileProps) {
   return <Selectable base="card" {...props} />;

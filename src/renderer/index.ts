@@ -58,6 +58,7 @@ export {
 export {
   Banner,
   Button,
+  Callout,
   Card,
   Checkbox,
   Dialog,

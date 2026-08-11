@@ -141,6 +141,7 @@ export function missingTargets(root, exports) {
 export const RENDERER_SURFACE = [
   'Banner',
   'Button',
+  'Callout',
   'Canvas',
   'Card',
   'Checkbox',

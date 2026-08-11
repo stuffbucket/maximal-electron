@@ -84,7 +84,7 @@ looks exactly like an ordinary hovered one.
 | `--shell-position` | `fixed` | how the `ShellLayout` root meets the window; `static` lays it out inside the consumer's own container instead |
 | `--shell-radius` | `6px` | buttons, tabs, nav items, list rows, fields, menu popup |
 | `--shell-radius-dialog` | `14px` | the modal card, which is a panel rather than a control |
-| `--shell-radius-large` | `8px` | the `Card` tile, for the same reason |
+| `--shell-radius-large` | `8px` | the `Card` tile and the `Callout` box, for the same reason |
 | `--shell-radius-small` | `4px` | tab close affordance, tooltip, segmented control, menu item |
 | `--shell-scrim` | `rgb(0 0 0 / 0.34)` | the layer a modal dims the window with |
 | `--shell-space-1` | `4px` | nav section gaps |
@@ -92,8 +92,8 @@ looks exactly like an ordinary hovered one.
 | `--shell-space-3` | `12px` | title bar and status bar padding, grid gaps |
 | `--shell-space-4` | `16px` | canvas padding, nav section spacing, dialog padding |
 | `--shell-space-5` | `24px` | the padding an `EmptyState` keeps around its message |
-| `--shell-status` | `--shell-text-subtle` | the status dot, the `StatusChip` label, the `Banner` text |
-| `--shell-status-muted` | `--shell-active` | the `StatusChip` and `Banner` fills |
+| `--shell-status` | `--shell-text-subtle` | the status dot, the `StatusChip` label, the `Banner` text, the `Callout` outline; the `Callout` heading reads it too and falls back to `--shell-text`, which is the legible one on a raised fill |
+| `--shell-status-muted` | `--shell-active` | the `StatusChip`, `Banner` and `Callout` fills |
 | `--shell-tab-active` | `--shell-canvas` | the fill behind the selected tab |
 | `--shell-terminal-background` | `--shell-canvas` | the terminal's own surface |
 | `--shell-titlebar-height` | `40px` | the height of the title bar strip |

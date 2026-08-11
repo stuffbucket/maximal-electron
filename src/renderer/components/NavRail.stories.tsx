@@ -61,8 +61,10 @@ const FLEET_SECTIONS: NavRailSection<string, FleetStatus>[] = [
     id: 'projects',
     label: 'Projects',
     items: [
-      { id: 'project:core', label: 'core', count: 6 },
+      { id: 'project:maximal-core', label: 'maximal-core', count: 6 },
       { id: 'project:shell', label: 'shell', count: 4 },
+      { id: 'project:macos-builder', label: 'macos-builder', count: 5 },
+      { id: 'project:wiggle', label: 'wiggle', count: 2 },
     ],
   },
   {
@@ -138,6 +140,21 @@ const meta = {
   component: AppRail,
   args: { collapsed: false },
   argTypes: { collapsed: { control: 'boolean' } },
+  parameters: {
+    // `component` is the wrapper that holds the selection state, so autodocs
+    // has no docstring to read. Three consumers in a row reported that the
+    // rail could not draw labelled collapsible groups, and this page was one
+    // of the places that did not say otherwise.
+    docs: {
+      description: {
+        component:
+          'A list of labelled groups. Each `NavRailSection` draws a heading ' +
+          'that collapses the entries under it, and each `NavRailEntry` draws ' +
+          'an icon, a label, a count and an optional status dot. A navigation ' +
+          'of several groups is data, not markup.',
+      },
+    },
+  },
 } satisfies Meta<typeof AppRail>;
 
 export default meta;
@@ -145,7 +162,11 @@ export default meta;
 /** The application's own rail: two sections, no status. */
 export const Application: StoryObj<typeof meta> = {};
 
-/** The capture fixture's rail: status buckets, coloured icons, colons in ids. */
+/**
+ * The capture fixture's rail: two labelled groups, four projects and five
+ * status filters, coloured icons, colons in ids. This is the whole of what a
+ * consumer writes for it — the data above and one `NavRail` element.
+ */
 export const AgentFleet: StoryObj<typeof meta> = {
   render: (args) => <FleetRail collapsed={args.collapsed} />,
 };

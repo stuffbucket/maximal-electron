@@ -316,7 +316,7 @@ than calls once. Four groups.
 | Group | What is in it |
 | --- | --- |
 | Layout | `ShellLayout`, `TitleBar`, `TabBar`, `NavRail`, `Canvas`, and the tab helpers beside them |
-| Controls | `Button`, `IconButton`, `Card`, `Row`, `Toolbar`, `ViewModeSwitch`, `StatusChip`, `EmptyState`, `InspectorPanel`, `Banner`, `Dialog`, `Menu`, `TextInput`, `Textarea`, `Select`, `Switch`, `Checkbox`, `RadioGroup`, `Field`, `FormField` |
+| Controls | `Button`, `IconButton`, `Card`, `Row`, `Toolbar`, `ViewModeSwitch`, `StatusChip`, `EmptyState`, `InspectorPanel`, `Banner`, `Callout`, `Dialog`, `Menu`, `TextInput`, `Textarea`, `Select`, `Switch`, `Checkbox`, `RadioGroup`, `Field`, `FormField` |
 | Terminal | `TerminalView`, `TerminalTabs`, `createTerminalTransport`, `detachedSessions`, `readTerminalTheme`, `SHELL_TERMINAL_PROPERTIES` |
 | Hooks | `useShellTabs` for a tab strip's state, `useThemePreference` for the `data-theme` attribute |
 
@@ -420,12 +420,17 @@ const RUNS: Run[] = [
 
 const SECTIONS = [
   {
+    id: 'projects',
+    label: 'Projects',
+    items: [
+      { id: 'api', label: 'api', count: 1 },
+      { id: 'web', label: 'web', count: 1 },
+    ],
+  },
+  {
     id: 'agents',
     label: 'Agents',
-    items: [
-      { id: 'all', label: 'All runs', count: RUNS.length },
-      { id: 'api', label: 'api', count: 1 },
-    ],
+    items: [{ id: 'all', label: 'All runs', count: RUNS.length }],
   },
 ];
 
