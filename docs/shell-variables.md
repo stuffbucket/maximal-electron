@@ -92,8 +92,9 @@ looks exactly like an ordinary hovered one.
 | `--shell-space-3` | `12px` | title bar and status bar padding, grid gaps |
 | `--shell-space-4` | `16px` | canvas padding, nav section spacing, dialog padding |
 | `--shell-space-5` | `24px` | the padding an `EmptyState` keeps around its message |
-| `--shell-status` | `--shell-text-subtle` | the status dot, the `StatusChip` label, the `Banner` text, the `Callout` outline; the `Callout` heading reads it too and falls back to `--shell-text`, which is the legible one on a raised fill |
+| `--shell-status` | `--shell-text-muted` | the status dot, the `StatusChip` label, the `Banner` text, the `Callout` outline; the `Callout` heading reads it too and falls back to `--shell-text`, which is the legible one on a raised fill |
 | `--shell-status-muted` | `--shell-active` | the `StatusChip`, `Banner` and `Callout` fills |
+| `--shell-statusbar-height` | `24px` | the compact register `.statusbar` keeps as a minimum, not a fixed height |
 | `--shell-tab-active` | `--shell-canvas` | the fill behind the selected tab |
 | `--shell-terminal-background` | `--shell-canvas` | the terminal's own surface |
 | `--shell-titlebar-height` | `40px` | the height of the title bar strip |
@@ -102,7 +103,16 @@ looks exactly like an ordinary hovered one.
 `--shell-status` and `--shell-status-muted` are the pair a host maps its own
 states onto. Nothing here maps them: a `[data-status]` vocabulary is the
 application's, and `StatusChip` passes the raw state straight through to the
-attribute. A host that sets neither gets a legible chip in a neutral fill.
+attribute. A host that sets neither gets a legible chip in a neutral fill:
+`--shell-text-muted` on `--shell-active` measures 5.14:1 in this repository's
+dark palette and 5.39:1 in the light one, both above the 4.5:1 AA text
+minimum. `--shell-text-subtle` carried this fallback before and measured
+4.17:1 and 4.18:1: below the minimum in both, which is how three consumers
+passed a status, got the neutral fill by leaving both unmapped, and shipped it
+unread. `STORYBOOK_SHELL_MODE=package npm run storybook:check` is what found
+it, over the shipped stylesheet under a consumer's own palette; `npm run
+check:contrast` checks this application's tokens and never reads `--shell-*`
+at all.
 
 ## Runtime
 

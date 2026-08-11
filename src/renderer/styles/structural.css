@@ -24,6 +24,25 @@
 }
 
 /*
+ * The design system baseline: colour, background and type for the whole
+ * shell tree, not only the frame `ShellLayout` renders.
+ *
+ * README.md tells a consumer composing the smaller exports directly to apply
+ * `.sb-shell` themselves, and a consumer who does exactly that — a `Button` or
+ * a `Card` with no `ShellLayout` above it — matches `.sb-shell` alone, never
+ * `.app`. Carrying these three properties on the compound selector left that
+ * consumer with the document's own font and colour: a `Button` reading Times
+ * New Roman at 16px in black, in package-mode Storybook, which is every story
+ * that composes without the frame. `ShellLayout` renders both classes on one
+ * element, so nothing here changes what it draws.
+ */
+.sb-shell {
+  color: var(--shell-text);
+  background: var(--shell-background);
+  font: var(--shell-font, 400 14px/1.5 system-ui, sans-serif);
+}
+
+/*
  * The window, filled without a rule the consumer has to write. `height: 100%`
  * measures against ancestors this file does not own, so the whole palette
  * still drew a shell an inch tall. Fixed to the viewport needs neither that
@@ -45,9 +64,6 @@
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  color: var(--shell-text);
-  background: var(--shell-background);
-  font: var(--shell-font, 400 14px/1.5 system-ui, sans-serif);
 }
 
 .sb-shell .titlebar {
@@ -112,7 +128,7 @@
   gap: var(--shell-space-2, 8px);
   padding: var(--shell-space-2, 8px) var(--shell-space-4, 16px);
   flex: none;
-  color: var(--shell-status, var(--shell-text-subtle));
+  color: var(--shell-status, var(--shell-text-muted));
   background: var(--shell-status-muted, var(--shell-active));
   border-bottom: 1px solid var(--shell-border);
   font-size: 13px;
@@ -254,13 +270,28 @@
   display: none;
 }
 
-.sb-shell .tab,
-.sb-shell .tab__new,
-.sb-shell .nav button {
-  color: inherit;
+/*
+ * Every button under `.sb-shell` starts from the reference's own reset: a bare
+ * `button` selector, at the lowest specificity a class can ever beat, rather
+ * than a list of the classes that happen to need it today. The list version
+ * put `.nav button` at (0,2,1) — one type selector more specific than
+ * `.nav__heading` and `.nav__item` at (0,2,0) — so their own `color`, and
+ * `.nav__heading`'s `font-size` and `font-weight`, lost outright instead of
+ * winning by source order the way `.tab`'s own rule already does against this
+ * same list. Measured: `.nav__heading` computed white at 16px/400 in place of
+ * `--shell-text-subtle` at 11px/600. A bare `button` selector can never
+ * outrank a one-class rule, so nothing declared after it has to out-specify
+ * it, only outlive it in source order, which every one of them already does.
+ * `.icon-button`, `.tab__new` and `.radio__box` pick up the `padding: 0` none
+ * of them set for themselves, for the reason `controls.css`'s own `button`
+ * rule carries it. Issue #176.
+ */
+.sb-shell button {
   font: inherit;
+  color: inherit;
+  background: none;
   border: 0;
-  background: transparent;
+  padding: 0;
   cursor: pointer;
 }
 
@@ -495,6 +526,18 @@
   font-weight: 500;
 }
 
+/* `min-width: 0` is what lets the label shrink below its own text, the same
+   reasoning `.tab__label` carries: a flex item refuses to narrow past its
+   content otherwise, so the ellipsis never engages and a long project name
+   pushes the count out of the rail instead of truncating beside it. */
+.sb-shell .nav__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .sb-shell .nav__item-count {
   margin-left: auto;
   color: var(--shell-text-subtle);
@@ -714,11 +757,16 @@
   text-align: center;
 }
 
+/* A minimum, not a fixed height. Content the consumer supplies — a control, a
+   chip, a second line of text — asks for more than the compact register at
+   times, and a fixed height clips or overlaps it instead of growing. Issue
+   #176 measured 46px for two lines against a 24px box that had already
+   overflowed both upward, over the panel above, and downward, off the window. */
 .sb-shell .statusbar {
   display: flex;
   align-items: center;
   gap: var(--shell-space-3, 12px);
-  height: 24px;
+  min-height: var(--shell-statusbar-height, 24px);
   padding: 0 var(--shell-space-3, 12px);
   flex: none;
   color: var(--shell-text-subtle);
@@ -731,7 +779,7 @@
   height: 7px;
   flex: none;
   border-radius: 9999px;
-  background: var(--shell-status, var(--shell-text-subtle));
+  background: var(--shell-status, var(--shell-text-muted));
   /* A halo, so a 7px dot still reads as live against a dark panel. It falls
      back to transparent rather than to a surface: a host that names no status
      tint gets the dot alone, not a grey ring around it. */
@@ -742,7 +790,7 @@
   display: inline-flex;
   align-items: center;
   padding: 2px var(--shell-space-2, 8px);
-  color: var(--shell-status, var(--shell-text-subtle));
+  color: var(--shell-status, var(--shell-text-muted));
   background: var(--shell-status-muted, var(--shell-active));
   border-radius: 9999px;
   font-size: 11px;
@@ -1257,7 +1305,7 @@
   padding: var(--shell-space-3, 12px);
   color: var(--shell-text);
   background: var(--shell-status-muted, var(--shell-active));
-  border: 1px solid var(--shell-status, var(--shell-text-subtle));
+  border: 1px solid var(--shell-status, var(--shell-text-muted));
   border-radius: var(--shell-radius-large, 8px);
 }
 

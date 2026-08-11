@@ -231,6 +231,18 @@ body {
   font-weight: var(--weight-md);
 }
 
+/* `min-width: 0` is what lets the label shrink below its own text, the same
+   reasoning `.tab__label` carries: a flex item refuses to narrow past its
+   content otherwise, so a long project name overlapped the row below instead
+   of truncating. Issue #176. */
+.nav__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .nav__item-count {
   margin-left: auto;
   font-size: var(--text-xs);
@@ -908,12 +920,16 @@ body {
 
 /* -------------------------------------------------------------- statusbar */
 
+/* A minimum, not a fixed height. Content this application supplies — a
+   control, a chip, a second line — asks for more than the compact register at
+   times, and a fixed height clipped or overlapped it instead of growing.
+   Issue #176. */
 .statusbar {
   display: flex;
   align-items: center;
   gap: var(--space-3);
   padding: 0 var(--space-3);
-  height: 24px;
+  min-height: 24px;
   flex: none;
   font-size: var(--text-xs);
   color: var(--text-muted);

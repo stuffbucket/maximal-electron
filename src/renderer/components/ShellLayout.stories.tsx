@@ -1,11 +1,12 @@
-import { Copy, Trash2 } from 'lucide-react';
+import { Copy, Info, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, userEvent, within } from 'storybook/test';
 
-import { Button } from './controls/Button.js';
+import { Button, IconButton } from './controls/Button.js';
 import { Banner } from './controls/Layout.js';
 import { Dialog, Menu } from './controls/Overlays.js';
+import { NavRail, type NavRailSection } from './NavRail.js';
 import { ShellLayout } from './ShellLayout.js';
 
 /**
@@ -355,6 +356,103 @@ export const Portalled: StoryObj = {
     const tooltip = await body.findByText('Hide sidebar', { selector: '.tooltip' });
     await expect(tooltip.closest('.sb-shell')).toBe(root);
     await userEvent.unhover(canvas.getByRole('button', { name: 'Hide sidebar' }));
+  },
+};
+
+type ComposedView = 'first';
+
+const COMPOSED_SECTIONS: NavRailSection<ComposedView>[] = [
+  { id: 'section', label: 'Section', items: [{ id: 'first', label: 'First', count: 3 }] },
+];
+
+function ComposedWithoutFrameShell() {
+  return (
+    <div className="sb-shell" data-testid="composed-root">
+      <NavRail
+        sections={COMPOSED_SECTIONS}
+        current="first"
+        onSelect={() => undefined}
+        collapsed={false}
+        icon={() => Info}
+      />
+      <IconButton label="Info" testId="composed-icon">
+        <Info size={16} />
+      </IconButton>
+    </div>
+  );
+}
+
+/**
+ * Composed without `ShellLayout`, exactly as README.md shows it: `.sb-shell`
+ * on a container of the consumer's own, holding exported components with no
+ * frame around them.
+ *
+ * Storybook's package mode puts `.sb-shell` on the story's own root and
+ * nothing else — see `.storybook/shell-mode.ts` — which is this composition
+ * exactly, and where two more defects lived. `.sb-shell.app` carried the
+ * design system's colour, background and font, so a consumer who matched
+ * `.sb-shell` alone got the document's own instead: black text in whatever
+ * serif the platform defaults to. And `.sb-shell .nav button` sat at
+ * specificity (0,2,1), one type selector more specific than `.nav__heading`
+ * and `.nav__item` at (0,2,0), so their own colour — and the heading's size
+ * and weight — lost outright rather than winning by source order the way
+ * `.tab`'s own rule already does against the same reset. Measured before the
+ * fix: the heading computed white at 14px/400 in place of
+ * `--shell-text-subtle` at 11px/600, and `.icon-button` read Arial with no
+ * rule reaching it at all. Fixed: the baseline moved to bare `.sb-shell`, and
+ * the reset moved to a bare `button` selector at (0,1,1), which nothing
+ * declared with a class can ever be outranked by. Issue #176.
+ *
+ * Only meaningful in package mode. `shell.css` writes no rule for a bare
+ * `.sb-shell` at all — the application never renders that class without
+ * `ShellLayout` beside it — so the run against `shell.css` has nothing here
+ * to get right or wrong, and the floor below is what it asserts instead.
+ */
+export const ComposedWithoutFrame: StoryObj = {
+  render: () => <ComposedWithoutFrameShell />,
+  play: async ({ canvasElement }) => {
+    const root = canvasElement.querySelector<HTMLElement>('[data-testid="composed-root"]');
+    const heading = root?.querySelector<HTMLElement>('.nav__heading');
+    const item = root?.querySelector<HTMLElement>('.nav__item');
+    const icon = canvasElement.querySelector<HTMLElement>('[data-testid="composed-icon"]');
+    if (!root || !heading || !item || !icon) {
+      throw new Error('nothing to measure: the composed shell did not render');
+    }
+
+    const packageMode = canvasElement.classList.contains('sb-shell');
+    if (!packageMode) {
+      // The floor for the run this story is not about: the composition still
+      // renders, which is all `shell.css` promises for a class it never
+      // writes a rule for.
+      await expect(root.querySelector('.nav__item'), 'the rail rendered').not.toBeNull();
+      return;
+    }
+
+    const rootStyle = getComputedStyle(root);
+    const headingStyle = getComputedStyle(heading);
+    const itemStyle = getComputedStyle(item);
+    const iconStyle = getComputedStyle(icon);
+
+    // The baseline: a consumer composing without the frame still gets the
+    // design system's type and colour, not the document's black-on-nothing.
+    await expect(rootStyle.fontFamily, 'the bare .sb-shell root').toContain('system-ui');
+    await expect(rootStyle.color, 'the bare .sb-shell root').not.toBe('rgb(0, 0, 0)');
+
+    // The specificity collision: the heading and the item keep their own
+    // colour rather than inheriting the root's, and the heading its own size
+    // and weight rather than losing them to the button reset's `font: inherit`.
+    await expect(headingStyle.color, 'nav__heading color vs the root it would inherit').not.toBe(
+      rootStyle.color,
+    );
+    await expect(headingStyle.fontSize, 'nav__heading font-size').toBe('11px');
+    await expect(headingStyle.fontWeight, 'nav__heading font-weight').toBe('600');
+    await expect(itemStyle.color, 'nav__item color vs the root it would inherit').not.toBe(
+      rootStyle.color,
+    );
+
+    // The reset a class list did not reach: the icon button reads the design
+    // system's font rather than the platform default.
+    await expect(iconStyle.fontFamily, 'icon-button font-family').toContain('system-ui');
   },
 };
 
